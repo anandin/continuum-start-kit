@@ -5,9 +5,9 @@ import { useNavigate } from 'react-router-dom';
 
 interface Profile {
   id: string;
+  email: string;
   role: 'provider' | 'seeker' | null;
   created_at: string;
-  updated_at: string;
 }
 
 interface AuthContextType {

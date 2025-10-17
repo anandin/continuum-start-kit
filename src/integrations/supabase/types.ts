@@ -14,26 +14,278 @@ export type Database = {
   }
   public: {
     Tables: {
-      profiles: {
+      engagements: {
         Row: {
-          created_at: string
+          created_at: string | null
           id: string
-          role: Database["public"]["Enums"]["user_role"] | null
-          updated_at: string
+          provider_id: string | null
+          seeker_id: string | null
+          status: Database["public"]["Enums"]["engagement_status"] | null
         }
         Insert: {
-          created_at?: string
-          id: string
-          role?: Database["public"]["Enums"]["user_role"] | null
-          updated_at?: string
+          created_at?: string | null
+          id?: string
+          provider_id?: string | null
+          seeker_id?: string | null
+          status?: Database["public"]["Enums"]["engagement_status"] | null
         }
         Update: {
-          created_at?: string
+          created_at?: string | null
           id?: string
-          role?: Database["public"]["Enums"]["user_role"] | null
-          updated_at?: string
+          provider_id?: string | null
+          seeker_id?: string | null
+          status?: Database["public"]["Enums"]["engagement_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagements_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagements_seeker_id_fkey"
+            columns: ["seeker_id"]
+            isOneToOne: false
+            referencedRelation: "seekers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["msg_role"]
+          session_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["msg_role"]
+          session_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["msg_role"]
+          session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          role: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: string
+          role?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          role?: string | null
         }
         Relationships: []
+      }
+      progress_indicators: {
+        Row: {
+          created_at: string | null
+          detail: Json | null
+          id: string
+          session_id: string | null
+          type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          detail?: Json | null
+          id?: string
+          session_id?: string | null
+          type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          detail?: Json | null
+          id?: string
+          session_id?: string | null
+          type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "progress_indicators_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      provider_configs: {
+        Row: {
+          created_at: string | null
+          id: string
+          labels: Json | null
+          methodology: string | null
+          provider_id: string | null
+          stages: Json
+          summary_template: Json | null
+          tagging_rules: Json | null
+          title: string
+          trajectory_rules: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          labels?: Json | null
+          methodology?: string | null
+          provider_id?: string | null
+          stages: Json
+          summary_template?: Json | null
+          tagging_rules?: Json | null
+          title: string
+          trajectory_rules?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          labels?: Json | null
+          methodology?: string | null
+          provider_id?: string | null
+          stages?: Json
+          summary_template?: Json | null
+          tagging_rules?: Json | null
+          title?: string
+          trajectory_rules?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_configs_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seekers: {
+        Row: {
+          created_at: string | null
+          id: string
+          owner_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          owner_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          owner_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seekers_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sessions: {
+        Row: {
+          ended_at: string | null
+          engagement_id: string | null
+          id: string
+          initial_stage: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["session_status"] | null
+        }
+        Insert: {
+          ended_at?: string | null
+          engagement_id?: string | null
+          id?: string
+          initial_stage?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["session_status"] | null
+        }
+        Update: {
+          ended_at?: string | null
+          engagement_id?: string | null
+          id?: string
+          initial_stage?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["session_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sessions_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: false
+            referencedRelation: "engagements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      summaries: {
+        Row: {
+          assigned_stage: string | null
+          created_at: string | null
+          id: string
+          key_insights: Json | null
+          next_action: string | null
+          session_id: string | null
+          session_summary: string | null
+          trajectory_status: string | null
+        }
+        Insert: {
+          assigned_stage?: string | null
+          created_at?: string | null
+          id?: string
+          key_insights?: Json | null
+          next_action?: string | null
+          session_id?: string | null
+          session_summary?: string | null
+          trajectory_status?: string | null
+        }
+        Update: {
+          assigned_stage?: string | null
+          created_at?: string | null
+          id?: string
+          key_insights?: Json | null
+          next_action?: string | null
+          session_id?: string | null
+          session_summary?: string | null
+          trajectory_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "summaries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -43,7 +295,9 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      user_role: "provider" | "seeker"
+      engagement_status: "active" | "paused" | "completed"
+      msg_role: "seeker" | "agent" | "provider"
+      session_status: "active" | "ended"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -171,7 +425,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      user_role: ["provider", "seeker"],
+      engagement_status: ["active", "paused", "completed"],
+      msg_role: ["seeker", "agent", "provider"],
+      session_status: ["active", "ended"],
     },
   },
 } as const
