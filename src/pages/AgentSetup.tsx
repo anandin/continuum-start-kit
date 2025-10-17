@@ -37,7 +37,7 @@ export default function AgentSetup() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
-    } else if (role !== 'provider') {
+    } else if (role && role !== 'provider') {
       toast.error('Only providers can access this page');
       navigate('/dashboard');
     }

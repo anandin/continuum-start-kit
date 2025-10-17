@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,17 @@ export default function Dashboard() {
     await signOut();
   };
 
+  // Redirect logic in useEffect to avoid render-phase navigation
+  useEffect(() => {
+    if (!loading) {
+      if (!user) {
+        navigate('/auth');
+      } else if (!role) {
+        navigate('/auth/role');
+      }
+    }
+  }, [user, role, loading, navigate]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
@@ -21,13 +33,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!user) {
-    navigate('/auth');
-    return null;
-  }
-
-  if (!role) {
-    navigate('/auth/role');
+  if (!user || !role) {
     return null;
   }
 

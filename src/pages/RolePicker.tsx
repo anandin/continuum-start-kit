@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,8 +10,18 @@ import { Briefcase, Search, Loader2 } from 'lucide-react';
 export default function RolePicker() {
   const [loading, setLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<'provider' | 'seeker' | null>(null);
-  const { user, refreshProfile } = useAuth();
+  const { user, role, refreshProfile } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect if user already has a role
+  useEffect(() => {
+    if (!user) {
+      navigate('/auth');
+    } else if (role) {
+      // User already has a role, redirect to dashboard
+      navigate('/dashboard');
+    }
+  }, [user, role, navigate]);
 
   const handleRoleSelection = async (role: 'provider' | 'seeker') => {
     if (!user) {
@@ -24,13 +34,38 @@ export default function RolePicker() {
     setSelectedRole(role);
 
     try {
-      // Insert into user_roles table
-      const { error } = await supabase
+      // Check if user already has a role
+      const { data: existingRole, error: checkError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Check role error:', checkError);
+        throw checkError;
+      }
+
+      if (existingRole) {
+        // Role already exists, just refresh and navigate
+        console.log('Role already exists:', existingRole.role);
+        await refreshProfile();
+        toast.success(`Welcome back!`);
+        navigate('/dashboard');
+        return;
+      }
+
+      // Insert new role
+      const { error: insertError } = await supabase
         .from('user_roles')
         .insert({ user_id: user.id, role });
 
-      if (error) throw error;
+      if (insertError) {
+        console.error('Insert role error:', insertError);
+        throw insertError;
+      }
 
+      console.log('Role inserted successfully:', role);
       await refreshProfile();
       toast.success(`Welcome as a ${role}!`);
       navigate('/dashboard');

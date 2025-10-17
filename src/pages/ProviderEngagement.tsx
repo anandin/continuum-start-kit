@@ -157,8 +157,8 @@ export default function ProviderEngagement() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
       </div>
     );
   }
@@ -168,20 +168,20 @@ export default function ProviderEngagement() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
-      <header className="border-b bg-card/50 backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
             <h1 className="text-2xl font-bold">
-              <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
                 {getSeekerAlias()}
               </span>
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-400">
               Engagement started {new Date(engagement.created_at).toLocaleDateString()}
             </p>
           </div>
-          <Button variant="outline" onClick={() => navigate('/provider/dashboard')}>
+          <Button variant="outline" onClick={() => navigate('/provider/dashboard')} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dashboard
           </Button>
@@ -190,16 +190,16 @@ export default function ProviderEngagement() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-5xl space-y-6">
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
-              <CardTitle>Session History</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-white">Session History</CardTitle>
+              <CardDescription className="text-slate-400">
                 {engagement.sessions.length} session{engagement.sessions.length !== 1 ? 's' : ''} completed
               </CardDescription>
             </CardHeader>
             <CardContent>
               {engagement.sessions.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground">
+                <div className="py-8 text-center text-slate-400">
                   No sessions yet for this engagement.
                 </div>
               ) : (
@@ -210,19 +210,19 @@ export default function ProviderEngagement() {
                     
                     return (
                       <div key={session.id}>
-                        {index > 0 && <Separator className="my-6" />}
+                        {index > 0 && <Separator className="my-6 bg-white/10" />}
                         <div className="space-y-4">
                           <div className="flex items-start justify-between">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <h3 className="font-semibold">
+                                <h3 className="font-semibold text-white">
                                   Session {engagement.sessions.length - index}
                                 </h3>
-                                <Badge variant={session.status === 'ended' ? 'secondary' : 'default'}>
+                                <Badge variant={session.status === 'ended' ? 'secondary' : 'default'} className="bg-purple-500/20 text-purple-300 border-purple-500/30">
                                   {session.status}
                                 </Badge>
                               </div>
-                              <p className="text-sm text-muted-foreground">
+                              <p className="text-sm text-slate-400">
                                 {new Date(session.started_at).toLocaleDateString()} at{' '}
                                 {new Date(session.started_at).toLocaleTimeString()}
                                 {session.ended_at && (
@@ -234,6 +234,7 @@ export default function ProviderEngagement() {
                               variant="outline"
                               size="sm"
                               onClick={() => navigate(`/chat/${session.id}`)}
+                              className="border-white/20 bg-white/5 text-white hover:bg-white/10"
                             >
                               <MessageSquare className="mr-2 h-4 w-4" />
                               View Chat
@@ -241,16 +242,16 @@ export default function ProviderEngagement() {
                           </div>
 
                           {summary ? (
-                            <div className="rounded-lg border bg-card p-4 space-y-3">
+                            <div className="rounded-lg border border-white/10 bg-slate-800/50 p-4 space-y-3">
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline">{summary.assigned_stage}</Badge>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge variant="outline" className="border-white/20 bg-white/5 text-white">{summary.assigned_stage}</Badge>
                                   <Badge className={getTrajectoryColor(summary.trajectory_status)}>
                                     <span className="mr-1">{getTrajectoryIcon(summary.trajectory_status)}</span>
                                     {summary.trajectory_status}
                                   </Badge>
                                   {sentimentScore !== null && (
-                                    <Badge variant="secondary">
+                                    <Badge variant="secondary" className="bg-slate-700/50 text-slate-200">
                                       Sentiment: {formatSentiment(sentimentScore)}
                                     </Badge>
                                   )}
@@ -258,13 +259,13 @@ export default function ProviderEngagement() {
                               </div>
                               
                               <div className="space-y-2">
-                                <p className="text-sm text-muted-foreground">
+                                <p className="text-sm text-slate-300">
                                   {summary.session_summary}
                                 </p>
                               </div>
 
                               <div className="space-y-2">
-                                <p className="text-sm font-medium">Key Insights:</p>
+                                <p className="text-sm font-medium text-white">Key Insights:</p>
                                 <ul className="space-y-1">
                                   {Array.isArray(summary.key_insights) && 
                                     summary.key_insights
@@ -272,8 +273,8 @@ export default function ProviderEngagement() {
                                         typeof insight === 'string' || insight.label !== 'sentiment'
                                       )
                                       .map((insight: string, idx: number) => (
-                                        <li key={idx} className="flex gap-2 text-sm text-muted-foreground">
-                                          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+                                        <li key={idx} className="flex gap-2 text-sm text-slate-300">
+                                          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 flex-shrink-0" />
                                           {insight}
                                         </li>
                                       ))
@@ -281,15 +282,15 @@ export default function ProviderEngagement() {
                                 </ul>
                               </div>
 
-                              <div className="pt-2 border-t">
+                              <div className="pt-2 border-t border-white/10">
                                 <p className="text-sm">
-                                  <span className="font-medium">Next Action:</span>{' '}
-                                  <span className="text-muted-foreground">{summary.next_action}</span>
+                                  <span className="font-medium text-white">Next Action:</span>{' '}
+                                  <span className="text-slate-300">{summary.next_action}</span>
                                 </p>
                               </div>
                             </div>
                           ) : (
-                            <div className="rounded-lg border bg-muted/50 p-4 text-sm text-muted-foreground">
+                            <div className="rounded-lg border border-white/10 bg-slate-800/50 p-4 text-sm text-slate-400">
                               {session.status === 'active' 
                                 ? 'Session in progress - summary will be generated when completed'
                                 : 'No summary available for this session'

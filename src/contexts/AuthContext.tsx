@@ -40,26 +40,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (profileError) throw profileError;
-      setProfile(profileData as Profile);
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        return;
+      }
+      
+      if (profileData) {
+        setProfile(profileData as Profile);
+      }
       
       // Fetch role from user_roles table
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
       
-      if (!roleError && roleData) {
+      if (roleError) {
+        console.error('Role fetch error:', roleError);
+        setRole(null);
+        return;
+      }
+
+      if (roleData) {
         setRole(roleData.role as 'provider' | 'seeker');
       } else {
         setRole(null);
-        // Redirect to role selection if no role is set
-        if (window.location.pathname !== '/auth/role') {
-          navigate('/auth/role');
-        }
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -76,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.id);
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -86,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }, 0);
         } else {
           setProfile(null);
+          setRole(null);
         }
         
         setLoading(false);
@@ -94,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       

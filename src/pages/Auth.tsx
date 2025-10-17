@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,11 +19,12 @@ export default function Auth() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already authenticated
-  if (user) {
-    navigate('/dashboard');
-    return null;
-  }
+  // Redirect if already authenticated - use useEffect to avoid render-phase navigation
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard');
+    }
+  }, [user, navigate]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();

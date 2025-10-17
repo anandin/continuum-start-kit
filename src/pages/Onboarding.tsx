@@ -24,7 +24,7 @@ export default function Onboarding() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
-    } else if (role !== 'seeker') {
+    } else if (role && role !== 'seeker') {
       toast.error('Only seekers can access onboarding');
       navigate('/dashboard');
     }
@@ -177,11 +177,11 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
-      <header className="border-b bg-card/50 backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold">
-            <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
               Welcome to Bloom
             </span>
           </h1>
@@ -190,10 +190,10 @@ export default function Onboarding() {
 
       <main className="container mx-auto px-4 py-12">
         <div className="mx-auto max-w-2xl">
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader className="text-center">
-              <CardTitle className="text-3xl">Let's Get Started</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-3xl text-white">Let's Get Started</CardTitle>
+              <CardDescription className="text-slate-300">
                 Tell us about your journey so we can personalize your experience
               </CardDescription>
             </CardHeader>
@@ -251,7 +251,7 @@ export default function Onboarding() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                <Button type="submit" className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/50" size="lg" disabled={loading}>
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />

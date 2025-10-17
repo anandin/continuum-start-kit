@@ -46,10 +46,13 @@ export default function Chat() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
-      return;
     }
+  }, [user, navigate]);
 
-    loadSession();
+  useEffect(() => {
+    if (user && sessionId) {
+      loadSession();
+    }
   }, [user, sessionId]);
 
   useEffect(() => {

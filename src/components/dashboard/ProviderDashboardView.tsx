@@ -27,8 +27,8 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
   if (loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-96 w-full" />
+        <Skeleton className="h-32 w-full bg-slate-800" />
+        <Skeleton className="h-96 w-full bg-slate-800" />
       </div>
     );
   }
@@ -37,47 +37,47 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
     <div className="space-y-6">
       {/* Quick Metrics */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Seekers</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-white">Active Seekers</CardTitle>
+            <Users className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeEngagements}</div>
+            <div className="text-2xl font-bold text-white">{activeEngagements}</div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Accelerating</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <CardTitle className="text-sm font-medium text-white">Accelerating</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{trajectoryDistribution.accelerating || 0}</div>
+            <div className="text-2xl font-bold text-white">{trajectoryDistribution.accelerating || 0}</div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Engagements</CardTitle>
-            <Briefcase className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-white">Total Engagements</CardTitle>
+            <Briefcase className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{engagements.length}</div>
+            <div className="text-2xl font-bold text-white">{engagements.length}</div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
-            <Settings className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-white">Quick Actions</CardTitle>
+            <Settings className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent className="space-y-2">
             <Button 
               onClick={() => navigate('/provider/setup')} 
               variant="outline" 
               size="sm"
-              className="w-full"
+              className="w-full border-white/20 bg-white/5 text-white hover:bg-white/10"
             >
               Configure Program
             </Button>
@@ -85,7 +85,7 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
               onClick={() => navigate('/provider/agent-setup')} 
               variant="outline" 
               size="sm"
-              className="w-full"
+              className="w-full border-white/20 bg-white/5 text-white hover:bg-white/10"
             >
               Setup AI Agent
             </Button>
@@ -94,21 +94,21 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
       </div>
 
       {/* Engagements Table */}
-      <Card>
+      <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
         <CardHeader>
-          <CardTitle>Active Engagements</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-white">Active Engagements</CardTitle>
+          <CardDescription className="text-slate-400">
             Click on an engagement to view detailed session history and progress
           </CardDescription>
         </CardHeader>
         <CardContent>
           {engagements.length === 0 ? (
             <div className="py-12 text-center">
-              <Briefcase className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
-              <p className="text-muted-foreground mb-4">
+              <Briefcase className="mx-auto h-12 w-12 text-slate-500 mb-4" />
+              <p className="text-slate-400 mb-4">
                 No engagements yet. Seekers will appear here once they start working with you.
               </p>
-              <Button onClick={() => navigate('/provider/setup')} variant="outline">
+              <Button onClick={() => navigate('/provider/setup')} variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10">
                 <Settings className="mr-2 h-4 w-4" />
                 Set Up Your Program
               </Button>
@@ -116,11 +116,11 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Seeker</TableHead>
-                  <TableHead>Last Session</TableHead>
-                  <TableHead>Current Stage</TableHead>
-                  <TableHead>Trajectory</TableHead>
+                <TableRow className="border-white/10 hover:bg-transparent">
+                  <TableHead className="text-slate-300">Seeker</TableHead>
+                  <TableHead className="text-slate-300">Last Session</TableHead>
+                  <TableHead className="text-slate-300">Current Stage</TableHead>
+                  <TableHead className="text-slate-300">Trajectory</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -129,17 +129,17 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
                   return (
                     <TableRow
                       key={engagement.id}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      className="cursor-pointer border-white/10 hover:bg-white/5 transition-colors"
                       onClick={() => navigate(`/provider/engagement/${engagement.id}`)}
                     >
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium text-white">
                         {getSeekerAlias(engagement)}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-slate-400">
                         {getLastSessionDate(engagement)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{getLatestStage(engagement)}</Badge>
+                        <Badge variant="outline" className="border-white/20 bg-white/5 text-white">{getLatestStage(engagement)}</Badge>
                       </TableCell>
                       <TableCell>
                         <TrajectoryChip status={trajectoryStatus} />

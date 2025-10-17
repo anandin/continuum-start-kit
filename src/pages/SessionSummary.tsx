@@ -22,10 +22,13 @@ export default function SessionSummary() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
-      return;
     }
+  }, [user, navigate]);
 
-    loadSummary();
+  useEffect(() => {
+    if (user && sessionId) {
+      loadSummary();
+    }
   }, [user, sessionId]);
 
   const loadSummary = async () => {
