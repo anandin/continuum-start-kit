@@ -51,15 +51,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(profileData as Profile);
       }
       
-      // Fetch role from user_roles table
+      // Fetch role from user_roles table (now guaranteed to be single or null)
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
-        .maybeSingle();
+        .limit(1)
+        .single();
       
       if (roleError) {
-        console.error('Role fetch error:', roleError);
+        // PGRST116 means no rows found - this is expected for new users
+        if (roleError.code !== 'PGRST116') {
+          console.error('Role fetch error:', roleError);
+        }
         setRole(null);
         return;
       }
