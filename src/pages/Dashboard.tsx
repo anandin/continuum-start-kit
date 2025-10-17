@@ -89,10 +89,16 @@ export default function Dashboard() {
                 </p>
                 
                 {profile?.role === 'provider' && (
-                  <Button onClick={() => navigate('/provider/setup')} className="w-full">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Configure Your Program
-                  </Button>
+                  <div className="space-y-2">
+                    <Button onClick={() => navigate('/provider/dashboard')} className="w-full">
+                      <Briefcase className="mr-2 h-4 w-4" />
+                      View Engagements
+                    </Button>
+                    <Button onClick={() => navigate('/provider/setup')} variant="outline" className="w-full">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Configure Your Program
+                    </Button>
+                  </div>
                 )}
                 
                 {profile?.role === 'seeker' && (

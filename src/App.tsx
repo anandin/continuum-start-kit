@@ -15,6 +15,8 @@ import Chat from "./pages/Chat";
 import SessionSummary from "./pages/SessionSummary";
 import Health from "./pages/Health";
 import NotFound from "./pages/NotFound";
+import ProviderDashboard from "./pages/ProviderDashboard";
+import ProviderEngagement from "./pages/ProviderEngagement";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +76,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <SessionSummary />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/dashboard"
+              element={
+                <ProtectedRoute>
+                  <ProviderDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/engagement/:engagementId"
+              element={
+                <ProtectedRoute>
+                  <ProviderEngagement />
                 </ProtectedRoute>
               }
             />

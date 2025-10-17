@@ -113,6 +113,7 @@ Analyze this session and provide a structured summary. Consider:
 2. What are the key insights and patterns from this session?
 3. What should be the next action for the seeker?
 4. What is their trajectory status (steady, drifting, stalling, accelerating)?
+5. Calculate a sentiment score from -1 (very negative/resistant) to +1 (very positive/engaged) based on the seeker's overall tone and engagement.
 
 Respond with JSON only in this exact format:
 {
@@ -121,11 +122,14 @@ Respond with JSON only in this exact format:
   "key_insights": [
     "First key insight or pattern observed",
     "Second key insight or pattern observed",
-    "Third key insight or pattern observed"
+    "Third key insight or pattern observed",
+    {"label": "sentiment", "score": 0.7}
   ],
   "next_action": "Clear, actionable next step for the seeker (1-2 sentences)",
   "trajectory_status": "steady" | "drifting" | "stalling" | "accelerating"
-}`;
+}
+
+IMPORTANT: The last item in key_insights MUST be the sentiment object with label and score.`;
 
     console.log("Calling Gemini for session summary...");
 
