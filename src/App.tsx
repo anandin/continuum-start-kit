@@ -17,6 +17,7 @@ import Health from "./pages/Health";
 import NotFound from "./pages/NotFound";
 import ProviderDashboard from "./pages/ProviderDashboard";
 import ProviderEngagement from "./pages/ProviderEngagement";
+import AgentSetup from "./pages/AgentSetup";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ProviderSetup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/agent-setup"
+              element={
+                <ProtectedRoute>
+                  <AgentSetup />
                 </ProtectedRoute>
               }
             />

@@ -135,6 +135,54 @@ export type Database = {
           },
         ]
       }
+      provider_agent_configs: {
+        Row: {
+          avatar_url: string | null
+          boundaries: string | null
+          core_identity: string | null
+          created_at: string | null
+          guiding_principles: string | null
+          id: string
+          provider_id: string
+          provider_name: string | null
+          provider_title: string | null
+          rules: string | null
+          tone: string | null
+          updated_at: string | null
+          voice: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          boundaries?: string | null
+          core_identity?: string | null
+          created_at?: string | null
+          guiding_principles?: string | null
+          id?: string
+          provider_id: string
+          provider_name?: string | null
+          provider_title?: string | null
+          rules?: string | null
+          tone?: string | null
+          updated_at?: string | null
+          voice?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          boundaries?: string | null
+          core_identity?: string | null
+          created_at?: string | null
+          guiding_principles?: string | null
+          id?: string
+          provider_id?: string
+          provider_name?: string | null
+          provider_title?: string | null
+          rules?: string | null
+          tone?: string | null
+          updated_at?: string | null
+          voice?: string | null
+        }
+        Relationships: []
+      }
       provider_configs: {
         Row: {
           created_at: string | null

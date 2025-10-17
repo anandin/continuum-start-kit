@@ -72,7 +72,7 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
             <CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
             <Settings className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
             <Button 
               onClick={() => navigate('/provider/setup')} 
               variant="outline" 
@@ -80,6 +80,14 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
               className="w-full"
             >
               Configure Program
+            </Button>
+            <Button 
+              onClick={() => navigate('/provider/agent-setup')} 
+              variant="outline" 
+              size="sm"
+              className="w-full"
+            >
+              Setup AI Agent
             </Button>
           </CardContent>
         </Card>
