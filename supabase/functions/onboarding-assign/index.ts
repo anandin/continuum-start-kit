@@ -27,33 +27,28 @@ serve(async (req) => {
     }
 
     // Build the prompt for Gemini
-    const stageNames = stages.map((s: any) => `"${s.name}"`).join(", ");
-    const stageDetails = stages.map((s: any) => 
-      `- **${s.name}**: ${s.description}`
-    ).join("\n");
+    const stageNames = stages.map((s: any) => s.name);
+    
+    const answersForAI = {
+      current_pain: answers.current_pain,
+      desired_outcome: answers.desired_outcome,
+      present_challenge: answers.present_challenge,
+      recent_win: answers.recent_win
+    };
 
-    const prompt = `You are an expert coach analyzing a seeker's onboarding responses to assign them to the most appropriate starting stage.
+    const prompt = `Assign an initial stage for a new seeker.
 
-**Available Stages:**
-${stageDetails}
-
-**Seeker's Responses:**
-- Current Pain: ${answers.current_pain}
-- Desired Outcome: ${answers.desired_outcome}
-- Present Challenge: ${answers.present_challenge}
-- Recent Win: ${answers.recent_win}
-
-Based on these responses, determine which stage (${stageNames}) is the best starting point for this seeker. Consider:
-- Their current state and readiness
-- The challenges they're facing
-- Their recent progress
-- What they want to achieve
-
-Respond with a JSON object containing:
+Output STRICT JSON ONLY:
 {
-  "initial_stage": "exact stage name from the list",
-  "rationale": "2-3 sentence explanation of why this stage is appropriate"
-}`;
+  "initial_stage": string,   // must be an element of provider_config.stages
+  "rationale": string        // one sentence explanation
+}
+
+Inputs:
+- answers: ${JSON.stringify(answersForAI)}
+- provider_config.stages: ${JSON.stringify(stageNames)}
+
+If ambiguous, choose the earliest relevant stage.`;
 
     console.log("Calling Gemini API with prompt:", prompt);
 
@@ -68,14 +63,14 @@ Respond with a JSON object containing:
         messages: [
           {
             role: "system",
-            content: "You are a coaching expert. Always respond with valid JSON only, no additional text."
+            content: "You are a stage assignment expert. Always respond with valid JSON only, no additional text."
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        temperature: 0.7,
+        temperature: 0.3,
       }),
     });
 
