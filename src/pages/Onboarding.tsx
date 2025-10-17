@@ -64,37 +64,36 @@ export default function Onboarding() {
         seekerId = newSeeker.id;
       }
 
-      // 2. Get the seeded provider (hardcoded for now - the one we seeded earlier)
-      // TODO: Replace with provider selection UI
-      const { data: provider, error: providerError } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', 'provider')
-        .limit(1)
-        .single();
-
-      if (providerError || !provider) {
-        toast.error('No providers available. Please contact support.');
-        return;
-      }
-
-      const providerId = provider.user_id;
-
-      // 3. Get provider's config (for stages)
+      // 2. Find a provider with both config and agent setup
       const { data: providerConfig, error: configError } = await supabase
         .from('provider_configs')
-        .select('stages')
-        .eq('provider_id', providerId)
+        .select('provider_id, stages')
+        .not('stages', 'is', null)
+        .limit(1)
         .maybeSingle();
 
       if (configError) throw configError;
 
       if (!providerConfig || !providerConfig.stages) {
-        toast.error('Provider configuration not found. Please contact support.');
+        toast.error('No fully configured providers available yet. Please try again later.');
         return;
       }
 
-      // 4. Ensure engagement exists
+      const providerId = providerConfig.provider_id;
+
+      // Verify provider also has agent config
+      const { data: agentConfig } = await supabase
+        .from('provider_agent_configs')
+        .select('id')
+        .eq('provider_id', providerId)
+        .maybeSingle();
+
+      if (!agentConfig) {
+        toast.error('Provider setup incomplete. Please try again later.');
+        return;
+      }
+
+      // 3. Ensure engagement exists
       let engagementId: string;
       const { data: existingEngagement, error: engagementCheckError } = await supabase
         .from('engagements')
@@ -122,7 +121,7 @@ export default function Onboarding() {
         engagementId = newEngagement.id;
       }
 
-      // 5. Call edge function to determine initial stage
+      // 4. Call edge function to determine initial stage
       const answers = {
         current_pain: currentPain,
         desired_outcome: desiredOutcome,
@@ -150,7 +149,7 @@ export default function Onboarding() {
 
       console.log('Stage assignment:', stageAssignment);
 
-      // 6. Create session with initial_stage
+      // 5. Create session with initial_stage
       const { data: session, error: sessionError } = await supabase
         .from('sessions')
         .insert({
@@ -165,7 +164,7 @@ export default function Onboarding() {
 
       toast.success(`Welcome! You've been assigned to the "${stageAssignment.initial_stage}" stage.`);
       
-      // 7. Route to chat
+      // 6. Route to chat
       navigate(`/chat/${session.id}`);
 
     } catch (error: any) {
