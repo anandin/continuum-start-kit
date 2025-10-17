@@ -160,55 +160,47 @@ serve(async (req) => {
         if (indicatorsError) console.error("Error loading indicators:", indicatorsError);
 
         // Build transcript
-        const transcript = messages
-          .map(m => `[${m.role}]: ${m.content}`)
-          .join("\n\n");
+        const transcriptForAI = messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.created_at
+        }));
 
-        const indicatorsSummary = indicators && indicators.length > 0
-          ? "\n\n**Progress Indicators Detected:**\n" + 
-            indicators.map(ind => `- ${ind.type}: ${JSON.stringify(ind.detail)}`).join("\n")
-          : "";
+        // Build provider config structure for prompt
+        const providerConfigForAI = {
+          stages: config.stages || [],
+          labels: config.labels || [],
+          summary_template: config.summary_template || [],
+          tagging_rules: config.tagging_rules || [],
+          trajectory_rules: config.trajectory_rules || []
+        };
 
         const stagesList = (config.stages as any[])
-          .map((s, idx) => `${idx + 1}. ${s.name} - ${s.description}`)
-          .join("\n");
+          .map(s => s.name)
+          .join(", ");
 
-        const prompt = `You are analyzing a completed coaching session to create a comprehensive summary.
+        const prompt = `Summarize this session for durable storage.
 
-**Session Context:**
-- Initial Stage: ${session.initial_stage || "Not set"}
-- Methodology: ${config.methodology || "Standard coaching"}
-
-**Available Stages:**
-${stagesList}
-
-**Full Transcript:**
-${transcript}
-${indicatorsSummary}
-
-**Your Task:**
-Analyze this session and provide a structured summary. Consider:
-1. What stage is the seeker currently at based on the conversation?
-2. What are the key insights and patterns from this session?
-3. What should be the next action for the seeker?
-4. What is their trajectory status (steady, drifting, stalling, accelerating)?
-5. Calculate a sentiment score from -1 (very negative/resistant) to +1 (very positive/engaged) based on the seeker's overall tone and engagement.
-
-Respond with JSON only in this exact format:
+Output STRICT JSON ONLY:
 {
-  "assigned_stage": "exact stage name from the list",
-  "session_summary": "2-3 paragraph summary of the session covering main topics, breakthroughs, and challenges",
-  "key_insights": [
-    "First key insight or pattern observed",
-    "Second key insight or pattern observed",
-    "Third key insight or pattern observed",
-    {"label": "sentiment", "score": 0.7}
-  ],
-  "next_action": "Clear, actionable next step for the seeker (1-2 sentences)",
-  "trajectory_status": "steady" | "drifting" | "stalling" | "accelerating"
+  "session_summary": string,                       // <= 180 words, behavior-focused
+  "assigned_stage": string,                        // must be one of provider_config.stages
+  "key_insights": [ { "label": string, "insight": string, "score": number (optional -1..+1) } ],
+  "next_action": string,                           // one concrete next step
+  "trajectory_status": "steady"|"drifting"|"stalling"|"accelerating"
 }
 
-IMPORTANT: The last item in key_insights MUST be the sentiment object with label and score.`;
+Inputs:
+- transcript: ${JSON.stringify(transcriptForAI)}
+- provider_config: ${JSON.stringify(providerConfigForAI)}
+
+Available stages: ${stagesList}
+
+Guidance:
+- Prefer earlier stages when ambiguous.
+- Reference specific phrases or patterns from the transcript in key_insights.
+- If you infer sentiment, include a single insight { "label":"sentiment", "score": -1..+1 }.
+- Only return JSON. No extra text.`;
 
         console.log(`Calling Gemini for session ${session.id}...`);
 
