@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) throw error;
-      setProfile(data);
+      setProfile(data as Profile);
       
       // Redirect to role selection if no role is set
       if (data && !data.role && window.location.pathname !== '/auth/role') {
