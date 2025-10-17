@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2, ArrowUp, ArrowDown, Save, Eye } from 'lucide-react';
+import TemplateSelector from '@/components/TemplateSelector';
+import { ProviderTemplate } from '@/data/providerTemplates';
 
 interface Stage {
   name: string;
@@ -30,6 +32,8 @@ export default function ProviderSetup() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [configId, setConfigId] = useState<string | null>(null);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(true);
+  const [hasExistingConfig, setHasExistingConfig] = useState(false);
   
   // Form fields
   const [title, setTitle] = useState('');
@@ -73,6 +77,8 @@ export default function ProviderSetup() {
       if (error) throw error;
 
       if (data) {
+        setHasExistingConfig(true);
+        setShowTemplateSelector(false);
         setConfigId(data.id);
         setTitle(data.title || '');
         setMethodology(data.methodology || '');
@@ -81,6 +87,8 @@ export default function ProviderSetup() {
         setSummaryTemplate(Array.isArray(data.summary_template) ? data.summary_template as string[] : ['Session Overview: {summary}']);
         setTaggingRules(typeof data.tagging_rules === 'object' ? JSON.stringify(data.tagging_rules, null, 2) : '{}');
         setTrajectoryRules(Array.isArray(data.trajectory_rules) ? data.trajectory_rules as unknown as TrajectoryRule[] : [{ stage: '', indicator_type: 'steady', pattern: '', message: '' }]);
+      } else {
+        setShowTemplateSelector(true);
       }
     } catch (error: any) {
       console.error('Error loading config:', error);
@@ -88,6 +96,18 @@ export default function ProviderSetup() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTemplateSelect = (template: ProviderTemplate) => {
+    setTitle(template.title);
+    setMethodology(template.methodology);
+    setStages(template.stages);
+    setLabels(template.labels);
+    setSummaryTemplate(template.summaryTemplate);
+    setTaggingRules(JSON.stringify(template.taggingRules, null, 2));
+    setTrajectoryRules(template.trajectoryRules);
+    setShowTemplateSelector(false);
+    toast.success(template.id === 'blank' ? 'Starting fresh!' : `${template.name} template loaded - customize as needed`);
   };
 
   const handleSave = async () => {
@@ -220,6 +240,10 @@ export default function ProviderSetup() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
+
+  if (showTemplateSelector) {
+    return <TemplateSelector onSelectTemplate={handleTemplateSelect} />;
   }
 
   return (
