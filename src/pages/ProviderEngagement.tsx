@@ -36,7 +36,7 @@ interface Engagement {
 
 export default function ProviderEngagement() {
   const { engagementId } = useParams<{ engagementId: string }>();
-  const { user, profile } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(true);
@@ -48,14 +48,14 @@ export default function ProviderEngagement() {
       return;
     }
 
-    if (profile?.role !== 'provider') {
+    if (role !== 'provider') {
       toast.error('Access denied. Provider role required.');
       navigate('/dashboard');
       return;
     }
 
     loadEngagement();
-  }, [user, profile, engagementId]);
+  }, [user, role, engagementId]);
 
   const loadEngagement = async () => {
     if (!engagementId) {

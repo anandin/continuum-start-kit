@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { Loader2, ArrowRight } from 'lucide-react';
 
 export default function Onboarding() {
-  const { user, profile } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
@@ -24,11 +24,11 @@ export default function Onboarding() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
-    } else if (profile?.role !== 'seeker') {
+    } else if (role !== 'seeker') {
       toast.error('Only seekers can access onboarding');
       navigate('/dashboard');
     }
-  }, [user, profile, navigate]);
+  }, [user, role, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,8 +67,8 @@ export default function Onboarding() {
       // 2. Get the seeded provider (hardcoded for now - the one we seeded earlier)
       // TODO: Replace with provider selection UI
       const { data: provider, error: providerError } = await supabase
-        .from('profiles')
-        .select('id')
+        .from('user_roles')
+        .select('user_id')
         .eq('role', 'provider')
         .limit(1)
         .single();
@@ -78,7 +78,7 @@ export default function Onboarding() {
         return;
       }
 
-      const providerId = provider.id;
+      const providerId = provider.user_id;
 
       // 3. Get provider's config (for stages)
       const { data: providerConfig, error: configError } = await supabase

@@ -6,14 +6,18 @@ import { useNavigate } from 'react-router-dom';
 interface Profile {
   id: string;
   email: string;
-  role: 'provider' | 'seeker' | null;
   created_at: string;
+}
+
+interface UserRole {
+  role: 'provider' | 'seeker';
 }
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
+  role: 'provider' | 'seeker' | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -25,23 +29,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [role, setRole] = useState<'provider' | 'seeker' | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // Fetch profile
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
-      setProfile(data as Profile);
+      if (profileError) throw profileError;
+      setProfile(profileData as Profile);
       
-      // Redirect to role selection if no role is set
-      if (data && !data.role && window.location.pathname !== '/auth/role') {
-        navigate('/auth/role');
+      // Fetch role from user_roles table
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+      
+      if (!roleError && roleData) {
+        setRole(roleData.role as 'provider' | 'seeker');
+      } else {
+        setRole(null);
+        // Redirect to role selection if no role is set
+        if (window.location.pathname !== '/auth/role') {
+          navigate('/auth/role');
+        }
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -93,11 +111,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setSession(null);
     setProfile(null);
-    navigate('/auth');
+    setRole(null);
+    navigate('/');
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, profile, role, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

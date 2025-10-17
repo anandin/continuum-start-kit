@@ -6,7 +6,7 @@ import { ProviderDashboardView } from '@/components/dashboard/ProviderDashboardV
 import { SeekerDashboardView } from '@/components/dashboard/SeekerDashboardView';
 
 export default function Dashboard() {
-  const { user, profile, signOut, loading } = useAuth();
+  const { user, role, signOut, loading } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -26,7 +26,7 @@ export default function Dashboard() {
     return null;
   }
 
-  if (!profile?.role) {
+  if (!role) {
     navigate('/auth/role');
     return null;
   }
@@ -43,7 +43,7 @@ export default function Dashboard() {
               </span>
             </h1>
             <p className="text-sm text-muted-foreground capitalize">
-              {profile.role} Dashboard
+              {role} Dashboard
             </p>
           </div>
           <Button variant="outline" onClick={handleSignOut}>
@@ -56,7 +56,7 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-7xl">
-          {profile.role === 'provider' ? (
+          {role === 'provider' ? (
             <ProviderDashboardView userId={user.id} />
           ) : (
             <SeekerDashboardView userId={user.id} />

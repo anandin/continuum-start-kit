@@ -24,10 +24,10 @@ export default function RolePicker() {
     setSelectedRole(role);
 
     try {
+      // Insert into user_roles table
       const { error } = await supabase
-        .from('profiles')
-        .update({ role })
-        .eq('id', user.id);
+        .from('user_roles')
+        .insert({ user_id: user.id, role });
 
       if (error) throw error;
 

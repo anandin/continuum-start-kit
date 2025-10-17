@@ -24,7 +24,7 @@ interface TrajectoryRule {
 }
 
 export default function ProviderSetup() {
-  const { user, profile } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
@@ -46,18 +46,18 @@ export default function ProviderSetup() {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
-    } else if (profile?.role !== 'provider') {
+    } else if (role !== 'provider') {
       toast.error('Only providers can access this page');
       navigate('/dashboard');
     }
-  }, [user, profile, navigate]);
+  }, [user, role, navigate]);
 
   // Load existing config
   useEffect(() => {
-    if (user && profile?.role === 'provider') {
+    if (user && role === 'provider') {
       loadConfig();
     }
-  }, [user, profile]);
+  }, [user, role]);
 
   const loadConfig = async () => {
     setLoading(true);
