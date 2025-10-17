@@ -44,11 +44,11 @@ export default function RolePicker() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-primary/10 to-background px-4">
-      <Card className="w-full max-w-2xl">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4">
+      <Card className="w-full max-w-2xl bg-slate-900/50 border-white/10 backdrop-blur">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold mb-2">Choose Your Role</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-3xl font-bold mb-2 text-white">Choose Your Role</CardTitle>
+          <CardDescription className="text-slate-300">
             Select how you'd like to use Bloom. You can change this later.
           </CardDescription>
         </CardHeader>
@@ -57,20 +57,20 @@ export default function RolePicker() {
             <button
               onClick={() => handleRoleSelection('provider')}
               disabled={loading}
-              className="group relative overflow-hidden rounded-lg border-2 border-border bg-card p-8 text-left transition-all hover:border-primary hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+              className="group relative overflow-hidden rounded-2xl border-2 border-white/10 bg-slate-900/50 p-8 text-left transition-all hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="relative z-10">
-                <div className="mb-4 rounded-full bg-primary/10 p-4 w-fit group-hover:bg-primary/20 transition-colors">
-                  <Briefcase className="h-8 w-8 text-primary" />
+                <div className="mb-4 rounded-full bg-purple-500/10 p-4 w-fit group-hover:bg-purple-500/20 transition-colors">
+                  <Briefcase className="h-8 w-8 text-purple-400" />
                 </div>
-                <h3 className="mb-2 text-xl font-semibold">Provider</h3>
-                <p className="text-sm text-muted-foreground">
+                <h3 className="mb-2 text-xl font-semibold text-white">Provider</h3>
+                <p className="text-sm text-slate-400">
                   Offer services, products, or expertise to seekers on the platform.
                 </p>
               </div>
               {loading && selectedRole === 'provider' && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+                  <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
                 </div>
               )}
             </button>
@@ -78,20 +78,20 @@ export default function RolePicker() {
             <button
               onClick={() => handleRoleSelection('seeker')}
               disabled={loading}
-              className="group relative overflow-hidden rounded-lg border-2 border-border bg-card p-8 text-left transition-all hover:border-primary hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+              className="group relative overflow-hidden rounded-2xl border-2 border-white/10 bg-slate-900/50 p-8 text-left transition-all hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="relative z-10">
-                <div className="mb-4 rounded-full bg-primary/10 p-4 w-fit group-hover:bg-primary/20 transition-colors">
-                  <Search className="h-8 w-8 text-primary" />
+                <div className="mb-4 rounded-full bg-purple-500/10 p-4 w-fit group-hover:bg-purple-500/20 transition-colors">
+                  <Search className="h-8 w-8 text-purple-400" />
                 </div>
-                <h3 className="mb-2 text-xl font-semibold">Seeker</h3>
-                <p className="text-sm text-muted-foreground">
+                <h3 className="mb-2 text-xl font-semibold text-white">Seeker</h3>
+                <p className="text-sm text-slate-400">
                   Find and connect with providers to meet your needs and goals.
                 </p>
               </div>
               {loading && selectedRole === 'seeker' && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+                  <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
                 </div>
               )}
             </button>

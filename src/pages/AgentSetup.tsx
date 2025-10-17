@@ -5,11 +5,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Loader2, Save, User } from 'lucide-react';
+import { Loader2, Save, User, Sparkles } from 'lucide-react';
 
 export default function AgentSetup() {
   const { user, role } = useAuth();
@@ -18,6 +19,7 @@ export default function AgentSetup() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [configId, setConfigId] = useState<string | null>(null);
+  const [providerConfig, setProviderConfig] = useState<any>(null);
   
   // Form fields
   const [providerName, setProviderName] = useState('');
@@ -29,6 +31,7 @@ export default function AgentSetup() {
   const [voice, setVoice] = useState('');
   const [rules, setRules] = useState('');
   const [boundaries, setBoundaries] = useState('');
+  const [selectedModel, setSelectedModel] = useState('google/gemini-2.5-flash');
 
   // Redirect non-providers
   useEffect(() => {
@@ -44,8 +47,51 @@ export default function AgentSetup() {
   useEffect(() => {
     if (user && role === 'provider') {
       loadConfig();
+      loadProviderConfig();
     }
   }, [user, role]);
+
+  const loadProviderConfig = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('provider_configs')
+        .select('*')
+        .eq('provider_id', user?.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setProviderConfig(data);
+        // Auto-populate guiding principles with provider config data
+        if (!guidingPrinciples && data) {
+          const autoPopulated = generateGuidingPrinciplesFromConfig(data);
+          setGuidingPrinciples(autoPopulated);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error loading provider config:', error);
+    }
+  };
+
+  const generateGuidingPrinciplesFromConfig = (config: any) => {
+    let text = '';
+    if (config.methodology) {
+      text += `Methodology: ${config.methodology}\n\n`;
+    }
+    if (config.stages && Array.isArray(config.stages)) {
+      text += `Growth Stages:\n`;
+      config.stages.forEach((stage: any, index: number) => {
+        text += `${index + 1}. ${stage.name}: ${stage.description}\n`;
+      });
+      text += '\n';
+    }
+    if (config.labels && Array.isArray(config.labels)) {
+      text += `Focus Areas: ${config.labels.join(', ')}\n`;
+    }
+    return text;
+  };
 
   const loadConfig = async () => {
     setLoading(true);
@@ -71,6 +117,7 @@ export default function AgentSetup() {
         setVoice(data.voice || '');
         setRules(data.rules || '');
         setBoundaries(data.boundaries || '');
+        setSelectedModel(data.selected_model || 'google/gemini-2.5-flash');
       }
     } catch (error: any) {
       console.error('Error loading agent config:', error);
@@ -94,6 +141,7 @@ export default function AgentSetup() {
         voice: voice.trim() || null,
         rules: rules.trim() || null,
         boundaries: boundaries.trim() || null,
+        selected_model: selectedModel,
         updated_at: new Date().toISOString(),
       };
 
@@ -131,25 +179,25 @@ export default function AgentSetup() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
-      <header className="border-b bg-card/50 backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
-            <h1 className="text-2xl font-bold">Agent Setup</h1>
-            <p className="text-sm text-muted-foreground">Configure your AI coaching assistant</p>
+            <h1 className="text-2xl font-bold text-white">Agent Setup</h1>
+            <p className="text-sm text-slate-400">Configure your AI coaching assistant</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/dashboard')}>
+            <Button variant="outline" onClick={() => navigate('/dashboard')} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
               Back to Dashboard
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/50">
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -169,9 +217,9 @@ export default function AgentSetup() {
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="space-y-6">
           {/* Profile Section */}
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
-              <CardTitle>Provider Profile</CardTitle>
+              <CardTitle className="text-white">Provider Profile</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-4">
@@ -214,10 +262,68 @@ export default function AgentSetup() {
             </CardContent>
           </Card>
 
-          {/* Agent System Prompt Configuration */}
-          <Card>
+          {/* Model Selection */}
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
-              <CardTitle>Agent System Prompt Configuration</CardTitle>
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-400" />
+                <CardTitle className="text-white">AI Model Selection</CardTitle>
+              </div>
+              <CardDescription className="text-slate-400">
+                Choose the AI model that powers your coaching assistant
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor="model" className="text-white">AI Model</Label>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger id="model" className="bg-slate-800/50 border-white/10 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-white/10">
+                    <SelectItem value="google/gemini-2.5-flash" className="text-white">
+                      <div>
+                        <div className="font-medium">Gemini 2.5 Flash (Recommended)</div>
+                        <div className="text-xs text-slate-400">Balanced performance and cost</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="google/gemini-2.5-pro" className="text-white">
+                      <div>
+                        <div className="font-medium">Gemini 2.5 Pro</div>
+                        <div className="text-xs text-slate-400">Maximum capability and reasoning</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash-lite" className="text-white">
+                      <div>
+                        <div className="font-medium">Gemini 2.5 Flash Lite</div>
+                        <div className="text-xs text-slate-400">Fastest and most economical</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="openai/gpt-5" className="text-white">
+                      <div>
+                        <div className="font-medium">GPT-5</div>
+                        <div className="text-xs text-slate-400">Premium OpenAI model</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="openai/gpt-5-mini" className="text-white">
+                      <div>
+                        <div className="font-medium">GPT-5 Mini</div>
+                        <div className="text-xs text-slate-400">Cost-effective OpenAI option</div>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-400 mt-2">
+                  This model will be used for all coaching sessions with your clients.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Agent System Prompt Configuration */}
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="text-white">Agent System Prompt Configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>

@@ -129,8 +129,8 @@ export default function SessionSummary() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
       </div>
     );
   }
@@ -140,20 +140,20 @@ export default function SessionSummary() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
-      <header className="border-b bg-card/50 backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
             <h1 className="text-2xl font-bold">
-              <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
                 Session Summary
               </span>
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-400">
               Completed {new Date(session.ended_at).toLocaleDateString()}
             </p>
           </div>
-          <Button variant="outline" onClick={() => navigate('/dashboard')}>
+          <Button variant="outline" onClick={() => navigate('/dashboard')} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
             Back to Dashboard
           </Button>
         </div>
@@ -162,14 +162,14 @@ export default function SessionSummary() {
       <main className="container mx-auto px-4 py-12">
         <div className="mx-auto max-w-4xl space-y-6">
           {/* Status Card */}
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <CheckCircle className="h-8 w-8 text-green-500" />
+                  <CheckCircle className="h-8 w-8 text-green-400" />
                   <div>
-                    <CardTitle>Session Completed</CardTitle>
-                    <CardDescription>
+                    <CardTitle className="text-white">Session Completed</CardTitle>
+                    <CardDescription className="text-slate-400">
                       Your progress has been analyzed and saved
                     </CardDescription>
                   </div>
@@ -185,42 +185,42 @@ export default function SessionSummary() {
           </Card>
 
           {/* Current Stage */}
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
-              <CardTitle>Current Stage</CardTitle>
-              <CardDescription>Based on your progress in this session</CardDescription>
+              <CardTitle className="text-white">Current Stage</CardTitle>
+              <CardDescription className="text-slate-400">Based on your progress in this session</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg bg-primary/10 p-4">
-                <p className="text-2xl font-bold text-primary">{summary.assigned_stage}</p>
+              <div className="rounded-lg bg-purple-500/10 p-4 border border-purple-500/30">
+                <p className="text-2xl font-bold text-purple-300">{summary.assigned_stage}</p>
               </div>
             </CardContent>
           </Card>
 
           {/* Session Summary */}
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
-              <CardTitle>Session Overview</CardTitle>
+              <CardTitle className="text-white">Session Overview</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="whitespace-pre-wrap text-muted-foreground leading-relaxed">
+              <p className="whitespace-pre-wrap text-slate-300 leading-relaxed">
                 {summary.session_summary}
               </p>
             </CardContent>
           </Card>
 
           {/* Key Insights */}
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
-              <CardTitle>Key Insights</CardTitle>
-              <CardDescription>Important patterns and observations</CardDescription>
+              <CardTitle className="text-white">Key Insights</CardTitle>
+              <CardDescription className="text-slate-400">Important patterns and observations</CardDescription>
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
                 {Array.isArray(summary.key_insights) && summary.key_insights.map((insight: string, index: number) => (
                   <li key={index} className="flex gap-3">
-                    <div className="mt-1 h-2 w-2 rounded-full bg-primary flex-shrink-0" />
-                    <p className="text-muted-foreground">{insight}</p>
+                    <div className="mt-1 h-2 w-2 rounded-full bg-purple-400 flex-shrink-0" />
+                    <p className="text-slate-300">{insight}</p>
                   </li>
                 ))}
               </ul>
@@ -228,14 +228,14 @@ export default function SessionSummary() {
           </Card>
 
           {/* Next Action */}
-          <Card>
+          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
             <CardHeader>
-              <CardTitle>Next Action</CardTitle>
-              <CardDescription>Your recommended next step</CardDescription>
+              <CardTitle className="text-white">Next Action</CardTitle>
+              <CardDescription className="text-slate-400">Your recommended next step</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border-2 border-primary/20 bg-primary/5 p-4">
-                <p className="font-medium text-foreground">{summary.next_action}</p>
+              <div className="rounded-lg border-2 border-purple-500/30 bg-purple-500/10 p-4">
+                <p className="font-medium text-white">{summary.next_action}</p>
               </div>
             </CardContent>
           </Card>
@@ -248,7 +248,7 @@ export default function SessionSummary() {
               onClick={handleStartNextSession} 
               disabled={creating}
               size="lg"
-              className="flex-1"
+              className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/50"
             >
               {creating ? (
                 <>
@@ -266,6 +266,7 @@ export default function SessionSummary() {
               variant="outline" 
               onClick={() => navigate('/dashboard')}
               size="lg"
+              className="border-white/20 bg-white/5 text-white hover:bg-white/10"
             >
               Return to Dashboard
             </Button>

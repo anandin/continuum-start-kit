@@ -113,21 +113,21 @@ export default function Auth() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-primary/5 to-background p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-4">
       <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+        <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
           <ArrowLeft className="h-4 w-4" />
           Back to home
         </Link>
 
-        <Card>
+        <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
           <CardHeader className="text-center">
             <CardTitle className="text-3xl font-bold">
-              <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
                 Bloom
               </span>
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-slate-300">
               Sign in to continue your growth journey
             </CardDescription>
           </CardHeader>

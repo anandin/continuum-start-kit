@@ -236,8 +236,8 @@ export default function ProviderSetup() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
       </div>
     );
   }
@@ -247,18 +247,18 @@ export default function ProviderSetup() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
-      <header className="border-b bg-card/50 backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
-            <h1 className="text-2xl font-bold">Provider Setup</h1>
-            <p className="text-sm text-muted-foreground">Configure your coaching program</p>
+            <h1 className="text-2xl font-bold text-white">Provider Setup</h1>
+            <p className="text-sm text-slate-400">Configure your coaching program</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/dashboard')}>
+            <Button variant="outline" onClick={() => navigate('/dashboard')} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
               Back to Dashboard
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/50">
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -280,9 +280,9 @@ export default function ProviderSetup() {
           {/* Form Column */}
           <div className="space-y-6">
             {/* Basic Info */}
-            <Card>
+            <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
               <CardHeader>
-                <CardTitle>Basic Information</CardTitle>
+                <CardTitle className="text-white">Basic Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -308,10 +308,10 @@ export default function ProviderSetup() {
             </Card>
 
             {/* Stages */}
-            <Card>
+            <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
               <CardHeader>
-                <CardTitle>Growth Stages *</CardTitle>
-                <CardDescription>Define the progression stages in your program</CardDescription>
+                <CardTitle className="text-white">Growth Stages *</CardTitle>
+                <CardDescription className="text-slate-400">Define the progression stages in your program</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {stages.map((stage, index) => (
@@ -366,10 +366,10 @@ export default function ProviderSetup() {
             </Card>
 
             {/* Labels */}
-            <Card>
+            <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
               <CardHeader>
-                <CardTitle>Labels</CardTitle>
-                <CardDescription>Tags for categorizing insights and topics</CardDescription>
+                <CardTitle className="text-white">Labels</CardTitle>
+                <CardDescription className="text-slate-400">Tags for categorizing insights and topics</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {labels.map((label, index) => (
@@ -397,10 +397,10 @@ export default function ProviderSetup() {
             </Card>
 
             {/* Summary Template */}
-            <Card>
+            <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
               <CardHeader>
-                <CardTitle>Summary Template</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-white">Summary Template</CardTitle>
+                <CardDescription className="text-slate-400">
                   Template for session summaries. Use {'{summary}'}, {'{stage}'}, {'{insights}'}
                 </CardDescription>
               </CardHeader>
@@ -430,10 +430,10 @@ export default function ProviderSetup() {
             </Card>
 
             {/* Tagging Rules */}
-            <Card>
+            <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
               <CardHeader>
-                <CardTitle>Tagging Rules (JSON)</CardTitle>
-                <CardDescription>Rules for automatic tagging</CardDescription>
+                <CardTitle className="text-white">Tagging Rules (JSON)</CardTitle>
+                <CardDescription className="text-slate-400">Rules for automatic tagging</CardDescription>
               </CardHeader>
               <CardContent>
                 <Textarea
@@ -447,10 +447,10 @@ export default function ProviderSetup() {
             </Card>
 
             {/* Trajectory Rules */}
-            <Card>
+            <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
               <CardHeader>
-                <CardTitle>Trajectory Rules</CardTitle>
-                <CardDescription>Define patterns for detecting progress indicators</CardDescription>
+                <CardTitle className="text-white">Trajectory Rules</CardTitle>
+                <CardDescription className="text-slate-400">Define patterns for detecting progress indicators</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {trajectoryRules.map((rule, index) => (
@@ -515,31 +515,22 @@ export default function ProviderSetup() {
           </div>
 
           {/* Preview Column */}
-          <div className="lg:sticky lg:top-8 lg:h-fit">
-            <Card>
+          <div className="space-y-6">
+            <Card className="bg-slate-900/50 border-white/10 backdrop-blur sticky top-24">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Eye className="h-5 w-5" />
-                  Live Preview
-                </CardTitle>
-                <CardDescription>Mock summary using your template</CardDescription>
+                <div className="flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-purple-400" />
+                  <CardTitle className="text-white">Live Preview</CardTitle>
+                </div>
+                <CardDescription className="text-slate-400">
+                  See how your session summary will look
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-lg bg-muted p-4">
-                  <h3 className="mb-2 font-semibold">{title || 'Program Title'}</h3>
-                  <Separator className="my-3" />
-                  <div className="space-y-2 text-sm whitespace-pre-wrap">
+                <div className="rounded-lg border border-white/10 bg-slate-950/50 p-4">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-300 font-mono">
                     {generateMockPreview()}
-                  </div>
-                  <Separator className="my-3" />
-                  <div className="text-xs text-muted-foreground">
-                    <p className="font-semibold mb-1">Configured Stages:</p>
-                    <ul className="list-disc list-inside">
-                      {stages.filter(s => s.name).map((stage, i) => (
-                        <li key={i}>{stage.name}</li>
-                      ))}
-                    </ul>
-                  </div>
+                  </pre>
                 </div>
               </CardContent>
             </Card>

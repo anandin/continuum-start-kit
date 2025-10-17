@@ -15,8 +15,8 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
       </div>
     );
   }
@@ -32,21 +32,21 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur sticky top-0 z-10">
+      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
             <h1 className="text-2xl font-bold">
-              <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
                 Bloom
               </span>
             </h1>
-            <p className="text-sm text-muted-foreground capitalize">
+            <p className="text-sm text-slate-400 capitalize">
               {role} Dashboard
             </p>
           </div>
-          <Button variant="outline" onClick={handleSignOut}>
+          <Button variant="outline" onClick={handleSignOut} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
             <LogOut className="mr-2 h-4 w-4" />
             Sign Out
           </Button>

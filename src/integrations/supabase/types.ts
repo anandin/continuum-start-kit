@@ -147,6 +147,7 @@ export type Database = {
           provider_name: string | null
           provider_title: string | null
           rules: string | null
+          selected_model: string | null
           tone: string | null
           updated_at: string | null
           voice: string | null
@@ -162,6 +163,7 @@ export type Database = {
           provider_name?: string | null
           provider_title?: string | null
           rules?: string | null
+          selected_model?: string | null
           tone?: string | null
           updated_at?: string | null
           voice?: string | null
@@ -177,6 +179,7 @@ export type Database = {
           provider_name?: string | null
           provider_title?: string | null
           rules?: string | null
+          selected_model?: string | null
           tone?: string | null
           updated_at?: string | null
           voice?: string | null
