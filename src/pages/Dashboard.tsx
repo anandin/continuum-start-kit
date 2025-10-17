@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Briefcase, Search, Settings } from 'lucide-react';
+import { LogOut, User, Briefcase, Search, Settings, Rocket } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, profile, signOut } = useAuth();
@@ -92,6 +92,13 @@ export default function Dashboard() {
                   <Button onClick={() => navigate('/provider/setup')} className="w-full">
                     <Settings className="mr-2 h-4 w-4" />
                     Configure Your Program
+                  </Button>
+                )}
+                
+                {profile?.role === 'seeker' && (
+                  <Button onClick={() => navigate('/onboarding')} className="w-full">
+                    <Rocket className="mr-2 h-4 w-4" />
+                    Start Your Journey
                   </Button>
                 )}
                 

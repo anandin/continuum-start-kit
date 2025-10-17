@@ -10,6 +10,8 @@ import Auth from "./pages/Auth";
 import RolePicker from "./pages/RolePicker";
 import Dashboard from "./pages/Dashboard";
 import ProviderSetup from "./pages/ProviderSetup";
+import Onboarding from "./pages/Onboarding";
+import Chat from "./pages/Chat";
 import Health from "./pages/Health";
 import NotFound from "./pages/NotFound";
 
@@ -47,6 +49,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ProviderSetup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute>
+                  <Onboarding />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chat/:sessionId"
+              element={
+                <ProtectedRoute>
+                  <Chat />
                 </ProtectedRoute>
               }
             />

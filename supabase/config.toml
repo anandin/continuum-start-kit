@@ -2,3 +2,6 @@ project_id = "wrsetdouqzkznyrmassr"
 
 [functions.health]
 verify_jwt = false
+
+[functions.onboarding-assign]
+verify_jwt = false
