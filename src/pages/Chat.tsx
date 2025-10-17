@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, MessageSquare, Send, Activity, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, MessageSquare, Send, Activity, CheckCircle, AlertTriangle, StopCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Message {
@@ -32,6 +32,7 @@ export default function Chat() {
   
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [providerConfig, setProviderConfig] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -286,6 +287,37 @@ export default function Chat() {
     }
   };
 
+  const handleEndSession = async () => {
+    if (!sessionId) return;
+
+    const confirmed = window.confirm(
+      'Are you sure you want to end this session? A summary will be generated and you can start a new session afterwards.'
+    );
+
+    if (!confirmed) return;
+
+    setEnding(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('session-finish', {
+        body: { sessionId }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success('Session ended successfully!');
+        navigate(`/session/${sessionId}/summary`);
+      } else {
+        throw new Error('Failed to end session');
+      }
+    } catch (error: any) {
+      console.error('End session error:', error);
+      toast.error(error.message || 'Failed to end session');
+    } finally {
+      setEnding(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -378,14 +410,35 @@ export default function Chat() {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="p-4 border-b bg-card/50 backdrop-blur">
-          <h1 className="text-xl font-bold">
-            <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-              Coaching Session
-            </span>
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {session?.initial_stage && `Current Stage: ${session.initial_stage}`}
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold">
+                <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                  Coaching Session
+                </span>
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {session?.initial_stage && `Current Stage: ${session.initial_stage}`}
+              </p>
+            </div>
+            <Button 
+              variant="destructive" 
+              onClick={handleEndSession}
+              disabled={ending || session?.status === 'ended'}
+            >
+              {ending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Ending...
+                </>
+              ) : (
+                <>
+                  <StopCircle className="mr-2 h-4 w-4" />
+                  End Session
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -439,11 +492,11 @@ export default function Chat() {
             <Input
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Type your message..."
-              disabled={sending}
+              placeholder={session?.status === 'ended' ? 'Session ended' : 'Type your message...'}
+              disabled={sending || session?.status === 'ended'}
               className="flex-1"
             />
-            <Button type="submit" disabled={sending || !inputMessage.trim()}>
+            <Button type="submit" disabled={sending || !inputMessage.trim() || session?.status === 'ended'}>
               {sending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

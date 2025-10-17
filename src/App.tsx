@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import ProviderSetup from "./pages/ProviderSetup";
 import Onboarding from "./pages/Onboarding";
 import Chat from "./pages/Chat";
+import SessionSummary from "./pages/SessionSummary";
 import Health from "./pages/Health";
 import NotFound from "./pages/NotFound";
 
@@ -65,6 +66,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Chat />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/session/:sessionId/summary"
+              element={
+                <ProtectedRoute>
+                  <SessionSummary />
                 </ProtectedRoute>
               }
             />

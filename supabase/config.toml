@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.trajectory-check]
 verify_jwt = false
+
+[functions.session-finish]
+verify_jwt = false
