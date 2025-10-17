@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound";
 import ProviderDashboard from "./pages/ProviderDashboard";
 import ProviderEngagement from "./pages/ProviderEngagement";
 import AgentSetup from "./pages/AgentSetup";
+import ManualTestRunner from "./tests/manual-test-runner";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/health" element={<Health />} />
+            <Route path="/test-runner" element={<ManualTestRunner />} />
             <Route
               path="/auth/role"
               element={
