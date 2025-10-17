@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.onboarding-assign]
 verify_jwt = false
+
+[functions.chat-reply]
+verify_jwt = false

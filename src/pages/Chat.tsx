@@ -1,18 +1,46 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Loader2, MessageSquare, Send, Activity, CheckCircle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface Message {
+  id: string;
+  role: 'seeker' | 'agent' | 'provider';
+  content: string;
+  created_at: string;
+}
+
+interface ProgressIndicator {
+  id: string;
+  type: 'drift' | 'leap' | 'stall' | 'steady';
+  detail: any;
+  created_at: string;
+}
 
 export default function Chat() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const [session, setSession] = useState<any>(null);
+  const [providerConfig, setProviderConfig] = useState<any>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [indicators, setIndicators] = useState<ProgressIndicator[]>([]);
+  const [inputMessage, setInputMessage] = useState('');
+  const [streamingMessage, setStreamingMessage] = useState('');
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -22,6 +50,22 @@ export default function Chat() {
 
     loadSession();
   }, [user, sessionId]);
+
+  useEffect(() => {
+    if (sessionId) {
+      loadMessages();
+      loadIndicators();
+      setupRealtimeSubscription();
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, streamingMessage]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const loadSession = async () => {
     if (!sessionId) {
@@ -38,6 +82,7 @@ export default function Chat() {
           *,
           engagement:engagements (
             id,
+            provider_id,
             seeker:seekers (
               id,
               owner_id
@@ -60,12 +105,184 @@ export default function Chat() {
       }
 
       setSession(data);
+
+      // Load provider config
+      const { data: config, error: configError } = await supabase
+        .from('provider_configs')
+        .select('*')
+        .eq('provider_id', data.engagement.provider_id)
+        .maybeSingle();
+
+      if (configError) console.error('Config error:', configError);
+      if (config) setProviderConfig(config);
+
     } catch (error: any) {
       console.error('Error loading session:', error);
       toast.error('Failed to load session');
       navigate('/dashboard');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMessages = async () => {
+    if (!sessionId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setMessages(data || []);
+    } catch (error: any) {
+      console.error('Error loading messages:', error);
+    }
+  };
+
+  const loadIndicators = async () => {
+    if (!sessionId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('progress_indicators')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      setIndicators((data as ProgressIndicator[]) || []);
+    } catch (error: any) {
+      console.error('Error loading indicators:', error);
+    }
+  };
+
+  const setupRealtimeSubscription = () => {
+    const channel = supabase
+      .channel(`session-${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `session_id=eq.${sessionId}`
+        },
+        (payload) => {
+          setMessages(prev => [...prev, payload.new as Message]);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'progress_indicators',
+          filter: `session_id=eq.${sessionId}`
+        },
+        (payload) => {
+          setIndicators(prev => [payload.new as ProgressIndicator, ...prev].slice(0, 5));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!inputMessage.trim() || sending) return;
+
+    const messageText = inputMessage.trim();
+    setInputMessage('');
+    setSending(true);
+    setStreamingMessage('');
+
+    try {
+      // Call edge function with streaming
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          sessionId,
+          message: messageText
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send message');
+      }
+
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                setStreamingMessage(prev => prev + parsed.content);
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+
+      // Clear streaming message after complete
+      setStreamingMessage('');
+      
+    } catch (error: any) {
+      console.error('Send message error:', error);
+      toast.error(error.message || 'Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const getIndicatorIcon = (type: string) => {
+    switch (type) {
+      case 'leap': return <Activity className="h-4 w-4 text-green-500" />;
+      case 'drift': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      case 'stall': return <AlertTriangle className="h-4 w-4 text-orange-500" />;
+      case 'steady': return <CheckCircle className="h-4 w-4 text-blue-500" />;
+      default: return <Activity className="h-4 w-4" />;
+    }
+  };
+
+  const getIndicatorColor = (type: string) => {
+    switch (type) {
+      case 'leap': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'drift': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case 'stall': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      case 'steady': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
   };
 
@@ -82,51 +299,160 @@ export default function Chat() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
-      <header className="border-b bg-card/50 backdrop-blur">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">
-              <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                Continuum Chat
-              </span>
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Session started {new Date(session.started_at).toLocaleDateString()}
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => navigate('/dashboard')}>
-            Back to Dashboard
+    <div className="flex h-screen bg-background">
+      {/* Left Sidebar */}
+      <div className="w-80 border-r bg-card flex flex-col">
+        <div className="p-4 border-b">
+          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="w-full justify-start mb-4">
+            ← Back to Dashboard
           </Button>
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">Session Info</h2>
+            <div className="flex items-center gap-2">
+              <Badge variant={session?.status === 'active' ? 'default' : 'secondary'}>
+                {session?.status || 'Unknown'}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {session?.started_at && new Date(session.started_at).toLocaleDateString()}
+              </span>
+            </div>
+          </div>
         </div>
-      </header>
 
-      <main className="container mx-auto px-4 py-12">
-        <div className="mx-auto max-w-4xl">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-6 w-6" />
-                Chat Interface
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-12 text-center">
-                <MessageSquare className="mx-auto h-16 w-16 text-muted-foreground/50 mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Chat Coming Soon</h3>
-                <p className="text-muted-foreground mb-4">
-                  The chat interface will be implemented in the next phase.
-                </p>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p><strong>Session ID:</strong> {session.id}</p>
-                  <p><strong>Initial Stage:</strong> {session.initial_stage}</p>
-                  <p><strong>Status:</strong> {session.status}</p>
+        {/* Stages */}
+        <div className="p-4 border-b">
+          <h3 className="text-sm font-semibold mb-3">Growth Stages</h3>
+          <div className="space-y-2">
+            {providerConfig?.stages && (providerConfig.stages as any[]).map((stage, index) => {
+              const isCurrent = stage.name === session?.initial_stage;
+              return (
+                <div
+                  key={index}
+                  className={`p-2 rounded-lg text-sm transition-colors ${
+                    isCurrent 
+                      ? 'bg-primary text-primary-foreground font-medium' 
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <div className="font-medium">{stage.name}</div>
+                  <div className="text-xs opacity-80 mt-0.5">{stage.description}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Progress Indicators */}
+        <div className="flex-1 overflow-hidden">
+          <div className="p-4">
+            <h3 className="text-sm font-semibold mb-3">Recent Progress</h3>
+            <ScrollArea className="h-[300px]">
+              <div className="space-y-2">
+                {indicators.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No indicators yet</p>
+                ) : (
+                  indicators.map((indicator) => (
+                    <div key={indicator.id} className="p-3 rounded-lg border bg-card">
+                      <div className="flex items-center gap-2 mb-1">
+                        {getIndicatorIcon(indicator.type)}
+                        <Badge variant="outline" className={getIndicatorColor(indicator.type)}>
+                          {indicator.type}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(indicator.created_at).toLocaleString()}
+                      </p>
+                      {indicator.detail && (
+                        <p className="text-xs mt-1">{JSON.stringify(indicator.detail)}</p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </div>
+      </div>
+
+      {/* Right: Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b bg-card/50 backdrop-blur">
+          <h1 className="text-xl font-bold">
+            <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+              Coaching Session
+            </span>
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {session?.initial_stage && `Current Stage: ${session.initial_stage}`}
+          </p>
+        </div>
+
+        {/* Messages */}
+        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+          <div className="max-w-3xl mx-auto space-y-4">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${message.role === 'seeker' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-lg p-4 ${
+                    message.role === 'seeker'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="outline" className="text-xs">
+                      {message.role === 'seeker' ? 'You' : 'Coach'}
+                    </Badge>
+                    <span className="text-xs opacity-70">
+                      {new Date(message.created_at).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="whitespace-pre-wrap">{message.content}</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            ))}
+
+            {/* Streaming message */}
+            {streamingMessage && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] rounded-lg p-4 bg-muted">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="outline" className="text-xs">Coach</Badge>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  </div>
+                  <p className="whitespace-pre-wrap">{streamingMessage}</p>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Composer */}
+        <div className="border-t bg-card/50 backdrop-blur p-4">
+          <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex gap-2">
+            <Input
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              placeholder="Type your message..."
+              disabled={sending}
+              className="flex-1"
+            />
+            <Button type="submit" disabled={sending || !inputMessage.trim()}>
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </form>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
