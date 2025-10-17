@@ -9,6 +9,7 @@ import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import RolePicker from "./pages/RolePicker";
 import Dashboard from "./pages/Dashboard";
+import ProviderSetup from "./pages/ProviderSetup";
 import Health from "./pages/Health";
 import NotFound from "./pages/NotFound";
 
@@ -38,6 +39,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/setup"
+              element={
+                <ProtectedRoute>
+                  <ProviderSetup />
                 </ProtectedRoute>
               }
             />

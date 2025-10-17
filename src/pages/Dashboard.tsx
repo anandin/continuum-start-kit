@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Briefcase, Search } from 'lucide-react';
+import { LogOut, User, Briefcase, Search, Settings } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, profile, signOut } = useAuth();
@@ -87,6 +87,14 @@ export default function Dashboard() {
                     ? 'Welcome to your provider dashboard! Here you can manage your offerings, track connections, and grow your business.'
                     : 'Welcome to your seeker dashboard! Browse providers, make connections, and find exactly what you need.'}
                 </p>
+                
+                {profile?.role === 'provider' && (
+                  <Button onClick={() => navigate('/provider/setup')} className="w-full">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Configure Your Program
+                  </Button>
+                )}
+                
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-8 text-center">
                   <User className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
                   <p className="text-sm text-muted-foreground">
