@@ -268,39 +268,39 @@ async function runTier2GeminiAnalysis(
   trajectoryRules: TrajectoryRule[],
   apiKey: string
 ) {
-  const conversationText = messages
-    .map(m => `${m.role}: ${m.content}`)
-    .join('\n\n');
+  const recentMessagesForAI = messages.map(m => ({
+    role: m.role,
+    content: m.content
+  }));
 
-  const rulesText = trajectoryRules
-    .map((rule, idx) => `${idx}. Stage: ${rule.stage}, Type: ${rule.indicator_type}, Pattern: ${rule.pattern}, Message: ${rule.message}`)
-    .join('\n');
+  const trajectoryRulesForAI = trajectoryRules.map((rule, idx) => ({
+    index: idx,
+    stage: rule.stage,
+    indicator_type: rule.indicator_type,
+    pattern: rule.pattern,
+    message: rule.message
+  }));
 
-  const prompt = `You are analyzing a coaching conversation to detect trajectory patterns that match predefined rules.
+  const prompt = `Classify the seeker's recent direction vs the provider's trajectory_rules.
 
-**Trajectory Rules:**
-${rulesText}
-
-**Recent Conversation:**
-${conversationText}
-
-Analyze if any of the trajectory rules match the conversation pattern. Consider:
-- Is the seeker showing signs of the pattern described in any rule?
-- Are they drifting from their goals?
-- Are they making leaps in progress?
-- Are they stalled or stuck?
-- Are they maintaining steady progress?
-
-Respond with JSON only:
+Output STRICT JSON ONLY:
 {
-  "matched": true/false,
-  "rule_index": <index of matched rule or -1>,
-  "indicator_type": "drift" | "leap" | "stall" | "steady" | null,
-  "reason": "brief explanation of why this pattern matches",
-  "confidence": 0-100
+  "indicator_type": "drift"|"leap"|"stall"|"steady",
+  "matched_rule_index": number|null,
+  "reason": string
 }
 
-Only match if confidence is above 70%. If no clear match, return matched: false.`;
+Inputs:
+- recent_messages: ${JSON.stringify(recentMessagesForAI)}
+- provider_config.trajectory_rules: ${JSON.stringify(trajectoryRulesForAI)}
+
+Rules:
+- drift: repetition/rumination in same stage without new behavior
+- leap: jumping to advanced outcomes before foundations
+- stall: active talk without cognitive/behavioral shift across several turns
+- steady: normal incremental movement
+
+If none match: {"indicator_type":"steady","matched_rule_index":null,"reason":"no rule matched"}.`;
 
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -341,16 +341,18 @@ Only match if confidence is above 70%. If no clear match, return matched: false.
 
     console.log("Tier 2 analysis result:", result);
 
-    if (result.matched && result.confidence >= 70 && result.indicator_type) {
-      const matchedRule = result.rule_index >= 0 ? trajectoryRules[result.rule_index] : null;
+    // Check if we got a meaningful indicator (not just "steady" with no match)
+    if (result.indicator_type && result.indicator_type !== 'steady') {
+      const matchedRule = result.matched_rule_index !== null && result.matched_rule_index >= 0 
+        ? trajectoryRules[result.matched_rule_index] 
+        : null;
       
       return {
         type: result.indicator_type,
         detail: {
-          rule_index: result.rule_index,
+          rule_index: result.matched_rule_index,
           message: matchedRule?.message || "Let's explore what's happening in your journey right now.",
           reason: result.reason,
-          confidence: result.confidence,
           pattern: matchedRule?.pattern || "Detected by AI analysis"
         }
       };
