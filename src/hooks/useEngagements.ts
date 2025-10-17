@@ -25,10 +25,6 @@ export interface Engagement {
       session_summary: string;
     }>;
   }>;
-  progress_indicators: Array<{
-    type: string;
-    created_at: string;
-  }>;
 }
 
 export function useEngagements(userId: string | undefined, role: 'provider' | 'seeker') {
@@ -69,10 +65,6 @@ export function useEngagements(userId: string | undefined, role: 'provider' | 's
               trajectory_status,
               session_summary
             )
-          ),
-          progress_indicators (
-            type,
-            created_at
           )
         `)
         .order('created_at', { ascending: false });
@@ -131,24 +123,7 @@ export function useEngagements(userId: string | undefined, role: 'provider' | 's
     if (sessionsWithSummaries.length === 0) return 'steady';
 
     const latestSummary = sessionsWithSummaries[0].summaries[0];
-    let trajectoryStatus = latestSummary.trajectory_status || 'steady';
-
-    // Check recent indicators (last 7 days)
-    const recentIndicators = engagement.progress_indicators.filter(ind => {
-      const daysSince = (Date.now() - new Date(ind.created_at).getTime()) / (1000 * 60 * 60 * 24);
-      return daysSince <= 7;
-    });
-
-    const concerningTypes = ['drift', 'stall', 'disengagement', 'repetition', 'no_progress'];
-    const hasConcerningIndicators = recentIndicators.some(ind => 
-      concerningTypes.includes(ind.type)
-    );
-
-    if (hasConcerningIndicators && trajectoryStatus === 'steady') {
-      trajectoryStatus = 'drifting';
-    }
-
-    return trajectoryStatus;
+    return latestSummary.trajectory_status || 'steady';
   };
 
   return {

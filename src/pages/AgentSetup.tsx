@@ -128,6 +128,11 @@ export default function AgentSetup() {
   };
 
   const handleSave = async () => {
+    if (!guidingPrinciples.trim()) {
+      toast.error('Please add guiding principles for your AI agent');
+      return;
+    }
+
     setSaving(true);
     try {
       const configData = {
@@ -168,7 +173,14 @@ export default function AgentSetup() {
 
       if (error) throw error;
 
-      toast.success('Agent configuration saved successfully!');
+      toast.success('✅ Agent configuration saved successfully!');
+      
+      // Reload to show the updated config ID
+      await loadConfig();
+      
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1500);
     } catch (error: any) {
       console.error('Error saving agent config:', error);
       toast.error(error.message || 'Failed to save agent configuration');
