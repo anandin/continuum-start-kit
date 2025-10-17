@@ -57,6 +57,7 @@ export default function Chat() {
 
   useEffect(() => {
     if (sessionId) {
+      console.log('🔄 Session ID changed, loading data...');
       loadMessages();
       loadIndicators();
       setupRealtimeSubscription();
@@ -64,6 +65,7 @@ export default function Chat() {
   }, [sessionId]);
 
   useEffect(() => {
+    console.log('💬 Messages state updated:', messages.length, 'messages');
     scrollToBottom();
   }, [messages, streamingMessage]);
 
@@ -132,6 +134,8 @@ export default function Chat() {
   const loadMessages = async () => {
     if (!sessionId) return;
 
+    console.log('📨 Loading messages for session:', sessionId);
+
     try {
       const { data, error } = await supabase
         .from('messages')
@@ -139,10 +143,12 @@ export default function Chat() {
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true });
 
+      console.log('📬 Messages result:', { data, error, count: data?.length });
+
       if (error) throw error;
       setMessages(data || []);
     } catch (error: any) {
-      console.error('Error loading messages:', error);
+      console.error('❌ Error loading messages:', error);
     }
   };
 
