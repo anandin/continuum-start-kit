@@ -97,116 +97,204 @@ export default function ManualTestRunner() {
     return <Badge className={variants[status]}>{status}</Badge>;
   };
 
-  const runDatabaseChecks = async () => {
-    const checks = [];
+  const validateWorkflowSteps = async (workflowId: string): Promise<TestStep[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
 
-    // Check for duplicate roles
-    const { data: duplicateRoles } = await supabase
+    const { data: roleData } = await supabase
       .from('user_roles')
-      .select('user_id')
-      .then(({ data }) => {
-        if (!data) return { data: [] };
-        const grouped = data.reduce((acc: any, row: any) => {
-          acc[row.user_id] = (acc[row.user_id] || 0) + 1;
-          return acc;
-        }, {});
-        const duplicates = Object.entries(grouped)
-          .filter(([_, count]) => (count as number) > 1)
-          .map(([user_id]) => ({ user_id }));
-        return { data: duplicates };
-      });
+      .select('role')
+      .eq('user_id', user.id)
+      .single();
 
-    checks.push({
-      name: 'No Duplicate Roles',
-      passed: (duplicateRoles?.length || 0) === 0,
-      message: duplicateRoles?.length
-        ? `Found ${duplicateRoles.length} users with duplicate roles`
-        : 'All users have unique roles',
-    });
+    const userRole = roleData?.role;
 
-    // Check provider configs
-    const { data: providerConfigs } = await supabase
-      .from('provider_configs')
-      .select('*');
+    if (workflowId === 'workflow1') {
+      // Provider Setup Flow Validation
+      const steps: TestStep[] = [
+        { id: 'provider-signup', name: 'Provider Signup', description: 'Create provider account', status: 'pending' },
+        { id: 'role-selection', name: 'Role Selection', description: 'Select provider role', status: 'pending' },
+        { id: 'provider-config', name: 'Provider Configuration', description: 'Configure from template', status: 'pending' },
+        { id: 'agent-setup', name: 'Agent Setup', description: 'Setup AI agent', status: 'pending' },
+      ];
 
-    checks.push({
-      name: 'Provider Configs Exist',
-      passed: (providerConfigs?.length || 0) > 0,
-      message: `Found ${providerConfigs?.length || 0} provider configurations`,
-    });
+      // Check if user is signed up and is a provider
+      if (user && userRole === 'provider') {
+        steps[0].status = 'passed';
+        steps[0].description = '✓ Account created successfully';
+        steps[1].status = 'passed';
+        steps[1].description = '✓ Provider role assigned';
+      } else if (user) {
+        steps[0].status = 'passed';
+        steps[1].status = 'failed';
+        steps[1].error = `User has role "${userRole}" but needs "provider" role`;
+      } else {
+        steps[0].status = 'failed';
+        steps[0].error = 'User not authenticated';
+      }
 
-    // Check agent configs
-    const { data: agentConfigs } = await supabase
-      .from('provider_agent_configs')
-      .select('*');
+      // Check provider config
+      const { data: providerConfigs } = await supabase
+        .from('provider_configs')
+        .select('*')
+        .eq('provider_id', user.id);
 
-    checks.push({
-      name: 'Agent Configs Exist',
-      passed: (agentConfigs?.length || 0) > 0,
-      message: `Found ${agentConfigs?.length || 0} agent configurations`,
-    });
+      if (providerConfigs && providerConfigs.length > 0) {
+        steps[2].status = 'passed';
+        steps[2].description = `✓ Configuration saved: "${providerConfigs[0].title}"`;
+      } else if (userRole === 'provider') {
+        steps[2].status = 'failed';
+        steps[2].error = 'No provider configuration found. Click "Setup Program" on dashboard.';
+      }
 
-    return checks;
+      // Check agent config
+      const { data: agentConfigs } = await supabase
+        .from('provider_agent_configs')
+        .select('*')
+        .eq('provider_id', user.id);
+
+      if (agentConfigs && agentConfigs.length > 0) {
+        steps[3].status = 'passed';
+        steps[3].description = `✓ AI Agent configured with model: ${agentConfigs[0].selected_model}`;
+      } else if (providerConfigs && providerConfigs.length > 0) {
+        steps[3].status = 'failed';
+        steps[3].error = 'Agent not configured. Click "Setup AI Agent" on dashboard.';
+      }
+
+      return steps;
+    }
+
+    if (workflowId === 'workflow2') {
+      // Seeker Journey Flow Validation
+      const steps: TestStep[] = [
+        { id: 'seeker-signup', name: 'Seeker Signup', description: 'Create seeker account', status: 'pending' },
+        { id: 'seeker-role', name: 'Seeker Role Selection', description: 'Select seeker role', status: 'pending' },
+        { id: 'onboarding', name: 'Onboarding', description: 'Select AI agent', status: 'pending' },
+        { id: 'start-session', name: 'Start Session', description: 'Begin chat session', status: 'pending' },
+        { id: 'conversation', name: 'AI Conversation', description: 'Exchange messages', status: 'pending' },
+        { id: 'end-session', name: 'End Session', description: 'Complete and generate summary', status: 'pending' },
+      ];
+
+      if (user && userRole === 'seeker') {
+        steps[0].status = 'passed';
+        steps[0].description = '✓ Seeker account created';
+        steps[1].status = 'passed';
+        steps[1].description = '✓ Seeker role assigned';
+      } else if (user) {
+        steps[0].status = 'warning';
+        steps[0].description = `Current user is "${userRole}". Need separate seeker account.`;
+      }
+
+      // Check for seeker and engagement
+      const { data: seekers } = await supabase
+        .from('seekers')
+        .select('*')
+        .eq('owner_id', user.id);
+
+      const { data: engagements } = await supabase
+        .from('engagements')
+        .select('*')
+        .eq('seeker_id', seekers?.[0]?.id);
+
+      if (engagements && engagements.length > 0) {
+        steps[2].status = 'passed';
+        steps[2].description = '✓ Connected to provider';
+      }
+
+      // Check for sessions
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select('*, messages(count)')
+        .eq('engagement_id', engagements?.[0]?.id);
+
+      if (sessions && sessions.length > 0) {
+        steps[3].status = 'passed';
+        steps[3].description = '✓ Session started';
+
+        // @ts-ignore
+        const messageCount = sessions[0].messages?.[0]?.count || 0;
+        if (messageCount >= 4) {
+          steps[4].status = 'passed';
+          steps[4].description = `✓ ${messageCount} messages exchanged`;
+        } else if (messageCount > 0) {
+          steps[4].status = 'warning';
+          steps[4].description = `${messageCount} messages (need at least 4)`;
+        }
+
+        if (sessions[0].status === 'ended') {
+          steps[5].status = 'passed';
+          steps[5].description = '✓ Session completed';
+        }
+      }
+
+      return steps;
+    }
+
+    if (workflowId === 'workflow3') {
+      // Provider Monitoring Flow
+      const steps: TestStep[] = [
+        { id: 'provider-login', name: 'Provider Login', description: 'Login as provider', status: 'pending' },
+        { id: 'view-engagements', name: 'View Engagements', description: 'Check active engagements', status: 'pending' },
+        { id: 'review-details', name: 'Review Details', description: 'View engagement details', status: 'pending' },
+        { id: 'check-summary', name: 'Check Summary', description: 'Verify AI summary', status: 'pending' },
+      ];
+
+      if (user && userRole === 'provider') {
+        steps[0].status = 'passed';
+        steps[0].description = '✓ Logged in as provider';
+      }
+
+      const { data: engagements } = await supabase
+        .from('engagements')
+        .select('*, sessions(*)')
+        .eq('provider_id', user.id);
+
+      if (engagements && engagements.length > 0) {
+        steps[1].status = 'passed';
+        steps[1].description = `✓ ${engagements.length} active engagement(s)`;
+
+        // @ts-ignore
+        const completedSessions = engagements[0].sessions?.filter((s: any) => s.status === 'ended') || [];
+        if (completedSessions.length > 0) {
+          steps[2].status = 'passed';
+          steps[2].description = `✓ ${completedSessions.length} completed session(s)`;
+
+          const { data: summaries } = await supabase
+            .from('summaries')
+            .select('*')
+            .eq('session_id', completedSessions[0].id);
+
+          if (summaries && summaries.length > 0) {
+            steps[3].status = 'passed';
+            steps[3].description = `✓ Summary generated with stage: ${summaries[0].assigned_stage}`;
+          }
+        }
+      } else {
+        steps[1].status = 'failed';
+        steps[1].error = 'No engagements found. Complete Workflow 2 first.';
+      }
+
+      return steps;
+    }
+
+    return [];
   };
 
   const runWorkflow = async (workflowId: string) => {
     setIsRunning(true);
     setSelectedWorkflow(workflowId);
 
-    // Run database checks first
-    const dbChecks = await runDatabaseChecks();
-    console.log('Database Checks:', dbChecks);
+    // Validate workflow steps against actual database state
+    const validatedSteps = await validateWorkflowSteps(workflowId);
 
-    // Update workflow to show running
+    // Update workflow with validated steps
     setWorkflows((prev) =>
       prev.map((wf) =>
         wf.id === workflowId
-          ? {
-              ...wf,
-              steps: wf.steps.map((step) => ({ ...step, status: 'pending' as TestStatus })),
-            }
+          ? { ...wf, steps: validatedSteps }
           : wf
       )
     );
-
-    // Simulate running through steps
-    const workflow = workflows.find((wf) => wf.id === workflowId);
-    if (!workflow) return;
-
-    for (let i = 0; i < workflow.steps.length; i++) {
-      const step = workflow.steps[i];
-
-      // Update step to running
-      setWorkflows((prev) =>
-        prev.map((wf) =>
-          wf.id === workflowId
-            ? {
-                ...wf,
-                steps: wf.steps.map((s, idx) =>
-                  idx === i ? { ...s, status: 'running' as TestStatus } : s
-                ),
-              }
-            : wf
-        )
-      );
-
-      // Wait for manual verification
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Mark as warning (needs manual verification)
-      setWorkflows((prev) =>
-        prev.map((wf) =>
-          wf.id === workflowId
-            ? {
-                ...wf,
-                steps: wf.steps.map((s, idx) =>
-                  idx === i ? { ...s, status: 'warning' as TestStatus } : s
-                ),
-              }
-            : wf
-        )
-      );
-    }
 
     setIsRunning(false);
   };
