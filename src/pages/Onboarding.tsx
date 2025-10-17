@@ -182,7 +182,7 @@ export default function Onboarding() {
         <div className="container mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold">
             <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-              Welcome to Continuum
+              Welcome to Bloom
             </span>
           </h1>
         </div>

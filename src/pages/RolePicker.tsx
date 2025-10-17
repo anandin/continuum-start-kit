@@ -49,7 +49,7 @@ export default function RolePicker() {
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold mb-2">Choose Your Role</CardTitle>
           <CardDescription>
-            Select how you'd like to use Continuum. You can change this later.
+            Select how you'd like to use Bloom. You can change this later.
           </CardDescription>
         </CardHeader>
         <CardContent>

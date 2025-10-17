@@ -57,7 +57,7 @@ export default function Auth() {
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold">
             <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-              Continuum
+              Bloom
             </span>
           </CardTitle>
           <CardDescription>

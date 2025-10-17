@@ -23,7 +23,7 @@ export default function Dashboard() {
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <h1 className="text-2xl font-bold">
             <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-              Continuum
+              Bloom
             </span>
           </h1>
           <Button variant="outline" onClick={handleSignOut}>

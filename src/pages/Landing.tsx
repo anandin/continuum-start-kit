@@ -12,7 +12,7 @@ export default function Landing() {
             <h1 className="mb-6 text-5xl font-bold tracking-tight md:text-6xl">
               Welcome to{' '}
               <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                Continuum
+                Bloom
               </span>
             </h1>
             <p className="mb-8 text-xl text-muted-foreground">
@@ -80,7 +80,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>&copy; 2025 Continuum. Built with Lovable Cloud.</p>
+          <p>&copy; 2025 Bloom. Built with Lovable Cloud.</p>
         </div>
       </footer>
     </div>

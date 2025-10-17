@@ -60,7 +60,7 @@ export default function Health() {
             </span>
           </h1>
           <p className="text-muted-foreground">
-            Real-time status of Continuum services
+            Real-time status of Bloom services
           </p>
         </div>
 
