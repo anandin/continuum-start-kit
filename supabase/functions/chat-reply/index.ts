@@ -84,7 +84,35 @@ serve(async (req) => {
     // Reverse to get chronological order
     const messagesInOrder = (recentMessages || []).reverse();
 
-    // 5. Load recent progress indicators
+    // 5. Check trajectory (optional - detect patterns and nudges)
+    let trajectoryIndicator = null;
+    if (config.trajectory_rules && (config.trajectory_rules as any[]).length > 0) {
+      console.log("Checking trajectory patterns...");
+      
+      try {
+        const { data: trajectoryResult, error: trajectoryError } = await supabase.functions.invoke(
+          'trajectory-check',
+          {
+            body: {
+              sessionId,
+              recentMessages: messagesInOrder.slice(-10), // Last 10 for analysis
+              trajectoryRules: config.trajectory_rules
+            }
+          }
+        );
+
+        if (trajectoryError) {
+          console.error("Trajectory check error:", trajectoryError);
+        } else if (trajectoryResult?.matched && trajectoryResult?.indicator) {
+          trajectoryIndicator = trajectoryResult.indicator;
+          console.log("Trajectory indicator detected:", trajectoryIndicator);
+        }
+      } catch (err) {
+        console.error("Error calling trajectory-check:", err);
+      }
+    }
+
+    // 6. Load recent progress indicators
     const { data: indicators, error: indicatorsError } = await supabase
       .from("progress_indicators")
       .select("*")
@@ -94,13 +122,24 @@ serve(async (req) => {
 
     if (indicatorsError) console.error("Error loading indicators:", indicatorsError);
 
-    // 6. Build system prompt
+    // 7. Build system prompt
     const stagesList = (config.stages as any[]).map(s => `- ${s.name}: ${s.description}`).join("\n");
     
     let indicatorsContext = "";
     if (indicators && indicators.length > 0) {
       indicatorsContext = "\n\n**Recent Progress Indicators:**\n" + 
         indicators.map(ind => `- ${ind.type}: ${JSON.stringify(ind.detail)}`).join("\n");
+    }
+
+    // Add trajectory nudge if detected
+    let trajectoryNudge = "";
+    if (trajectoryIndicator) {
+      trajectoryNudge = `\n\n**IMPORTANT - Trajectory Alert:**
+The seeker is showing signs of ${trajectoryIndicator.type}. 
+Context: ${JSON.stringify(trajectoryIndicator.detail)}
+Suggested approach: ${trajectoryIndicator.detail?.message || 'Address this pattern naturally in your response'}
+
+Weave this insight naturally into your response (1-2 sentences). Don't be robotic or explicitly reference "trajectory" - just gently guide them based on this pattern.`;
     }
 
     const systemPrompt = `You are an AI coaching agent supporting a seeker in their growth journey. Your role is to:
@@ -117,6 +156,7 @@ serve(async (req) => {
 **Available Stages:**
 ${stagesList}
 ${indicatorsContext}
+${trajectoryNudge}
 
 **Guidelines:**
 - Be empathetic, supportive, and professional
@@ -128,7 +168,7 @@ ${indicatorsContext}
 
 Engage naturally as a supportive coach having a conversation with the seeker.`;
 
-    // 7. Build conversation history for Gemini
+    // 8. Build conversation history for Gemini
     const conversationMessages = messagesInOrder.map((msg: any) => ({
       role: msg.role === "seeker" ? "user" : "assistant",
       content: msg.content
@@ -136,7 +176,7 @@ Engage naturally as a supportive coach having a conversation with the seeker.`;
 
     console.log("Calling Gemini with system prompt and", conversationMessages.length, "messages");
 
-    // 8. Call Gemini with streaming
+    // 9. Call Gemini with streaming
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -174,7 +214,7 @@ Engage naturally as a supportive coach having a conversation with the seeker.`;
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
-    // 9. Stream response back to client and collect for DB
+    // 10. Stream response back to client and collect for DB
     let fullResponse = "";
     
     const stream = new ReadableStream({
