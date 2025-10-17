@@ -2,26 +2,43 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, MessageSquare, Send, Activity, CheckCircle, AlertTriangle, StopCircle } from 'lucide-react';
+import { 
+  Loader2, 
+  Send, 
+  ArrowLeft, 
+  MoreVertical,
+  RefreshCw,
+  Trash2,
+  History,
+  Sparkles
+} from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Message {
   id: string;
   role: 'seeker' | 'agent' | 'provider';
   content: string;
-  created_at: string;
-}
-
-interface ProgressIndicator {
-  id: string;
-  type: 'drift' | 'leap' | 'stall' | 'steady';
-  detail: any;
   created_at: string;
 }
 
@@ -32,16 +49,14 @@ export default function Chat() {
   
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [ending, setEnding] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [providerConfig, setProviderConfig] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [indicators, setIndicators] = useState<ProgressIndicator[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [streamingMessage, setStreamingMessage] = useState('');
+  const [showClearDialog, setShowClearDialog] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -52,20 +67,12 @@ export default function Chat() {
   useEffect(() => {
     if (user && sessionId) {
       loadSession();
+      loadMessages();
+      setupRealtimeSubscription();
     }
   }, [user, sessionId]);
 
   useEffect(() => {
-    if (sessionId) {
-      console.log('🔄 Session ID changed, loading data...');
-      loadMessages();
-      loadIndicators();
-      setupRealtimeSubscription();
-    }
-  }, [sessionId]);
-
-  useEffect(() => {
-    console.log('💬 Messages state updated:', messages.length, 'messages');
     scrollToBottom();
   }, [messages, streamingMessage]);
 
@@ -92,10 +99,6 @@ export default function Chat() {
             seeker:seekers (
               id,
               owner_id
-            ),
-            provider:profiles!engagements_provider_id_fkey (
-              id,
-              email
             )
           )
         `)
@@ -103,7 +106,6 @@ export default function Chat() {
         .single();
 
       if (error) throw error;
-
       if (!data) {
         toast.error('Session not found');
         navigate('/dashboard');
@@ -113,13 +115,12 @@ export default function Chat() {
       setSession(data);
 
       // Load provider config
-      const { data: config, error: configError } = await supabase
+      const { data: config } = await supabase
         .from('provider_configs')
         .select('*')
         .eq('provider_id', data.engagement.provider_id)
         .maybeSingle();
 
-      if (configError) console.error('Config error:', configError);
       if (config) setProviderConfig(config);
 
     } catch (error: any) {
@@ -134,8 +135,6 @@ export default function Chat() {
   const loadMessages = async () => {
     if (!sessionId) return;
 
-    console.log('📨 Loading messages for session:', sessionId);
-
     try {
       const { data, error } = await supabase
         .from('messages')
@@ -143,30 +142,10 @@ export default function Chat() {
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true });
 
-      console.log('📬 Messages result:', { data, error, count: data?.length });
-
       if (error) throw error;
       setMessages(data || []);
     } catch (error: any) {
-      console.error('❌ Error loading messages:', error);
-    }
-  };
-
-  const loadIndicators = async () => {
-    if (!sessionId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('progress_indicators')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-      setIndicators((data as ProgressIndicator[]) || []);
-    } catch (error: any) {
-      console.error('Error loading indicators:', error);
+      console.error('Error loading messages:', error);
     }
   };
 
@@ -185,18 +164,6 @@ export default function Chat() {
           setMessages(prev => [...prev, payload.new as Message]);
         }
       )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'progress_indicators',
-          filter: `session_id=eq.${sessionId}`
-        },
-        (payload) => {
-          setIndicators(prev => [payload.new as ProgressIndicator, ...prev].slice(0, 5));
-        }
-      )
       .subscribe();
 
     return () => {
@@ -206,124 +173,102 @@ export default function Chat() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!inputMessage.trim() || sending) return;
+    if (!inputMessage.trim() || sending || !sessionId) return;
 
-    const messageText = inputMessage.trim();
+    const userMessage = inputMessage.trim();
     setInputMessage('');
     setSending(true);
-    setStreamingMessage('');
 
     try {
-      // Call edge function with streaming
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-reply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
-          sessionId,
-          message: messageText
-        })
+      // Insert user message
+      const { error: insertError } = await supabase
+        .from('messages')
+        .insert({
+          session_id: sessionId,
+          role: 'seeker',
+          content: userMessage
+        });
+
+      if (insertError) throw insertError;
+
+      // Call edge function for AI response
+      setStreamingMessage('');
+      const { error: replyError } = await supabase.functions.invoke('chat-reply', {
+        body: { session_id: sessionId, user_message: userMessage }
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to send message');
-      }
+      if (replyError) throw replyError;
 
-      // Handle streaming response
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                setStreamingMessage(prev => prev + parsed.content);
-              }
-            } catch {
-              // Skip invalid JSON
-            }
-          }
-        }
-      }
-
-      // Clear streaming message after complete
-      setStreamingMessage('');
-      
     } catch (error: any) {
-      console.error('Send message error:', error);
-      toast.error(error.message || 'Failed to send message');
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message');
     } finally {
       setSending(false);
+      setStreamingMessage('');
     }
   };
 
-  const getIndicatorIcon = (type: string) => {
-    switch (type) {
-      case 'leap': return <Activity className="h-4 w-4 text-green-500" />;
-      case 'drift': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-      case 'stall': return <AlertTriangle className="h-4 w-4 text-orange-500" />;
-      case 'steady': return <CheckCircle className="h-4 w-4 text-blue-500" />;
-      default: return <Activity className="h-4 w-4" />;
+  const handleNewSession = async () => {
+    if (!session?.engagement?.id) return;
+
+    try {
+      // Create new session
+      const { data: newSession, error } = await supabase
+        .from('sessions')
+        .insert({
+          engagement_id: session.engagement.id,
+          status: 'active',
+          initial_stage: session.initial_stage
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success('Started new session!');
+      navigate(`/chat/${newSession.id}`);
+    } catch (error: any) {
+      console.error('Error creating new session:', error);
+      toast.error('Failed to create new session');
     }
   };
 
-  const getIndicatorColor = (type: string) => {
-    switch (type) {
-      case 'leap': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'drift': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'stall': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-      case 'steady': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+  const handleClearMessages = async () => {
+    if (!sessionId) return;
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('session_id', sessionId);
+
+      if (error) throw error;
+
+      setMessages([]);
+      setShowClearDialog(false);
+      toast.success('Messages cleared!');
+    } catch (error: any) {
+      console.error('Error clearing messages:', error);
+      toast.error('Failed to clear messages');
     }
   };
 
   const handleEndSession = async () => {
     if (!sessionId) return;
 
-    const confirmed = window.confirm(
-      'Are you sure you want to end this session? A summary will be generated and you can start a new session afterwards.'
-    );
-
-    if (!confirmed) return;
-
-    setEnding(true);
     try {
-      const { data, error } = await supabase.functions.invoke('session-finish', {
-        body: { sessionId }
-      });
+      const { error } = await supabase
+        .from('sessions')
+        .update({ status: 'ended', ended_at: new Date().toISOString() })
+        .eq('id', sessionId);
 
       if (error) throw error;
 
-      if (data?.success) {
-        toast.success('Session ended successfully!');
-        navigate(`/session/${sessionId}/summary`);
-      } else {
-        throw new Error('Failed to end session');
-      }
+      toast.success('Session ended');
+      navigate('/dashboard');
     } catch (error: any) {
-      console.error('End session error:', error);
-      toast.error(error.message || 'Failed to end session');
-    } finally {
-      setEnding(false);
+      console.error('Error ending session:', error);
+      toast.error('Failed to end session');
     }
   };
 
@@ -335,186 +280,175 @@ export default function Chat() {
     );
   }
 
-  if (!session) {
-    return null;
-  }
-
   return (
     <div className="flex h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      {/* Left Sidebar */}
-      <div className="w-80 border-r border-white/10 bg-slate-900/50 flex flex-col">
-        <div className="p-4 border-b border-white/10">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="w-full justify-start mb-4 text-white hover:bg-white/10">
-            ← Back to Dashboard
-          </Button>
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-white">Session Info</h2>
-            <div className="flex items-center gap-2">
-              <Badge variant={session?.status === 'active' ? 'default' : 'secondary'} className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-                {session?.status || 'Unknown'}
-              </Badge>
-              <span className="text-xs text-slate-400">
-                {session?.started_at && new Date(session.started_at).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Stages */}
-        <div className="p-4 border-b border-white/10">
-          <h3 className="text-sm font-semibold mb-3 text-white">Growth Stages</h3>
-          <div className="space-y-2">
-            {providerConfig?.stages && (providerConfig.stages as any[]).map((stage, index) => {
-              const isCurrent = stage.name === session?.initial_stage;
-              return (
-                <div
-                  key={index}
-                  className={`p-2 rounded-lg text-sm transition-colors ${
-                    isCurrent 
-                      ? 'bg-purple-500/20 text-purple-300 font-medium border border-purple-500/30' 
-                      : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="font-medium">{stage.name}</div>
-                  <div className="text-xs opacity-80 mt-0.5">{stage.description}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Progress Indicators */}
-        <div className="flex-1 overflow-hidden">
-          <div className="p-4">
-            <h3 className="text-sm font-semibold mb-3 text-white">Recent Progress</h3>
-            <ScrollArea className="h-[300px]">
-              <div className="space-y-2">
-                {indicators.length === 0 ? (
-                  <p className="text-xs text-slate-400">No indicators yet</p>
-                ) : (
-                  indicators.map((indicator) => (
-                    <div key={indicator.id} className="p-3 rounded-lg border border-white/10 bg-slate-800/50">
-                      <div className="flex items-center gap-2 mb-1">
-                        {getIndicatorIcon(indicator.type)}
-                        <Badge variant="outline" className={getIndicatorColor(indicator.type)}>
-                          {indicator.type}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-slate-400">
-                        {new Date(indicator.created_at).toLocaleString()}
-                      </p>
-                      {indicator.detail && (
-                        <p className="text-xs mt-1 text-slate-300">{JSON.stringify(indicator.detail)}</p>
-                      )}
-                    </div>
-                  ))
+      {/* Header */}
+      <div className="fixed top-0 left-0 right-0 z-10 bg-slate-900/80 backdrop-blur-lg border-b border-white/10">
+        <div className="max-w-5xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/dashboard')}
+                className="text-slate-300 hover:text-white"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Dashboard
+              </Button>
+              <div className="h-6 w-px bg-slate-700" />
+              <div>
+                <h1 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-400" />
+                  {providerConfig?.title || 'Coaching Session'}
+                </h1>
+                {session?.initial_stage && (
+                  <p className="text-sm text-slate-400">{session.initial_stage}</p>
                 )}
               </div>
-            </ScrollArea>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-slate-800 border-slate-700 text-slate-300">
+                {session?.status === 'active' ? 'Active' : 'Ended'}
+              </Badge>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-slate-300">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-700">
+                  <DropdownMenuItem onClick={handleNewSession} className="text-slate-200 cursor-pointer">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Start New Session
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowClearDialog(true)} className="text-slate-200 cursor-pointer">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Clear Messages
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/dashboard')} className="text-slate-200 cursor-pointer">
+                    <History className="mr-2 h-4 w-4" />
+                    View History
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-slate-700" />
+                  <DropdownMenuItem 
+                    onClick={handleEndSession} 
+                    className="text-red-400 cursor-pointer focus:text-red-300"
+                  >
+                    End Session
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Right: Chat Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-white/10 bg-slate-900/50 backdrop-blur">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold">
-                <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-                  Coaching Session
-                </span>
-              </h1>
-              <p className="text-sm text-slate-400">
-                {session?.initial_stage && `Current Stage: ${session.initial_stage}`}
-              </p>
-            </div>
-            <Button 
-              variant="destructive" 
-              onClick={handleEndSession}
-              disabled={ending || session?.status === 'ended'}
-            >
-              {ending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Ending...
-                </>
-              ) : (
-                <>
-                  <StopCircle className="mr-2 h-4 w-4" />
-                  End Session
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-          <div className="max-w-3xl mx-auto space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'seeker' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-lg p-4 ${
-                    message.role === 'seeker'
-                      ? 'bg-purple-500/20 text-white border border-purple-500/30'
-                      : 'bg-slate-800/50 text-slate-200 border border-white/10'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className="text-xs bg-slate-900/50 border-white/20">
-                      {message.role === 'seeker' ? 'You' : 'Coach'}
-                    </Badge>
-                    <span className="text-xs opacity-70">
-                      {new Date(message.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                </div>
+      {/* Messages Area */}
+      <div className="flex-1 flex flex-col pt-20">
+        <ScrollArea className="flex-1 px-4">
+          <div className="max-w-3xl mx-auto py-6 space-y-4">
+            {messages.length === 0 && !streamingMessage ? (
+              <div className="text-center py-16">
+                <Sparkles className="h-12 w-12 text-purple-400/50 mx-auto mb-4" />
+                <p className="text-slate-400 text-lg mb-2">Start your conversation</p>
+                <p className="text-slate-500 text-sm">
+                  Share your thoughts, challenges, or questions
+                </p>
               </div>
-            ))}
-
-            {/* Streaming message */}
-            {streamingMessage && (
-              <div className="flex justify-start">
-                <div className="max-w-[80%] rounded-lg p-4 bg-slate-800/50 text-slate-200 border border-white/10">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className="text-xs bg-slate-900/50 border-white/20">Coach</Badge>
-                    <Loader2 className="h-3 w-3 animate-spin text-purple-400" />
+            ) : (
+              <>
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === 'seeker' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                        message.role === 'seeker'
+                          ? 'bg-purple-500/20 text-white border border-purple-500/30'
+                          : 'bg-slate-800/50 text-slate-100'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                      <p className="text-xs opacity-50 mt-2">
+                        {new Date(message.created_at).toLocaleTimeString([], { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </p>
+                    </div>
                   </div>
-                  <p className="whitespace-pre-wrap">{streamingMessage}</p>
-                </div>
-              </div>
+                ))}
+
+                {streamingMessage && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[75%] rounded-2xl px-4 py-3 bg-slate-800/50 text-slate-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Loader2 className="h-3 w-3 animate-spin text-purple-400" />
+                        <span className="text-xs text-slate-400">Coach is typing...</span>
+                      </div>
+                      <p className="whitespace-pre-wrap leading-relaxed">{streamingMessage}</p>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
-
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
 
-        {/* Composer */}
-        <div className="border-t border-white/10 bg-slate-900/50 backdrop-blur p-4">
-          <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex gap-2">
-            <Input
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={session?.status === 'ended' ? 'Session ended' : 'Type your message...'}
-              disabled={sending || session?.status === 'ended'}
-              className="flex-1 bg-slate-800/50 border-white/10 text-white placeholder:text-slate-500"
-            />
-            <Button type="submit" disabled={sending || !inputMessage.trim() || session?.status === 'ended'} className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700">
-              {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+        {/* Input Area */}
+        <div className="border-t border-white/10 bg-slate-900/50 backdrop-blur-lg p-4">
+          <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto">
+            <div className="flex gap-2">
+              <Input
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder={session?.status === 'ended' ? 'Session ended' : 'Type your message...'}
+                disabled={sending || session?.status === 'ended'}
+                className="flex-1 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 rounded-full px-6"
+              />
+              <Button 
+                type="submit" 
+                disabled={sending || !inputMessage.trim() || session?.status === 'ended'}
+                className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 rounded-full px-6"
+              >
+                {sending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </form>
         </div>
       </div>
+
+      {/* Clear Messages Dialog */}
+      <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <AlertDialogContent className="bg-slate-900 border-slate-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Clear all messages?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              This will permanently delete all messages in this conversation. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-slate-800 text-slate-300 border-slate-700">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearMessages}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Clear Messages
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
