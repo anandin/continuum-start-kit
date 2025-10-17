@@ -48,29 +48,45 @@ export default function Onboarding() {
     async function loadProviders() {
       const { data, error } = await supabase
         .from('provider_configs')
-        .select(`
-          provider_id,
-          title,
-          methodology,
-          stages,
-          profiles!provider_configs_provider_id_fkey(email),
-          provider_agent_configs!provider_agent_configs_provider_id_fkey(core_identity)
-        `)
+        .select('provider_id, title, methodology, stages')
         .not('stages', 'is', null);
 
       if (error) {
         console.error('Error loading providers:', error);
+        toast.error('Failed to load coaches');
         return;
       }
 
-      const formattedProviders = data.map((p: any) => ({
-        id: p.provider_id,
-        email: p.profiles.email,
-        title: p.title,
-        methodology: p.methodology,
-        stages: p.stages,
-        core_identity: p.provider_agent_configs?.[0]?.core_identity || '',
-      }));
+      if (!data || data.length === 0) {
+        toast.error('No coaches available yet');
+        return;
+      }
+
+      // Get additional provider details
+      const providerIds = data.map(p => p.provider_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .in('id', providerIds);
+
+      const { data: agentConfigs } = await supabase
+        .from('provider_agent_configs')
+        .select('provider_id, core_identity')
+        .in('provider_id', providerIds);
+
+      const formattedProviders = data.map((p: any) => {
+        const profile = profiles?.find(pr => pr.id === p.provider_id);
+        const agentConfig = agentConfigs?.find(ac => ac.provider_id === p.provider_id);
+        
+        return {
+          id: p.provider_id,
+          email: profile?.email || '',
+          title: p.title,
+          methodology: p.methodology,
+          stages: p.stages,
+          core_identity: agentConfig?.core_identity || '',
+        };
+      });
 
       setProviders(formattedProviders);
     }
