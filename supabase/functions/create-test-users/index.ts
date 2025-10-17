@@ -39,9 +39,19 @@ serve(async (req) => {
     const results = [];
 
     for (const account of testAccounts) {
-      console.log(`Creating user: ${account.email}`);
+      console.log(`Checking user: ${account.email}`);
       
-      // Create auth user with specific UUID
+      // Check if user already exists
+      const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+      const userExists = existingUsers.users.some(u => u.email === account.email);
+      
+      if (userExists) {
+        console.log(`⏭️ User already exists: ${account.email}`);
+        results.push({ email: account.email, status: 'already_exists', message: 'User already exists' });
+        continue;
+      }
+      
+      // Create auth user
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: account.email,
         password: account.password,
