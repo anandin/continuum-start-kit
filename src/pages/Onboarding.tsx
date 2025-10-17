@@ -46,21 +46,28 @@ export default function Onboarding() {
   // Load providers
   useEffect(() => {
     async function loadProviders() {
+      console.log('🔍 Starting to load providers...');
+      
       const { data, error } = await supabase
         .from('provider_configs')
         .select('provider_id, title, methodology, stages')
         .not('stages', 'is', null);
 
+      console.log('📊 Provider configs result:', { data, error });
+
       if (error) {
-        console.error('Error loading providers:', error);
+        console.error('❌ Error loading providers:', error);
         toast.error('Failed to load coaches');
         return;
       }
 
       if (!data || data.length === 0) {
+        console.log('⚠️ No provider configs found');
         toast.error('No coaches available yet');
         return;
       }
+
+      console.log(`✅ Found ${data.length} provider configs`);
 
       // Get additional provider details
       const providerIds = data.map(p => p.provider_id);
@@ -73,6 +80,9 @@ export default function Onboarding() {
         .from('provider_agent_configs')
         .select('provider_id, core_identity')
         .in('provider_id', providerIds);
+
+      console.log('📧 Profiles:', profiles);
+      console.log('🤖 Agent configs:', agentConfigs);
 
       const formattedProviders = data.map((p: any) => {
         const profile = profiles?.find(pr => pr.id === p.provider_id);
@@ -88,6 +98,7 @@ export default function Onboarding() {
         };
       });
 
+      console.log('🎯 Final formatted providers:', formattedProviders);
       setProviders(formattedProviders);
     }
 
