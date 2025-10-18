@@ -43,7 +43,7 @@ serve(async (req) => {
           provider_id,
           seeker_id,
           status,
-          provider:profiles!engagements_provider_id_fkey (
+          provider:profiles (
             id,
             email
           )

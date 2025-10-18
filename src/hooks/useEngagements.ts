@@ -47,10 +47,10 @@ export function useEngagements(userId: string | undefined, role: 'provider' | 's
           id,
           created_at,
           status,
-          seeker:seekers!inner (
+          seeker:seekers (
             id
           ),
-          provider:profiles!engagements_provider_id_fkey (
+          provider:profiles (
             id,
             email
           ),

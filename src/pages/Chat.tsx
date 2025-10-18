@@ -194,7 +194,7 @@ export default function Chat() {
       // Call edge function for AI response
       setStreamingMessage('');
       const { error: replyError } = await supabase.functions.invoke('chat-reply', {
-        body: { session_id: sessionId, user_message: userMessage }
+        body: { sessionId: sessionId, message: userMessage }
       });
 
       if (replyError) throw replyError;
@@ -257,15 +257,21 @@ export default function Chat() {
     if (!sessionId) return;
 
     try {
-      const { error } = await supabase
-        .from('sessions')
-        .update({ status: 'ended', ended_at: new Date().toISOString() })
-        .eq('id', sessionId);
+      // Call session-finish edge function to generate summary
+      const { data, error } = await supabase.functions.invoke('session-finish', {
+        body: { sessionId }
+      });
 
       if (error) throw error;
 
-      toast.success('Session ended');
-      navigate('/dashboard');
+      toast.success('Session ended - generating summary...');
+      
+      // Navigate to summary page if one was created
+      if (data?.summary?.id) {
+        navigate(`/session-summary/${sessionId}`);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error: any) {
       console.error('Error ending session:', error);
       toast.error('Failed to end session');
