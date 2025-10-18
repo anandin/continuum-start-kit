@@ -190,7 +190,7 @@ export default function Chat() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({ sessionId, message: userMessage }),
         }
@@ -240,6 +240,8 @@ export default function Chat() {
     } finally {
       setSending(false);
       setStreamingMessage('');
+      // Reload messages to ensure sync
+      await loadMessages();
     }
   };
 

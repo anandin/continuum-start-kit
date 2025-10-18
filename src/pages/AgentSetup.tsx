@@ -46,14 +46,15 @@ export default function AgentSetup() {
   // Load existing config
   useEffect(() => {
     if (user && role === 'provider') {
-      loadConfig();
-      loadProviderConfig();
+      loadBothConfigs();
     }
   }, [user, role]);
 
-  const loadProviderConfig = async () => {
+  const loadBothConfigs = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Load provider config first
+      const { data: providerConfigData } = await supabase
         .from('provider_configs')
         .select('*')
         .eq('provider_id', user?.id)
@@ -61,14 +62,49 @@ export default function AgentSetup() {
         .limit(1)
         .maybeSingle();
 
+      if (providerConfigData) {
+        setProviderConfig(providerConfigData);
+      }
+
+      // Then load agent config
+      const { data: agentConfigData, error } = await supabase
+        .from('provider_agent_configs')
+        .select('*')
+        .eq('provider_id', user?.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       if (error) throw error;
-      if (data) {
-        setProviderConfig(data);
+
+      if (agentConfigData) {
+        // Existing agent config found
+        setConfigId(agentConfigData.id);
+        setProviderName(agentConfigData.provider_name || '');
+        setProviderTitle(agentConfigData.provider_title || '');
+        setAvatarUrl(agentConfigData.avatar_url || '');
+        setCoreIdentity(agentConfigData.core_identity || '');
+        setGuidingPrinciples(agentConfigData.guiding_principles || '');
+        setTone(agentConfigData.tone || '');
+        setVoice(agentConfigData.voice || '');
+        setRules(agentConfigData.rules || '');
+        setBoundaries(agentConfigData.boundaries || '');
+        setSelectedModel(agentConfigData.selected_model || 'google/gemini-2.5-flash');
+      } else if (providerConfigData) {
+        // No agent config exists, auto-populate from provider config
+        const autoPopulated = generateGuidingPrinciplesFromConfig(providerConfigData);
+        setGuidingPrinciples(autoPopulated);
+        setProviderTitle(providerConfigData.title || '');
+        setCoreIdentity(`You are an AI coaching assistant for ${providerConfigData.title}.`);
       }
     } catch (error: any) {
-      console.error('Error loading provider config:', error);
+      console.error('Error loading configs:', error);
+      toast.error('Failed to load configuration');
+    } finally {
+      setLoading(false);
     }
   };
+
 
   const generateGuidingPrinciplesFromConfig = (config: any) => {
     let text = '';
@@ -88,44 +124,6 @@ export default function AgentSetup() {
     return text;
   };
 
-  const loadConfig = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('provider_agent_configs')
-        .select('*')
-        .eq('provider_id', user?.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
-        setConfigId(data.id);
-        setProviderName(data.provider_name || '');
-        setProviderTitle(data.provider_title || '');
-        setAvatarUrl(data.avatar_url || '');
-        setCoreIdentity(data.core_identity || '');
-        setGuidingPrinciples(data.guiding_principles || '');
-        setTone(data.tone || '');
-        setVoice(data.voice || '');
-        setRules(data.rules || '');
-        setBoundaries(data.boundaries || '');
-        setSelectedModel(data.selected_model || 'google/gemini-2.5-flash');
-      } else if (providerConfig) {
-        // If no agent config exists, auto-populate from provider config
-        const autoPopulated = generateGuidingPrinciplesFromConfig(providerConfig);
-        setGuidingPrinciples(autoPopulated);
-        setProviderTitle(providerConfig.title || '');
-      }
-    } catch (error: any) {
-      console.error('Error loading agent config:', error);
-      toast.error('Failed to load agent configuration');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSave = async () => {
     if (!guidingPrinciples.trim()) {
@@ -176,7 +174,7 @@ export default function AgentSetup() {
       toast.success('✅ Agent configuration saved successfully!');
       
       // Reload to show the updated config ID
-      await loadConfig();
+      await loadBothConfigs();
       
       setTimeout(() => {
         navigate('/dashboard');

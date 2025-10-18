@@ -48,7 +48,8 @@ export function useEngagements(userId: string | undefined, role: 'provider' | 's
           created_at,
           status,
           seeker:seekers (
-            id
+            id,
+            owner_id
           ),
           provider:profiles (
             id,
@@ -72,8 +73,22 @@ export function useEngagements(userId: string | undefined, role: 'provider' | 's
       if (role === 'provider') {
         query = query.eq('provider_id', userId);
       } else {
-        // For seekers, filter by owner_id through the seeker relationship
-        query = query.eq('seekers.owner_id', userId);
+        // For seekers, we need to filter by seeker.owner_id
+        // First get the seeker ID for this user
+        const { data: seekerData } = await supabase
+          .from('seekers')
+          .select('id')
+          .eq('owner_id', userId)
+          .maybeSingle();
+        
+        if (seekerData) {
+          query = query.eq('seeker_id', seekerData.id);
+        } else {
+          // No seeker found, return empty
+          setEngagements([]);
+          setLoading(false);
+          return;
+        }
       }
 
       const { data, error } = await query;

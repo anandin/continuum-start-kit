@@ -66,9 +66,18 @@ export default function SessionSummary() {
         .maybeSingle();
 
       if (summaryError) throw summaryError;
+      
+      // If no summary exists yet
       if (!summaryData) {
-        toast.error('Summary not found for this session');
-        navigate('/dashboard');
+        if (sessionData.status === 'active') {
+          // Session still active - can't generate summary yet
+          toast.info('This session is still active. End it to generate a summary.');
+          navigate(`/chat/${sessionId}`);
+        } else {
+          // Session ended but no summary - offer to generate
+          setSummary(null);
+        }
+        setLoading(false);
         return;
       }
 
@@ -79,6 +88,27 @@ export default function SessionSummary() {
       navigate('/dashboard');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateSummary = async () => {
+    if (!sessionId) return;
+    
+    setCreating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('session-finish', {
+        body: { sessionId }
+      });
+
+      if (error) throw error;
+
+      toast.success('Summary generated successfully!');
+      await loadSummary();
+    } catch (error: any) {
+      console.error('Error generating summary:', error);
+      toast.error(error.message || 'Failed to generate summary');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -138,8 +168,68 @@ export default function SessionSummary() {
     );
   }
 
-  if (!summary) {
-    return null;
+  if (!summary && !creating) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-sky-50">
+        <header className="border-b border-sky-200 bg-white/80 backdrop-blur-lg shadow-sm">
+          <div className="container mx-auto flex items-center justify-between px-4 py-4">
+            <div>
+              <h1 className="text-2xl font-bold text-indigo-900">Session Summary</h1>
+              <p className="text-sm text-slate-600">No summary available yet</p>
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/dashboard')} 
+              className="border-sky-300 bg-white text-indigo-900 hover:bg-sky-50"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+          </div>
+        </header>
+
+        <main className="container mx-auto px-4 py-12">
+          <div className="mx-auto max-w-2xl">
+            <Card className="bg-white border-sky-200 shadow-lg">
+              <CardHeader className="text-center">
+                <CardTitle className="text-indigo-900 mb-2">Summary Not Available</CardTitle>
+                <CardDescription className="text-slate-600">
+                  {session?.status === 'active' 
+                    ? 'This session is still active. End the session to generate a summary.'
+                    : 'This session has ended but no summary has been generated yet.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center gap-4">
+                {session?.status === 'ended' && (
+                  <Button
+                    onClick={handleGenerateSummary}
+                    disabled={creating}
+                    className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white"
+                  >
+                    {creating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating Summary...
+                      </>
+                    ) : (
+                      'Generate Summary'
+                    )}
+                  </Button>
+                )}
+                {session?.status === 'active' && (
+                  <Button
+                    onClick={() => navigate(`/chat/${sessionId}`)}
+                    className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white"
+                  >
+                    Back to Chat
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   return (
