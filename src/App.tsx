@@ -17,6 +17,7 @@ import Health from "./pages/Health";
 import NotFound from "./pages/NotFound";
 import ProviderDashboard from "./pages/ProviderDashboard";
 import ProviderEngagement from "./pages/ProviderEngagement";
+import ClientSessionSummary from "./pages/ClientSessionSummary";
 import AgentSetup from "./pages/AgentSetup";
 import CreateTestUsers from "./pages/CreateTestUsers";
 import ManualTestRunner from "./tests/manual-test-runner";
@@ -105,6 +106,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ProviderEngagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/client/:clientId"
+              element={
+                <ProtectedRoute>
+                  <ClientSessionSummary />
                 </ProtectedRoute>
               }
             />
