@@ -234,14 +234,16 @@ export default function Chat() {
         }
       }
 
+      // Reload messages first, then clear streaming
+      await loadMessages();
+      setStreamingMessage('');
+
     } catch (error: any) {
       console.error('Error sending message:', error);
       toast.error(error.message || 'Failed to send message');
+      setStreamingMessage('');
     } finally {
       setSending(false);
-      setStreamingMessage('');
-      // Reload messages to ensure sync
-      await loadMessages();
     }
   };
 
