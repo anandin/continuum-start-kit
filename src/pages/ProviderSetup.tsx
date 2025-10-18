@@ -98,7 +98,7 @@ export default function ProviderSetup() {
     }
   };
 
-  const handleTemplateSelect = (template: ProviderTemplate) => {
+  const handleTemplateSelect = async (template: ProviderTemplate) => {
     setTitle(template.title);
     setMethodology(template.methodology);
     setStages(template.stages);
@@ -107,7 +107,56 @@ export default function ProviderSetup() {
     setTaggingRules(JSON.stringify(template.taggingRules, null, 2));
     setTrajectoryRules(template.trajectoryRules);
     setShowTemplateSelector(false);
-    toast.success(template.id === 'blank' ? 'Starting fresh!' : `${template.name} template loaded - customize as needed`);
+    
+    // Auto-sync template data to agent config
+    if (template.id !== 'blank' && user) {
+      try {
+        const agentConfigData = {
+          provider_id: user.id,
+          provider_name: template.name.includes('Therapist') ? 'Dr. Anya Sharma' 
+            : template.name.includes('Coach') ? 'Marcus Sterling'
+            : template.name.includes('Spiritual') ? 'Rev. Elena Martinez'
+            : template.name.includes('Lawyer') ? 'Atty. David Chen'
+            : 'Professional Guide',
+          provider_title: template.title,
+          core_identity: `You are a ${template.title} specializing in ${template.methodology}`,
+          guiding_principles: `Methodology: ${template.methodology}\n\nGrowth Stages:\n${template.stages.map((s, i) => `${i + 1}. ${s.name}: ${s.description}`).join('\n')}\n\nFocus Areas: ${template.labels.join(', ')}`,
+          tone: 'Empathetic, supportive, professional, warm',
+          voice: 'A gentle guide and facilitator',
+          rules: '1. Always listen actively before responding\n2. Ask reflective questions to deepen understanding\n3. Celebrate progress and growth\n4. Use "we" to foster collaboration',
+          boundaries: 'Focus on growth and development within your methodology. For crisis situations, direct to appropriate professional resources.',
+          selected_model: 'google/gemini-2.5-flash',
+          updated_at: new Date().toISOString(),
+        };
+
+        // Check if agent config exists
+        const { data: existingConfig } = await supabase
+          .from('provider_agent_configs')
+          .select('id')
+          .eq('provider_id', user.id)
+          .maybeSingle();
+
+        if (existingConfig) {
+          // Update existing
+          await supabase
+            .from('provider_agent_configs')
+            .update(agentConfigData)
+            .eq('id', existingConfig.id);
+        } else {
+          // Insert new
+          await supabase
+            .from('provider_agent_configs')
+            .insert(agentConfigData);
+        }
+        
+        toast.success(`${template.name} template loaded and synced to agent config`);
+      } catch (error) {
+        console.error('Error syncing to agent config:', error);
+        toast.success(`${template.name} template loaded - visit Agent Setup to customize`);
+      }
+    } else {
+      toast.success(template.id === 'blank' ? 'Starting fresh!' : `${template.name} template loaded - customize as needed`);
+    }
   };
 
   const handleSave = async () => {

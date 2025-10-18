@@ -42,20 +42,24 @@ serve(async (req) => {
 
     if (insertError) throw insertError;
 
-    // 2. Load session and engagement details
+    // 2. Load session and engagement details with null-safe guards
     const { data: session, error: sessionError } = await supabase
       .from("sessions")
       .select(`
         *,
         engagement:engagements (
           id,
-          provider_id
+          provider_id,
+          seeker_id,
+          status
         )
       `)
       .eq("id", sessionId)
       .single();
 
-    if (sessionError || !session) throw new Error("Session not found");
+    if (sessionError || !session || !session.engagement) {
+      throw new Error("Session or engagement not found");
+    }
 
     // 3. Load provider config and agent config
     const { data: providerConfig } = await supabase

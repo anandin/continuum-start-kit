@@ -77,7 +77,13 @@ export default function RolePicker() {
       console.log('Role inserted successfully:', role);
       await refreshProfile();
       toast.success(`Welcome as a ${role}!`);
-      navigate('/dashboard');
+      
+      // Redirect new users to setup pages
+      if (role === 'provider') {
+        navigate('/provider-setup');
+      } else {
+        navigate('/onboarding');
+      }
     } catch (error: any) {
       console.error('Role selection error:', error);
       toast.error(error.message || 'Failed to set role');

@@ -54,11 +54,18 @@ serve(async (req) => {
     if (tier1Result) {
       console.log("Tier 1 match:", tier1Result);
       
-      // Insert progress indicator
+      // Insert progress indicator with engagement_id
+      const { data: session } = await supabase
+        .from("sessions")
+        .select("engagement_id")
+        .eq("id", sessionId)
+        .single();
+
       const { data: indicator, error: insertError } = await supabase
         .from("progress_indicators")
         .insert({
           session_id: sessionId,
+          engagement_id: session?.engagement_id || null,
           type: tier1Result.type,
           detail: tier1Result.detail,
         })
@@ -93,11 +100,18 @@ serve(async (req) => {
       if (tier2Result) {
         console.log("Tier 2 match:", tier2Result);
         
-        // Insert progress indicator
+        // Insert progress indicator with engagement_id
+        const { data: session } = await supabase
+          .from("sessions")
+          .select("engagement_id")
+          .eq("id", sessionId)
+          .single();
+
         const { data: indicator, error: insertError } = await supabase
           .from("progress_indicators")
           .insert({
             session_id: sessionId,
+            engagement_id: session?.engagement_id || null,
             type: tier2Result.type,
             detail: tier2Result.detail,
           })

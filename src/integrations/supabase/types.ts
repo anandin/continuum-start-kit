@@ -21,6 +21,7 @@ export type Database = {
           provider_id: string | null
           seeker_id: string | null
           status: Database["public"]["Enums"]["engagement_status"] | null
+          updated_at: string | null
         }
         Insert: {
           created_at?: string | null
@@ -28,6 +29,7 @@ export type Database = {
           provider_id?: string | null
           seeker_id?: string | null
           status?: Database["public"]["Enums"]["engagement_status"] | null
+          updated_at?: string | null
         }
         Update: {
           created_at?: string | null
@@ -35,6 +37,7 @@ export type Database = {
           provider_id?: string | null
           seeker_id?: string | null
           status?: Database["public"]["Enums"]["engagement_status"] | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -107,6 +110,7 @@ export type Database = {
         Row: {
           created_at: string | null
           detail: Json | null
+          engagement_id: string | null
           id: string
           session_id: string | null
           type: string | null
@@ -114,6 +118,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           detail?: Json | null
+          engagement_id?: string | null
           id?: string
           session_id?: string | null
           type?: string | null
@@ -121,11 +126,19 @@ export type Database = {
         Update: {
           created_at?: string | null
           detail?: Json | null
+          engagement_id?: string | null
           id?: string
           session_id?: string | null
           type?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "progress_indicators_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: false
+            referencedRelation: "engagements"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "progress_indicators_session_id_fkey"
             columns: ["session_id"]
@@ -237,17 +250,17 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
-          owner_id: string | null
+          owner_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
-          owner_id?: string | null
+          owner_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
-          owner_id?: string | null
+          owner_id?: string
         }
         Relationships: [
           {

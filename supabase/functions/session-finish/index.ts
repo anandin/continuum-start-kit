@@ -33,7 +33,7 @@ serve(async (req) => {
 
     console.log("Finishing session:", sessionId);
 
-    // 1. Load session and engagement details
+    // 1. Load session and engagement details with null-safe guards
     const { data: session, error: sessionError } = await supabase
       .from("sessions")
       .select(`
@@ -41,6 +41,8 @@ serve(async (req) => {
         engagement:engagements (
           id,
           provider_id,
+          seeker_id,
+          status,
           provider:profiles!engagements_provider_id_fkey (
             id,
             email
@@ -50,7 +52,9 @@ serve(async (req) => {
       .eq("id", sessionId)
       .single();
 
-    if (sessionError || !session) throw new Error("Session not found");
+    if (sessionError || !session || !session.engagement) {
+      throw new Error("Session or engagement not found");
+    }
 
     // 2. Load provider config
     const { data: config, error: configError } = await supabase
@@ -71,11 +75,11 @@ serve(async (req) => {
 
     if (messagesError) throw messagesError;
 
-    // 4. Load progress indicators
+    // 4. Load progress indicators (with engagement_id support)
     const { data: indicators, error: indicatorsError } = await supabase
       .from("progress_indicators")
       .select("*")
-      .eq("session_id", sessionId)
+      .or(`session_id.eq.${sessionId},engagement_id.eq.${session.engagement.id}`)
       .order("created_at", { ascending: true });
 
     if (indicatorsError) console.error("Error loading indicators:", indicatorsError);

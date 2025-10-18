@@ -56,15 +56,28 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
       
+      // Check if user has a role assigned
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', data.user.id)
+        .maybeSingle();
+      
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      
+      // Redirect based on role status
+      if (roleData?.role) {
+        navigate('/dashboard');
+      } else {
+        navigate('/auth/role');
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign in');
     } finally {
