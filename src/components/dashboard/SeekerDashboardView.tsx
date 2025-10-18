@@ -155,13 +155,36 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
                 <p className="text-sm text-slate-700">Executive Leadership Development</p>
               </div>
               <Button 
-                onClick={() => {
+                onClick={async () => {
                   const activeSession = activeEngagements[0].sessions?.find(s => s.status === 'active');
-                  const latestSession = activeEngagements[0].sessions?.sort((a, b) => 
-                    new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
-                  )[0];
-                  const sessionId = activeSession?.id || latestSession?.id;
-                  if (sessionId) navigate(`/chat/${sessionId}`);
+                  
+                  if (activeSession) {
+                    navigate(`/chat/${activeSession.id}`);
+                  } else {
+                    // Create new session if no active session exists
+                    const latestSession = activeEngagements[0].sessions?.sort((a, b) => 
+                      new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+                    )[0];
+                    
+                    const { supabase } = await import('@/integrations/supabase/client');
+                    const { data: newSession, error } = await supabase
+                      .from('sessions')
+                      .insert({
+                        engagement_id: activeEngagements[0].id,
+                        status: 'active',
+                        initial_stage: latestSession?.initial_stage || getLatestStage(activeEngagements[0])
+                      })
+                      .select()
+                      .single();
+
+                    if (error) {
+                      const { toast } = await import('sonner');
+                      toast.error('Failed to create session');
+                      return;
+                    }
+
+                    navigate(`/chat/${newSession.id}`);
+                  }
                 }}
                 className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white shadow-md"
               >

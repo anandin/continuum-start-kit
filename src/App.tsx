@@ -86,7 +86,7 @@ const App = () => (
               }
             />
             <Route
-              path="/session/:sessionId/summary"
+              path="/session-summary/:sessionId"
               element={
                 <ProtectedRoute>
                   <SessionSummary />

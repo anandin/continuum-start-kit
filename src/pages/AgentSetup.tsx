@@ -64,11 +64,6 @@ export default function AgentSetup() {
       if (error) throw error;
       if (data) {
         setProviderConfig(data);
-        // Auto-populate guiding principles with provider config data
-        if (!guidingPrinciples && data) {
-          const autoPopulated = generateGuidingPrinciplesFromConfig(data);
-          setGuidingPrinciples(autoPopulated);
-        }
       }
     } catch (error: any) {
       console.error('Error loading provider config:', error);
@@ -118,6 +113,11 @@ export default function AgentSetup() {
         setRules(data.rules || '');
         setBoundaries(data.boundaries || '');
         setSelectedModel(data.selected_model || 'google/gemini-2.5-flash');
+      } else if (providerConfig) {
+        // If no agent config exists, auto-populate from provider config
+        const autoPopulated = generateGuidingPrinciplesFromConfig(providerConfig);
+        setGuidingPrinciples(autoPopulated);
+        setProviderTitle(providerConfig.title || '');
       }
     } catch (error: any) {
       console.error('Error loading agent config:', error);
@@ -346,7 +346,7 @@ export default function AgentSetup() {
                   id="core-identity"
                   value={coreIdentity}
                   onChange={(e) => setCoreIdentity(e.target.value)}
-                  placeholder="You are Dr. Anya Sharma AI, a digital assistant for Dr. Anya Sharma, specializing in Cognitive Behavioral Therapy (CBT)."
+                  placeholder={`You are ${providerName || 'a coaching'} AI assistant specializing in ${providerTitle || providerConfig?.title || 'professional development'}. Your role is to guide clients through their growth journey.`}
                   rows={4}
                   className="mt-2"
                 />
@@ -360,7 +360,7 @@ export default function AgentSetup() {
                   id="guiding-principles"
                   value={guidingPrinciples}
                   onChange={(e) => setGuidingPrinciples(e.target.value)}
-                  placeholder="Your core framework is CBT. Your primary goal is to help the user identify negative thought patterns (cognitive distortions) and guide them to reframe these thoughts..."
+                  placeholder={providerConfig?.methodology || "Define your coaching methodology and approach. For example: 'Your core framework is solution-focused coaching. Your primary goal is to help clients identify their strengths and guide them toward actionable goals...'"}
                   rows={6}
                   className="mt-2"
                 />
@@ -375,7 +375,7 @@ export default function AgentSetup() {
                     id="tone"
                     value={tone}
                     onChange={(e) => setTone(e.target.value)}
-                    placeholder="Empathetic, supportive, professional, calm, reassuring."
+                    placeholder="e.g., Empathetic, supportive, professional, encouraging"
                     className="mt-1"
                   />
                 </div>
@@ -386,7 +386,7 @@ export default function AgentSetup() {
                     id="voice"
                     value={voice}
                     onChange={(e) => setVoice(e.target.value)}
-                    placeholder="A gentle guide and facilitator."
+                    placeholder="e.g., A collaborative partner, a trusted mentor, an insightful guide"
                     className="mt-1"
                   />
                 </div>
@@ -397,7 +397,7 @@ export default function AgentSetup() {
                     id="rules"
                     value={rules}
                     onChange={(e) => setRules(e.target.value)}
-                    placeholder="1. Never give direct advice. 2. Always end responses by checking in with the user's emotional state or asking a gentle, reflective question. 3. Use 'we' to foster a collaborative spirit (e.g., 'Perhaps we can explore...')."
+                    placeholder="e.g., 1. Ask open-ended questions to deepen reflection. 2. Validate emotions before offering perspectives. 3. Use 'we' to foster collaboration."
                     rows={4}
                     className="mt-1"
                   />
@@ -412,7 +412,7 @@ export default function AgentSetup() {
                   id="boundaries"
                   value={boundaries}
                   onChange={(e) => setBoundaries(e.target.value)}
-                  placeholder="You are not a human therapist. Do not discuss diagnoses. If the user expresses severe distress or suicidal ideation, you must provide a crisis hotline number and advise them to seek immediate professional help. Do not engage in non-therapeutic conversations."
+                  placeholder="e.g., You are an AI assistant, not a licensed professional. For crisis situations, direct users to appropriate resources. Stay focused on coaching objectives."
                   rows={5}
                   className="mt-2"
                 />

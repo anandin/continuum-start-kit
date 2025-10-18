@@ -180,30 +180,63 @@ export default function Chat() {
     const userMessage = inputMessage.trim();
     setInputMessage('');
     setSending(true);
+    setStreamingMessage('');
 
     try {
-      // Insert user message
-      const { error: insertError } = await supabase
-        .from('messages')
-        .insert({
-          session_id: sessionId,
-          role: 'seeker',
-          content: userMessage
-        });
+      // Call edge function for streaming AI response
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ sessionId, message: userMessage }),
+        }
+      );
 
-      if (insertError) throw insertError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
 
-      // Call edge function for AI response
-      setStreamingMessage('');
-      const { error: replyError } = await supabase.functions.invoke('chat-reply', {
-        body: { sessionId: sessionId, message: userMessage }
-      });
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      if (replyError) throw replyError;
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.content;
+                if (content) {
+                  setStreamingMessage(prev => prev + content);
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      }
 
     } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error('Failed to send message');
+      toast.error(error.message || 'Failed to send message');
     } finally {
       setSending(false);
       setStreamingMessage('');
