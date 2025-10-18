@@ -39,11 +39,9 @@ export default function RolePicker() {
         .from('user_roles')
         .select('role')
         .eq('user_id', user.id)
-        .limit(1)
-        .single();
+        .maybeSingle();
 
-      // PGRST116 means no rows found - this is okay, user needs to select a role
-      if (checkError && checkError.code !== 'PGRST116') {
+      if (checkError) {
         console.error('Check role error:', checkError);
         throw checkError;
       }
@@ -57,19 +55,12 @@ export default function RolePicker() {
         return;
       }
 
-      // Insert new role (unique constraint ensures only one per user)
+      // Insert new role
       const { error: insertError } = await supabase
         .from('user_roles')
         .insert({ user_id: user.id, role });
 
       if (insertError) {
-        // 23505 is unique violation - user already has a role
-        if (insertError.code === '23505') {
-          await refreshProfile();
-          toast.success(`Welcome back!`);
-          navigate('/dashboard');
-          return;
-        }
         console.error('Insert role error:', insertError);
         throw insertError;
       }
@@ -80,7 +71,7 @@ export default function RolePicker() {
       
       // Redirect new users to setup pages
       if (role === 'provider') {
-        navigate('/provider-setup');
+        navigate('/provider/setup');
       } else {
         navigate('/onboarding');
       }

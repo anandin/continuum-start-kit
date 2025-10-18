@@ -14,21 +14,25 @@ import { Link } from 'react-router-dom';
 export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
-  const { user } = useAuth();
+  const { user, role, loading } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already authenticated - use useEffect to avoid render-phase navigation
+  // Redirect authenticated users appropriately
   useEffect(() => {
-    if (user) {
-      navigate('/dashboard');
+    if (!loading && user) {
+      if (role) {
+        navigate('/dashboard');
+      } else {
+        navigate('/auth/role');
+      }
     }
-  }, [user, navigate]);
+  }, [user, role, loading, navigate]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setAuthLoading(true);
 
     try {
       const { error } = await supabase.auth.signUp({
@@ -41,53 +45,40 @@ export default function Auth() {
 
       if (error) throw error;
       
-      toast.success('Account created! Please check your email to confirm.');
+      toast.success('Account created! Check your email to confirm and sign in.');
       setEmail('');
       setPassword('');
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign up');
     } finally {
-      setLoading(false);
+      setAuthLoading(false);
     }
   };
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setAuthLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
       
-      // Check if user has a role assigned
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
-      
       toast.success('Welcome back!');
-      
-      // Redirect based on role status
-      if (roleData?.role) {
-        navigate('/dashboard');
-      } else {
-        navigate('/auth/role');
-      }
+      // AuthContext will handle navigation via useEffect above
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign in');
     } finally {
-      setLoading(false);
+      setAuthLoading(false);
     }
   };
 
   const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setAuthLoading(true);
 
     try {
       const { error } = await supabase.auth.signInWithOtp({
@@ -104,12 +95,12 @@ export default function Auth() {
     } catch (error: any) {
       toast.error(error.message || 'Failed to send magic link');
     } finally {
-      setLoading(false);
+      setAuthLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    setLoading(true);
+    setAuthLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -122,7 +113,7 @@ export default function Auth() {
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign in with Google');
     } finally {
-      setLoading(false);
+      setAuthLoading(false);
     }
   };
 
@@ -176,8 +167,8 @@ export default function Auth() {
                       required
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'Signing in...' : 'Sign In'}
+                  <Button type="submit" className="w-full" disabled={authLoading}>
+                    {authLoading ? 'Signing in...' : 'Sign In'}
                   </Button>
                 </form>
               </TabsContent>
@@ -207,8 +198,8 @@ export default function Auth() {
                       minLength={6}
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'Creating account...' : 'Create Account'}
+                  <Button type="submit" className="w-full" disabled={authLoading}>
+                    {authLoading ? 'Creating account...' : 'Create Account'}
                   </Button>
                 </form>
               </TabsContent>
@@ -228,7 +219,7 @@ export default function Auth() {
               variant="outline"
               className="w-full mb-4"
               onClick={handleGoogleSignIn}
-              disabled={loading}
+              disabled={authLoading}
             >
               <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                 <path
@@ -248,7 +239,7 @@ export default function Auth() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              {loading ? 'Signing in...' : 'Sign in with Google'}
+              {authLoading ? 'Signing in...' : 'Sign in with Google'}
             </Button>
 
             {!magicLinkSent ? (
@@ -264,8 +255,8 @@ export default function Auth() {
                     required
                   />
                 </div>
-                <Button type="submit" variant="outline" className="w-full" disabled={loading}>
-                  {loading ? 'Sending...' : 'Send Magic Link'}
+                <Button type="submit" variant="outline" className="w-full" disabled={authLoading}>
+                  {authLoading ? 'Sending...' : 'Send Magic Link'}
                 </Button>
               </form>
             ) : (
