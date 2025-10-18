@@ -5,6 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Loader2, 
@@ -280,68 +282,75 @@ export default function Chat() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 via-indigo-50 to-sky-50">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+    <div className="flex h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-sky-50">
       {/* Header */}
-      <div className="fixed top-0 left-0 right-0 z-10 bg-slate-900/80 backdrop-blur-lg border-b border-white/10">
-        <div className="max-w-5xl mx-auto px-4 py-4">
+      <div className="fixed top-0 left-0 right-0 z-10 bg-white/80 backdrop-blur-lg border-b border-sky-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate('/dashboard')}
-                className="text-slate-300 hover:text-white"
+                className="text-slate-700 hover:text-indigo-900 hover:bg-sky-100"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Dashboard
               </Button>
-              <div className="h-6 w-px bg-slate-700" />
-              <div>
-                <h1 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-purple-400" />
-                  {providerConfig?.title || 'Coaching Session'}
-                </h1>
-                {session?.initial_stage && (
-                  <p className="text-sm text-slate-400">{session.initial_stage}</p>
-                )}
+              <div className="h-6 w-px bg-sky-300" />
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10 border-2 border-indigo-200">
+                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${providerConfig?.title}`} />
+                  <AvatarFallback className="bg-indigo-100 text-indigo-900">
+                    {providerConfig?.title?.charAt(0) || 'C'}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h1 className="text-base font-semibold text-indigo-900 flex items-center gap-2">
+                    {providerConfig?.title || 'Coaching Session'}
+                  </h1>
+                  {session?.initial_stage && (
+                    <p className="text-xs text-slate-600">{session.initial_stage} • 65% Progress</p>
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="bg-slate-800 border-slate-700 text-slate-300">
+              <Badge variant="outline" className="bg-sky-100 border-sky-300 text-indigo-900">
                 {session?.status === 'active' ? 'Active' : 'Ended'}
               </Badge>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-slate-300">
+                  <Button variant="ghost" size="sm" className="text-slate-700 hover:bg-sky-100">
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-700">
-                  <DropdownMenuItem onClick={handleNewSession} className="text-slate-200 cursor-pointer">
+                <DropdownMenuContent align="end" className="w-56 bg-white border-sky-200">
+                  <DropdownMenuItem onClick={handleNewSession} className="text-slate-700 cursor-pointer hover:bg-sky-50">
                     <RefreshCw className="mr-2 h-4 w-4" />
                     Start New Session
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowClearDialog(true)} className="text-slate-200 cursor-pointer">
+                  <DropdownMenuItem onClick={() => setShowClearDialog(true)} className="text-slate-700 cursor-pointer hover:bg-sky-50">
                     <Trash2 className="mr-2 h-4 w-4" />
                     Clear Messages
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/dashboard')} className="text-slate-200 cursor-pointer">
+                  <DropdownMenuItem onClick={() => navigate('/dashboard')} className="text-slate-700 cursor-pointer hover:bg-sky-50">
                     <History className="mr-2 h-4 w-4" />
                     View History
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-slate-700" />
+                  <DropdownMenuSeparator className="bg-sky-200" />
                   <DropdownMenuItem 
                     onClick={handleEndSession} 
-                    className="text-red-400 cursor-pointer focus:text-red-300"
+                    className="text-red-600 cursor-pointer focus:text-red-700 hover:bg-red-50"
                   >
                     End Session
                   </DropdownMenuItem>
@@ -352,98 +361,176 @@ export default function Chat() {
         </div>
       </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 flex flex-col pt-20">
-        <ScrollArea className="flex-1 px-4">
-          <div className="max-w-3xl mx-auto py-6 space-y-4">
-            {messages.length === 0 && !streamingMessage ? (
-              <div className="text-center py-16">
-                <Sparkles className="h-12 w-12 text-purple-400/50 mx-auto mb-4" />
-                <p className="text-slate-400 text-lg mb-2">Start your conversation</p>
-                <p className="text-slate-500 text-sm">
-                  Share your thoughts, challenges, or questions
-                </p>
-              </div>
-            ) : (
-              <>
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'seeker' ? 'justify-end' : 'justify-start'}`}
-                  >
+      {/* Main Content Area */}
+      <div className="flex-1 flex pt-16 max-w-7xl mx-auto w-full">
+        {/* Messages Panel */}
+        <div className="flex-1 flex flex-col border-r border-sky-200">
+          <ScrollArea className="flex-1 px-4">
+            <div className="max-w-3xl mx-auto py-6 space-y-4">
+              {messages.length === 0 && !streamingMessage ? (
+                <div className="text-center py-16">
+                  <Sparkles className="h-12 w-12 text-indigo-400 mx-auto mb-4" />
+                  <p className="text-slate-700 text-lg mb-2">Start your conversation</p>
+                  <p className="text-slate-500 text-sm">
+                    Share your thoughts, challenges, or questions
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {messages.map((message) => (
                     <div
-                      className={`max-w-[75%] rounded-2xl px-4 py-3 ${
-                        message.role === 'seeker'
-                          ? 'bg-purple-500/20 text-white border border-purple-500/30'
-                          : 'bg-slate-800/50 text-slate-100'
-                      }`}
+                      key={message.id}
+                      className={`flex gap-3 ${message.role === 'seeker' ? 'flex-row-reverse' : 'flex-row'}`}
                     >
-                      <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                      <p className="text-xs opacity-50 mt-2">
-                        {new Date(message.created_at).toLocaleTimeString([], { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-
-                {streamingMessage && (
-                  <div className="flex justify-start">
-                    <div className="max-w-[75%] rounded-2xl px-4 py-3 bg-slate-800/50 text-slate-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Loader2 className="h-3 w-3 animate-spin text-purple-400" />
-                        <span className="text-xs text-slate-400">Coach is typing...</span>
+                      {message.role !== 'seeker' && (
+                        <Avatar className="h-8 w-8 border-2 border-indigo-200 flex-shrink-0">
+                          <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=coach`} />
+                          <AvatarFallback className="bg-indigo-100 text-indigo-900 text-xs">C</AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div
+                        className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                          message.role === 'seeker'
+                            ? 'bg-gradient-to-br from-indigo-600 to-sky-600 text-white shadow-md'
+                            : 'bg-white text-slate-800 border border-sky-200 shadow-sm'
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
+                        <p className={`text-xs mt-2 ${message.role === 'seeker' ? 'text-indigo-200' : 'text-slate-500'}`}>
+                          {new Date(message.created_at).toLocaleTimeString([], { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </p>
                       </div>
-                      <p className="whitespace-pre-wrap leading-relaxed">{streamingMessage}</p>
                     </div>
-                  </div>
-                )}
-              </>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
+                  ))}
 
-        {/* Input Area */}
-        <div className="border-t border-white/10 bg-slate-900/50 backdrop-blur-lg p-4">
-          <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto">
-            <div className="flex gap-2">
-              <Input
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder={session?.status === 'ended' ? 'Session ended' : 'Type your message...'}
-                disabled={sending || session?.status === 'ended'}
-                className="flex-1 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 rounded-full px-6"
-              />
-              <Button 
-                type="submit" 
-                disabled={sending || !inputMessage.trim() || session?.status === 'ended'}
-                className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 rounded-full px-6"
-              >
-                {sending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
+                  {streamingMessage && (
+                    <div className="flex gap-3">
+                      <Avatar className="h-8 w-8 border-2 border-indigo-200 flex-shrink-0">
+                        <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=coach`} />
+                        <AvatarFallback className="bg-indigo-100 text-indigo-900 text-xs">C</AvatarFallback>
+                      </Avatar>
+                      <div className="max-w-[75%] rounded-2xl px-4 py-3 bg-white border border-sky-200 shadow-sm">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Loader2 className="h-3 w-3 animate-spin text-indigo-600" />
+                          <span className="text-xs text-slate-500">Coach is typing...</span>
+                        </div>
+                        <p className="whitespace-pre-wrap leading-relaxed text-sm text-slate-800">{streamingMessage}</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              <div ref={messagesEndRef} />
             </div>
-          </form>
+          </ScrollArea>
+
+          {/* Input Area */}
+          <div className="border-t border-sky-200 bg-white/80 backdrop-blur-lg p-4">
+            <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto">
+              <div className="flex gap-2">
+                <Input
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  placeholder={session?.status === 'ended' ? 'Session ended' : 'Type your message...'}
+                  disabled={sending || session?.status === 'ended'}
+                  className="flex-1 bg-white border-sky-300 text-slate-900 placeholder:text-slate-400 rounded-full px-6 focus:border-indigo-500 focus:ring-indigo-500"
+                />
+                <Button 
+                  type="submit" 
+                  disabled={sending || !inputMessage.trim() || session?.status === 'ended'}
+                  className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 rounded-full px-6 shadow-md"
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* Right Panel - Nudges & Insights */}
+        <div className="w-80 bg-white/80 backdrop-blur-lg p-6 space-y-6 overflow-y-auto">
+          <div>
+            <h3 className="text-sm font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-600" />
+              Today's Nudge
+            </h3>
+            <div className="bg-gradient-to-br from-indigo-50 to-sky-50 border border-sky-200 rounded-xl p-4">
+              <p className="text-sm text-slate-700">
+                "Take a moment to reflect on one challenge you've overcome this week. What did you learn?"
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-indigo-900 mb-3">Reflection Tracker</h3>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-600">Today's Progress</span>
+                <span className="text-indigo-600 font-semibold">65%</span>
+              </div>
+              <Progress value={65} className="h-2" />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-indigo-900 mb-3">Recent Insights</h3>
+            <div className="space-y-2">
+              <div className="bg-white border border-sky-200 rounded-lg p-3">
+                <p className="text-xs text-slate-700">Strong emotional awareness in recent sessions</p>
+              </div>
+              <div className="bg-white border border-sky-200 rounded-lg p-3">
+                <p className="text-xs text-slate-700">Consistent engagement with reflection exercises</p>
+              </div>
+              <div className="bg-white border border-sky-200 rounded-lg p-3">
+                <p className="text-xs text-slate-700">Building leadership confidence steadily</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-4">
+            <Button 
+              onClick={() => navigate(`/session-summary/${sessionId}`)}
+              variant="outline"
+              className="w-full border-indigo-300 text-indigo-900 hover:bg-indigo-50"
+              size="sm"
+            >
+              View Summary
+            </Button>
+            <Button 
+              onClick={() => toast.success('Progress saved!')}
+              className="w-full bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700"
+              size="sm"
+            >
+              Save Progress
+            </Button>
+          </div>
+
+          <div className="pt-6 border-t border-sky-200">
+            <p className="text-xs text-center text-slate-600 italic">
+              "Every step forward is progress worth celebrating"
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Clear Messages Dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
-        <AlertDialogContent className="bg-slate-900 border-slate-700">
+        <AlertDialogContent className="bg-white border-sky-200">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Clear all messages?</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
+            <AlertDialogTitle className="text-indigo-900">Clear all messages?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600">
               This will permanently delete all messages in this conversation. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-slate-800 text-slate-300 border-slate-700">
+            <AlertDialogCancel className="bg-white text-slate-700 border-sky-300 hover:bg-sky-50">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
