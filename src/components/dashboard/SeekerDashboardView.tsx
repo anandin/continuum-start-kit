@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
+import React from 'react';
 import { 
   MessageSquare, 
   TrendingUp, 
@@ -25,6 +26,36 @@ interface SeekerDashboardViewProps {
 export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
   const navigate = useNavigate();
   const { loading, engagements, getLastSessionDate, getLatestStage, getTrajectoryStatus } = useEngagements(userId, 'seeker');
+  const [latestSummary, setLatestSummary] = React.useState<any>(null);
+  const [loadingSummary, setLoadingSummary] = React.useState(false);
+
+  React.useEffect(() => {
+    if (engagements.length > 0 && activeEngagements[0]) {
+      loadLatestSummary();
+    }
+  }, [engagements]);
+
+  const loadLatestSummary = async () => {
+    setLoadingSummary(true);
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase
+        .from('summaries')
+        .select('*')
+        .in('session_id', activeEngagements[0]?.sessions?.map(s => s.id) || [])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!error && data) {
+        setLatestSummary(data);
+      }
+    } catch (error) {
+      console.error('Error loading summary:', error);
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -40,7 +71,10 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
     );
   }
 
-  const activeEngagements = engagements.filter(e => e.status === 'active');
+  const activeEngagements = React.useMemo(() => 
+    engagements.filter(e => e.status === 'active'), 
+    [engagements]
+  );
   const hasEngagements = engagements.length > 0;
   const totalSessions = engagements.reduce((acc, e) => acc + (e.sessions?.length || 0), 0);
   const completedSessions = engagements.reduce((acc, e) => 
@@ -193,16 +227,74 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
               </Button>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-slate-700">Progress: {getLatestStage(activeEngagements[0])}</span>
-                <span className="text-indigo-600 font-semibold">65%</span>
+            {/* Recent Insights & Next Action */}
+            {latestSummary && (
+              <div className="space-y-4 pt-4 border-t border-sky-200">
+                {/* Key Insights */}
+                {latestSummary.key_insights && latestSummary.key_insights.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                      <Sparkles className="h-4 w-4 text-indigo-600" />
+                      Recent Insights
+                    </h4>
+                    <div className="space-y-2">
+                      {latestSummary.key_insights.slice(0, 2).map((insight: string, idx: number) => (
+                        <div key={idx} className="flex items-start gap-2 text-sm text-slate-600">
+                          <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 mt-1.5 flex-shrink-0" />
+                          <span>{insight}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Next Action */}
+                {latestSummary.next_action && (
+                  <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
+                    <h4 className="text-sm font-semibold text-indigo-900 mb-1 flex items-center gap-1">
+                      <Target className="h-4 w-4" />
+                      Next Action
+                    </h4>
+                    <p className="text-sm text-slate-700">{latestSummary.next_action}</p>
+                  </div>
+                )}
+
+                {/* View Full Summary */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                  onClick={() => {
+                    const latestSession = activeEngagements[0].sessions?.sort((a, b) => 
+                      new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+                    )[0];
+                    if (latestSession) {
+                      navigate(`/session-summary/${latestSession.id}`);
+                    }
+                  }}
+                >
+                  View Full Summary
+                </Button>
               </div>
-              <Progress value={65} className="h-2" />
-              <p className="text-sm text-slate-600 mt-2">
-                "Your recent insights show strong progress in leadership awareness. Keep building on this momentum!"
-              </p>
-            </div>
+            )}
+
+            {/* Loading state */}
+            {loadingSummary && !latestSummary && (
+              <div className="space-y-2 pt-4 border-t border-sky-200">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+            )}
+
+            {/* Empty state - first session */}
+            {!loadingSummary && !latestSummary && (
+              <div className="pt-4 border-t border-sky-200">
+                <p className="text-sm text-slate-600 italic">
+                  Complete your first session to see insights and progress tracking here.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
