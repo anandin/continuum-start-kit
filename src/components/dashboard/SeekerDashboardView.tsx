@@ -29,34 +29,6 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
   const [latestSummary, setLatestSummary] = React.useState<any>(null);
   const [loadingSummary, setLoadingSummary] = React.useState(false);
 
-  React.useEffect(() => {
-    if (engagements.length > 0 && activeEngagements[0]) {
-      loadLatestSummary();
-    }
-  }, [engagements]);
-
-  const loadLatestSummary = async () => {
-    setLoadingSummary(true);
-    try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      const { data, error } = await supabase
-        .from('summaries')
-        .select('*')
-        .in('session_id', activeEngagements[0]?.sessions?.map(s => s.id) || [])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (!error && data) {
-        setLatestSummary(data);
-      }
-    } catch (error) {
-      console.error('Error loading summary:', error);
-    } finally {
-      setLoadingSummary(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="space-y-6">
@@ -77,6 +49,37 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
   );
   const hasEngagements = engagements.length > 0;
   const totalSessions = engagements.reduce((acc, e) => acc + (e.sessions?.length || 0), 0);
+
+  const loadLatestSummary = React.useCallback(async () => {
+    if (!activeEngagements[0]?.sessions) return;
+    
+    setLoadingSummary(true);
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase
+        .from('summaries')
+        .select('*')
+        .in('session_id', activeEngagements[0].sessions.map(s => s.id))
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        setLatestSummary(data);
+      }
+    } catch (error) {
+      console.error('Error loading summary:', error);
+    } finally {
+      setLoadingSummary(false);
+    }
+  }, [activeEngagements]);
+
+  React.useEffect(() => {
+    if (activeEngagements.length > 0) {
+      loadLatestSummary();
+    }
+  }, [activeEngagements, loadLatestSummary]);
+
   const completedSessions = engagements.reduce((acc, e) => 
     acc + (e.sessions?.filter(s => s.status === 'ended')?.length || 0), 0
   );
