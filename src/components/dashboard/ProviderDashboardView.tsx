@@ -185,7 +185,6 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
                     const trajectoryStatus = getTrajectoryStatus(engagement);
                     const latestSession = engagement.sessions?.[0];
                     const latestSummary = latestSession?.summaries?.[0];
-                    const progress = 0; // TODO: Calculate from stage progression
                     
                     return (
                       <Card
@@ -216,12 +215,7 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
                                 <Badge variant="outline" className="rounded-lg border-primary/30 bg-primary/5 text-primary">
                                   {getLatestStage(engagement)}
                                 </Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {progress}% complete
-                                </span>
                               </div>
-                              
-                              <Progress value={progress} className="h-2 mb-3" />
                               
                               <div className="flex gap-2">
                                 <Button 

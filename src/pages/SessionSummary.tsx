@@ -316,10 +316,10 @@ export default function SessionSummary() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
-                {Array.isArray(summary.key_insights) && summary.key_insights.map((insight: string, index: number) => (
+                {Array.isArray(summary.key_insights) && summary.key_insights.map((insight: any, index: number) => (
                   <li key={index} className="flex gap-3">
                     <div className="mt-1 h-2 w-2 rounded-full bg-indigo-600 flex-shrink-0" />
-                    <p className="text-slate-700">{insight}</p>
+                    <p className="text-slate-700">{typeof insight === 'string' ? insight : insight.insight}</p>
                   </li>
                 ))}
               </ul>
