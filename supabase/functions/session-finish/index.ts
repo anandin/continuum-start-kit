@@ -6,35 +6,58 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Validation function
+function validateSessionFinishInput(input: any) {
+  if (!input.sessionId || typeof input.sessionId !== 'string') {
+    throw new Error('Invalid sessionId');
+  }
+  return { sessionId: input.sessionId };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { sessionId } = await req.json();
-
-    if (!sessionId) {
+    // Extract and verify JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "Missing sessionId" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: 'Unauthorized - No authorization header' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!LOVABLE_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!LOVABLE_API_KEY || !SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Missing required environment variables");
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Create client with user's JWT for RLS
+    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } }
+    });
 
-    console.log("Finishing session:", sessionId);
+    // Verify user is authenticated
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    // 1. Load session and engagement details with null-safe guards
-    const { data: session, error: sessionError } = await supabase
+    // Parse and validate input
+    const rawInput = await req.json();
+    const { sessionId } = validateSessionFinishInput(rawInput);
+
+    // Verify user owns the session
+    const { data: session, error: sessionError } = await supabaseUser
       .from("sessions")
       .select(`
         *,
@@ -42,10 +65,8 @@ serve(async (req) => {
           id,
           provider_id,
           seeker_id,
-          status,
-          provider:profiles (
-            id,
-            email
+          seeker:seekers (
+            owner_id
           )
         )
       `)
@@ -53,10 +74,27 @@ serve(async (req) => {
       .single();
 
     if (sessionError || !session || !session.engagement) {
-      throw new Error("Session or engagement not found");
+      return new Response(
+        JSON.stringify({ error: 'Session not found or access denied' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // 2. Load provider config
+    // Check ownership
+    const isProvider = session.engagement.provider_id === user.id;
+    const isSeeker = session.engagement.seeker?.owner_id === user.id;
+
+    if (!isProvider && !isSeeker) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden - You do not have access to this session' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Use service role for database operations
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Load provider config
     const { data: config, error: configError } = await supabase
       .from("provider_configs")
       .select("*")
@@ -66,7 +104,7 @@ serve(async (req) => {
     if (configError) throw configError;
     if (!config) throw new Error("Provider config not found");
 
-    // 3. Load full transcript
+    // Load full transcript
     const { data: messages, error: messagesError } = await supabase
       .from("messages")
       .select("*")
@@ -75,23 +113,13 @@ serve(async (req) => {
 
     if (messagesError) throw messagesError;
 
-    // 4. Load progress indicators (with engagement_id support)
-    const { data: indicators, error: indicatorsError } = await supabase
-      .from("progress_indicators")
-      .select("*")
-      .or(`session_id.eq.${sessionId},engagement_id.eq.${session.engagement.id}`)
-      .order("created_at", { ascending: true });
-
-    if (indicatorsError) console.error("Error loading indicators:", indicatorsError);
-
-    // 5. Build transcript for Gemini
+    // Build transcript for Gemini
     const transcriptForAI = messages.map(m => ({
       role: m.role,
       content: m.content,
       timestamp: m.created_at
     }));
 
-    // Build provider config structure for prompt
     const providerConfigForAI = {
       stages: config.stages || [],
       labels: config.labels || [],
@@ -127,8 +155,6 @@ Guidance:
 - If you infer sentiment, include a single insight { "label":"sentiment", "score": -1..+1 }.
 - Only return JSON. No extra text.`;
 
-    console.log("Calling Gemini for session summary...");
-
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -162,7 +188,6 @@ Guidance:
 
     if (!content) throw new Error("No content in Gemini response");
 
-    // Parse JSON response
     let summary;
     try {
       const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -172,14 +197,11 @@ Guidance:
       throw new Error("Invalid JSON response from AI");
     }
 
-    console.log("Generated summary:", summary);
-
-    // Validate required fields
     if (!summary.assigned_stage || !summary.session_summary || !summary.next_action || !summary.trajectory_status) {
       throw new Error("AI summary missing required fields");
     }
 
-    // 6. Insert summary into database
+    // Insert summary into database
     const { data: summaryRecord, error: summaryError } = await supabase
       .from("summaries")
       .insert({
@@ -195,7 +217,7 @@ Guidance:
 
     if (summaryError) throw summaryError;
 
-    // 7. Update session status
+    // Update session status
     const { error: updateError } = await supabase
       .from("sessions")
       .update({
@@ -205,8 +227,6 @@ Guidance:
       .eq("id", sessionId);
 
     if (updateError) throw updateError;
-
-    console.log("Session finished successfully");
 
     return new Response(
       JSON.stringify({ 

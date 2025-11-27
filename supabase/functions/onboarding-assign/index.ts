@@ -6,20 +6,96 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Validation function
+function validateOnboardingInput(input: any) {
+  if (!input.answers || typeof input.answers !== 'object') {
+    throw new Error('Invalid answers object');
+  }
+  if (!Array.isArray(input.stages) || input.stages.length === 0) {
+    throw new Error('stages must be a non-empty array');
+  }
+  
+  // Validate answer fields
+  const { current_pain, desired_outcome, present_challenge, recent_win } = input.answers;
+  
+  if (!current_pain || typeof current_pain !== 'string' || current_pain.trim().length === 0) {
+    throw new Error('current_pain is required');
+  }
+  if (current_pain.length > 1000) {
+    throw new Error('current_pain exceeds maximum length of 1000 characters');
+  }
+  
+  if (!desired_outcome || typeof desired_outcome !== 'string' || desired_outcome.trim().length === 0) {
+    throw new Error('desired_outcome is required');
+  }
+  if (desired_outcome.length > 1000) {
+    throw new Error('desired_outcome exceeds maximum length of 1000 characters');
+  }
+  
+  if (!present_challenge || typeof present_challenge !== 'string' || present_challenge.trim().length === 0) {
+    throw new Error('present_challenge is required');
+  }
+  if (present_challenge.length > 1000) {
+    throw new Error('present_challenge exceeds maximum length of 1000 characters');
+  }
+  
+  if (!recent_win || typeof recent_win !== 'string' || recent_win.trim().length === 0) {
+    throw new Error('recent_win is required');
+  }
+  if (recent_win.length > 1000) {
+    throw new Error('recent_win exceeds maximum length of 1000 characters');
+  }
+  
+  return {
+    answers: {
+      current_pain: current_pain.trim(),
+      desired_outcome: desired_outcome.trim(),
+      present_challenge: present_challenge.trim(),
+      recent_win: recent_win.trim()
+    },
+    stages: input.stages
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { answers, stages } = await req.json();
-    
-    if (!answers || !stages) {
+    // Extract and verify JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: answers and stages" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: 'Unauthorized - No authorization header' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error("Missing Supabase environment variables");
+    }
+
+    // Create client with user's JWT
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Verify user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Parse and validate input
+    const rawInput = await req.json();
+    const { answers, stages } = validateOnboardingInput(rawInput);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -28,13 +104,6 @@ serve(async (req) => {
 
     // Build the prompt for Gemini
     const stageNames = stages.map((s: any) => s.name);
-    
-    const answersForAI = {
-      current_pain: answers.current_pain,
-      desired_outcome: answers.desired_outcome,
-      present_challenge: answers.present_challenge,
-      recent_win: answers.recent_win
-    };
 
     const prompt = `Assign an initial stage for a new seeker.
 
@@ -45,12 +114,10 @@ Output STRICT JSON ONLY:
 }
 
 Inputs:
-- answers: ${JSON.stringify(answersForAI)}
+- answers: ${JSON.stringify(answers)}
 - provider_config.stages: ${JSON.stringify(stageNames)}
 
 If ambiguous, choose the earliest relevant stage.`;
-
-    console.log("Calling Gemini API with prompt:", prompt);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -95,8 +162,6 @@ If ambiguous, choose the earliest relevant stage.`;
     }
 
     const data = await response.json();
-    console.log("Gemini response:", data);
-
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
       throw new Error("No content in Gemini response");
@@ -105,7 +170,6 @@ If ambiguous, choose the earliest relevant stage.`;
     // Parse the JSON response from Gemini
     let result;
     try {
-      // Remove markdown code blocks if present
       const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       result = JSON.parse(cleanContent);
     } catch (parseError) {
