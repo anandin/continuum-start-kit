@@ -6,33 +6,105 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Simple inline validation (Zod equivalent)
+function validateChatInput(input: any) {
+  if (!input.sessionId || typeof input.sessionId !== 'string' || input.sessionId.length === 0) {
+    throw new Error('Invalid sessionId');
+  }
+  if (!input.message || typeof input.message !== 'string') {
+    throw new Error('Invalid message');
+  }
+  if (input.message.trim().length === 0) {
+    throw new Error('Message cannot be empty');
+  }
+  if (input.message.length > 5000) {
+    throw new Error('Message exceeds maximum length of 5000 characters');
+  }
+  return { sessionId: input.sessionId, message: input.message.trim() };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { sessionId, message } = await req.json();
-
-    if (!sessionId || !message) {
+    // Extract and verify JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "Missing sessionId or message" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: 'Unauthorized - No authorization header' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!LOVABLE_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!LOVABLE_API_KEY || !SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Missing required environment variables");
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Create client with user's JWT for RLS
+    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } }
+    });
 
-    // 1. Insert the user's message
-    const { error: insertError } = await supabase
+    // Verify user is authenticated
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Parse and validate input
+    const rawInput = await req.json();
+    const { sessionId, message } = validateChatInput(rawInput);
+
+    // Verify user owns the session (using user's JWT - RLS applies)
+    const { data: session, error: sessionError } = await supabaseUser
+      .from("sessions")
+      .select(`
+        *,
+        engagement:engagements (
+          id,
+          provider_id,
+          seeker_id,
+          seeker:seekers (
+            owner_id
+          )
+        )
+      `)
+      .eq("id", sessionId)
+      .single();
+
+    if (sessionError || !session || !session.engagement) {
+      return new Response(
+        JSON.stringify({ error: 'Session not found or access denied' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if user is either the provider or the seeker
+    const isProvider = session.engagement.provider_id === user.id;
+    const isSeeker = session.engagement.seeker?.owner_id === user.id;
+
+    if (!isProvider && !isSeeker) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden - You do not have access to this session' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Use service role ONLY for inserting messages (bypassing RLS for agent messages)
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Insert the user's message
+    const { error: insertError } = await supabaseAdmin
       .from("messages")
       .insert({
         session_id: sessionId,
@@ -42,33 +114,14 @@ serve(async (req) => {
 
     if (insertError) throw insertError;
 
-    // 2. Load session and engagement details with null-safe guards
-    const { data: session, error: sessionError } = await supabase
-      .from("sessions")
-      .select(`
-        *,
-        engagement:engagements (
-          id,
-          provider_id,
-          seeker_id,
-          status
-        )
-      `)
-      .eq("id", sessionId)
-      .single();
-
-    if (sessionError || !session || !session.engagement) {
-      throw new Error("Session or engagement not found");
-    }
-
-    // 3. Load provider config and agent config
-    const { data: providerConfig } = await supabase
+    // Load provider config and agent config using admin client
+    const { data: providerConfig } = await supabaseAdmin
       .from("provider_configs")
       .select("*")
       .eq("provider_id", session.engagement.provider_id)
       .maybeSingle();
 
-    const { data: agentConfig } = await supabase
+    const { data: agentConfig } = await supabaseAdmin
       .from("provider_agent_configs")
       .select("*")
       .eq("provider_id", session.engagement.provider_id)
@@ -76,7 +129,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // 4. Build system prompt from agent config
+    // Build system prompt from agent config
     let systemPrompt = 'You are a helpful AI coaching assistant.';
     
     if (agentConfig) {
@@ -100,8 +153,8 @@ serve(async (req) => {
       if (session.initial_stage) systemPrompt += `Current Stage: ${session.initial_stage}\n`;
     }
 
-    // 5. Load conversation history
-    const { data: recentMessages } = await supabase
+    // Load conversation history
+    const { data: recentMessages } = await supabaseAdmin
       .from("messages")
       .select("*")
       .eq("session_id", sessionId)
@@ -110,9 +163,8 @@ serve(async (req) => {
 
     const messagesInOrder = (recentMessages || []).reverse();
 
-    // 6. Call Lovable AI with selected model
+    // Call Lovable AI with selected model
     const selectedModel = agentConfig?.selected_model || 'google/gemini-2.5-flash';
-    console.log('Using model:', selectedModel);
 
     const aiMessages = [
       { role: "system", content: systemPrompt },
@@ -155,7 +207,7 @@ serve(async (req) => {
       throw new Error(`AI API error: ${response.status}`);
     }
 
-    // 7. Stream response back to client
+    // Stream response back to client
     let fullResponse = "";
     
     const stream = new ReadableStream({
@@ -200,7 +252,7 @@ serve(async (req) => {
 
           // Save complete response to database
           if (fullResponse) {
-            await supabase.from("messages").insert({
+            await supabaseAdmin.from("messages").insert({
               session_id: sessionId,
               role: "agent",
               content: fullResponse,

@@ -19,53 +19,112 @@ interface TrajectoryRule {
   message: string;
 }
 
+// Validation function
+function validateTrajectoryInput(input: any) {
+  if (!input.sessionId || typeof input.sessionId !== 'string') {
+    throw new Error('Invalid sessionId');
+  }
+  if (!Array.isArray(input.recentMessages)) {
+    throw new Error('recentMessages must be an array');
+  }
+  if (!Array.isArray(input.trajectoryRules)) {
+    throw new Error('trajectoryRules must be an array');
+  }
+  return {
+    sessionId: input.sessionId,
+    recentMessages: input.recentMessages,
+    trajectoryRules: input.trajectoryRules
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { sessionId, recentMessages, trajectoryRules } = await req.json();
-
-    if (!sessionId || !recentMessages || !trajectoryRules) {
+    // Extract and verify JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: 'Unauthorized - No authorization header' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Missing Supabase environment variables");
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Create client with user's JWT for RLS
+    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } }
+    });
 
-    console.log("Trajectory check for session:", sessionId);
-    console.log("Recent messages count:", recentMessages.length);
-    console.log("Trajectory rules count:", trajectoryRules.length);
+    // Verify user is authenticated
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Parse and validate input
+    const rawInput = await req.json();
+    const { sessionId, recentMessages, trajectoryRules } = validateTrajectoryInput(rawInput);
+
+    // Verify user owns the session
+    const { data: session, error: sessionError } = await supabaseUser
+      .from("sessions")
+      .select(`
+        engagement_id,
+        engagement:engagements!inner (
+          provider_id,
+          seeker:seekers!inner (
+            owner_id
+          )
+        )
+      `)
+      .eq("id", sessionId)
+      .single();
+
+    if (sessionError || !session || !session.engagement) {
+      return new Response(
+        JSON.stringify({ error: 'Session not found or access denied' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check ownership - with type assertion for nested objects
+    const engagement = session.engagement as any;
+    const isProvider = engagement.provider_id === user.id;
+    const isSeeker = engagement.seeker?.owner_id === user.id;
+
+    if (!isProvider && !isSeeker) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden - You do not have access to this session' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Use service role for database operations
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Tier 1: Heuristic checks
     const tier1Result = runTier1Heuristics(recentMessages);
     
     if (tier1Result) {
-      console.log("Tier 1 match:", tier1Result);
-      
-      // Insert progress indicator with engagement_id
-      const { data: session } = await supabase
-        .from("sessions")
-        .select("engagement_id")
-        .eq("id", sessionId)
-        .single();
-
       const { data: indicator, error: insertError } = await supabase
         .from("progress_indicators")
         .insert({
           session_id: sessionId,
-          engagement_id: session?.engagement_id || null,
+          engagement_id: session.engagement_id || null,
           type: tier1Result.type,
           detail: tier1Result.detail,
         })
@@ -74,8 +133,6 @@ serve(async (req) => {
 
       if (insertError) {
         console.error("Error inserting indicator:", insertError);
-      } else {
-        console.log("Created indicator:", indicator);
       }
 
       return new Response(
@@ -87,10 +144,8 @@ serve(async (req) => {
       );
     }
 
-    // Tier 2: Optional Gemini analysis (if API key available and rules defined)
+    // Tier 2: Optional Gemini analysis
     if (LOVABLE_API_KEY && trajectoryRules.length > 0) {
-      console.log("Running Tier 2 Gemini analysis");
-      
       const tier2Result = await runTier2GeminiAnalysis(
         recentMessages,
         trajectoryRules,
@@ -98,20 +153,11 @@ serve(async (req) => {
       );
 
       if (tier2Result) {
-        console.log("Tier 2 match:", tier2Result);
-        
-        // Insert progress indicator with engagement_id
-        const { data: session } = await supabase
-          .from("sessions")
-          .select("engagement_id")
-          .eq("id", sessionId)
-          .single();
-
         const { data: indicator, error: insertError } = await supabase
           .from("progress_indicators")
           .insert({
             session_id: sessionId,
-            engagement_id: session?.engagement_id || null,
+            engagement_id: session.engagement_id || null,
             type: tier2Result.type,
             detail: tier2Result.detail,
           })
@@ -120,8 +166,6 @@ serve(async (req) => {
 
         if (insertError) {
           console.error("Error inserting indicator:", insertError);
-        } else {
-          console.log("Created indicator:", indicator);
         }
 
         return new Response(
@@ -135,7 +179,6 @@ serve(async (req) => {
     }
 
     // No trajectory issues detected
-    console.log("No trajectory issues detected");
     return new Response(
       JSON.stringify({ indicator: null, matched: false }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -151,16 +194,14 @@ serve(async (req) => {
 });
 
 function runTier1Heuristics(messages: Message[]) {
-  // Only check seeker messages
   const seekerMessages = messages.filter(m => m.role === 'seeker');
   
   if (seekerMessages.length < 3) {
-    return null; // Not enough messages to detect patterns
+    return null;
   }
 
-  const recentSeeker = seekerMessages.slice(-5); // Last 5 seeker messages
+  const recentSeeker = seekerMessages.slice(-5);
   
-  // Check 1: Keyword repetition (same topic/words repeated 3+ times)
   const repetitionResult = checkKeywordRepetition(recentSeeker);
   if (repetitionResult) {
     return {
@@ -174,7 +215,6 @@ function runTier1Heuristics(messages: Message[]) {
     };
   }
 
-  // Check 2: No new action/progress for N turns (5+ turns)
   if (recentSeeker.length >= 5) {
     const noProgressResult = checkNoProgress(recentSeeker);
     if (noProgressResult) {
@@ -190,7 +230,6 @@ function runTier1Heuristics(messages: Message[]) {
     }
   }
 
-  // Check 3: Short responses / disengagement
   const disengagementResult = checkDisengagement(recentSeeker);
   if (disengagementResult) {
     return {
@@ -208,7 +247,6 @@ function runTier1Heuristics(messages: Message[]) {
 }
 
 function checkKeywordRepetition(messages: Message[]) {
-  // Extract meaningful words (3+ chars, not common words)
   const commonWords = new Set(['the', 'and', 'but', 'for', 'with', 'this', 'that', 'have', 'from', 'they', 'what', 'when', 'been', 'have', 'their', 'said', 'each', 'which', 'about', 'would', 'there', 'could', 'other', 'into', 'than', 'then', 'them', 'these', 'some', 'just', 'like', 'also', 'can', 'not', 'are', 'was', 'were', 'will', 'been', 'more']);
   
   const wordCounts = new Map<string, number>();
@@ -224,7 +262,6 @@ function checkKeywordRepetition(messages: Message[]) {
     });
   });
 
-  // Find words repeated 3+ times
   const repeatedWords = Array.from(wordCounts.entries())
     .filter(([_, count]) => count >= 3)
     .sort((a, b) => b[1] - a[1])
@@ -242,7 +279,6 @@ function checkKeywordRepetition(messages: Message[]) {
 }
 
 function checkNoProgress(messages: Message[]) {
-  // Look for action words in messages
   const actionWords = ['will', 'going', 'plan', 'start', 'begin', 'try', 'attempt', 'commit', 'decide', 'choose', 'change', 'do', 'make', 'create', 'build'];
   
   let actionCount = 0;
@@ -253,7 +289,6 @@ function checkNoProgress(messages: Message[]) {
     }
   });
 
-  // If less than 40% of messages contain action words
   if (actionCount < messages.length * 0.4) {
     return {
       reason: `Only ${actionCount} out of ${messages.length} recent messages mentioned actions or plans`
@@ -266,7 +301,6 @@ function checkNoProgress(messages: Message[]) {
 function checkDisengagement(messages: Message[]) {
   const avgLength = messages.reduce((sum, m) => sum + m.content.length, 0) / messages.length;
   
-  // If average message length is very short (< 50 chars) for 3+ messages
   if (avgLength < 50 && messages.length >= 3) {
     return {
       reason: `Average message length is ${avgLength.toFixed(0)} characters, indicating possible disengagement`,
@@ -349,13 +383,9 @@ If none match: {"indicator_type":"steady","matched_rule_index":null,"reason":"no
     
     if (!content) return null;
 
-    // Parse JSON response
     const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const result = JSON.parse(cleanContent);
 
-    console.log("Tier 2 analysis result:", result);
-
-    // Check if we got a meaningful indicator (not just "steady" with no match)
     if (result.indicator_type && result.indicator_type !== 'steady') {
       const matchedRule = result.matched_rule_index !== null && result.matched_rule_index >= 0 
         ? trajectoryRules[result.matched_rule_index] 
