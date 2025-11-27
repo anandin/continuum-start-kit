@@ -272,10 +272,10 @@ export default function ProviderEngagement() {
                                       .filter((insight: any) => 
                                         typeof insight === 'string' || insight.label !== 'sentiment'
                                       )
-                                      .map((insight: string, idx: number) => (
+                                      .map((insight: any, idx: number) => (
                                         <li key={idx} className="flex gap-2 text-sm text-slate-300">
                                           <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 flex-shrink-0" />
-                                          {insight}
+                                          {typeof insight === 'string' ? insight : insight.insight}
                                         </li>
                                       ))
                                   }

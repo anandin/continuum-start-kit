@@ -354,7 +354,7 @@ export default function Chat() {
                     {providerConfig?.title || 'Coaching Session'}
                   </h1>
                   {session?.initial_stage && (
-                    <p className="text-xs text-slate-600">{session.initial_stage} • 65% Progress</p>
+                    <p className="text-xs text-slate-600">{session.initial_stage}</p>
                   )}
                 </div>
               </div>

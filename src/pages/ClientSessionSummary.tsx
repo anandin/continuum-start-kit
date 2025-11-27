@@ -176,7 +176,6 @@ export default function ClientSessionSummary() {
   }
 
   const seekerAlias = engagement.seeker?.owner_id ? `Seeker ${engagement.seeker.owner_id.slice(0, 8)}` : 'Unknown Seeker';
-  const progress = 0; // TODO: Calculate from stage progression
   const trajectoryStatus = latestSummary?.trajectory_status || 'steady';
 
   return (
@@ -237,14 +236,17 @@ export default function ClientSessionSummary() {
               <CardContent className="space-y-6">
                 {latestSummary ? (
                   <>
-                    {/* Progress Bar */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Progress</span>
-                        <span className="font-semibold text-foreground">{progress}%</span>
+                    {/* Current Stage */}
+                    {latestSummary.assigned_stage && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Current Stage</span>
+                          <Badge variant="outline" className="rounded-lg">
+                            {latestSummary.assigned_stage}
+                          </Badge>
+                        </div>
                       </div>
-                      <Progress value={progress} className="h-3" />
-                    </div>
+                    )}
 
                     {/* Summary Text */}
                     <div className="rounded-xl bg-background/50 p-4">
@@ -259,10 +261,10 @@ export default function ClientSessionSummary() {
                       <div>
                         <h3 className="font-semibold text-foreground mb-3">Key Insights</h3>
                         <div className="space-y-2">
-                          {latestSummary.key_insights.map((insight: string, idx: number) => (
+                          {latestSummary.key_insights.map((insight: any, idx: number) => (
                             <div key={idx} className="flex items-start gap-3 rounded-xl bg-background/50 p-3">
                               <CheckCircle2 className="h-5 w-5 text-success mt-0.5 flex-shrink-0" />
-                              <p className="text-sm text-muted-foreground">{insight}</p>
+                              <p className="text-sm text-muted-foreground">{typeof insight === 'string' ? insight : insight.insight}</p>
                             </div>
                           ))}
                         </div>
