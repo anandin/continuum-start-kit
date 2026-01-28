@@ -90,7 +90,7 @@ export default function RolePicker() {
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold mb-2 text-white">Choose Your Role</CardTitle>
           <CardDescription className="text-slate-300">
-            Select how you'd like to use Bloom. You can change this later.
+            Select how you'd like to use Haven. You can change this later.
           </CardDescription>
         </CardHeader>
         <CardContent>

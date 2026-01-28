@@ -43,10 +43,10 @@ export default function Dashboard() {
       <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
-            <h1 className="text-2xl font-bold">
-              <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-                Bloom
-              </span>
+          <h1 className="text-2xl font-bold">
+            <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
+              Haven
+            </span>
             </h1>
             <p className="text-sm text-slate-400 capitalize">
               {role} Dashboard

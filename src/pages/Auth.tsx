@@ -129,11 +129,11 @@ export default function Auth() {
           <CardHeader className="text-center">
             <CardTitle className="text-3xl font-bold">
               <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-                Bloom
+                Haven
               </span>
             </CardTitle>
             <CardDescription className="text-slate-300">
-              Sign in to continue your growth journey
+              Your safe space for growth
             </CardDescription>
           </CardHeader>
           <CardContent>
