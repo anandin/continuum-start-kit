@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle } from 'lucide-react';
+import { ArrowRight, Heart, Eye, Sparkles } from 'lucide-react';
 
 type AudienceTab = 'individuals' | 'experts';
 
@@ -14,7 +14,7 @@ export default function Landing() {
       <nav className="container mx-auto flex items-center justify-between px-4 py-6">
         <h1 className="text-2xl font-bold">
           <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-            Bloom
+            Haven
           </span>
         </h1>
         <Link to="/auth">
@@ -55,21 +55,21 @@ export default function Landing() {
         <div className="container mx-auto px-4 py-20 md:py-32">
           <div className="mx-auto max-w-4xl text-center">
             <h2 className="mb-6 text-5xl font-bold tracking-tight text-white md:text-7xl">
-              Unlock Your Potential,{' '}
+              Your Expert's Wisdom,{' '}
               <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-                24/7
+                Always With You
               </span>
             </h2>
             <p className="mb-8 text-xl text-slate-300 md:text-2xl">
-              Bloom provides you with a dedicated AI partner, cloned from world-class
-              experts, to guide you on your personal growth journey.
+              Haven pairs you with an AI companion coached by world-class therapists
+              and coaches—here for you 24/7, between sessions and beyond.
             </p>
             <Link to="/auth">
               <Button 
                 size="lg" 
                 className="group bg-gradient-to-r from-purple-500 to-purple-600 text-lg hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/50"
               >
-                Start Your Journey
+                Find Your Haven
                 <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Button>
             </Link>
@@ -79,31 +79,31 @@ export default function Landing() {
           <div className="mx-auto mt-24 grid max-w-6xl gap-6 md:grid-cols-3">
             <div className="group rounded-2xl border border-white/10 bg-slate-900/50 p-8 backdrop-blur transition-all hover:border-purple-500/50 hover:bg-slate-900/80">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-                <CheckCircle className="h-6 w-6 text-purple-400" />
+                <Heart className="h-6 w-6 text-purple-400" />
               </div>
-              <h3 className="mb-3 text-xl font-semibold text-white">Personalized Guidance</h3>
+              <h3 className="mb-3 text-xl font-semibold text-white">Always By Your Side</h3>
               <p className="text-slate-400">
-                Receive support tailored to your unique goals and challenges, anytime you need it.
+                A caring companion available whenever you need support—day or night, between sessions.
               </p>
             </div>
 
             <div className="group rounded-2xl border border-white/10 bg-slate-900/50 p-8 backdrop-blur transition-all hover:border-purple-500/50 hover:bg-slate-900/80">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-                <CheckCircle className="h-6 w-6 text-purple-400" />
+                <Sparkles className="h-6 w-6 text-purple-400" />
               </div>
-              <h3 className="mb-3 text-xl font-semibold text-white">Expert Methodologies</h3>
+              <h3 className="mb-3 text-xl font-semibold text-white">Expert-Coached Wisdom</h3>
               <p className="text-slate-400">
-                Engage with AI trained on the proven frameworks of leading therapists, coaches, and strategists.
+                Your AI companion is guided daily by leading therapists, coaches, and experts in their field.
               </p>
             </div>
 
             <div className="group rounded-2xl border border-white/10 bg-slate-900/50 p-8 backdrop-blur transition-all hover:border-purple-500/50 hover:bg-slate-900/80">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-                <CheckCircle className="h-6 w-6 text-purple-400" />
+                <Eye className="h-6 w-6 text-purple-400" />
               </div>
-              <h3 className="mb-3 text-xl font-semibold text-white">Persistent & Private</h3>
+              <h3 className="mb-3 text-xl font-semibold text-white">Your Journey, Remembered</h3>
               <p className="text-slate-400">
-                Your journey is continuous. Your AI partner remembers your conversations in a secure and private space.
+                Your companion remembers your story, creating continuity and depth in every conversation.
               </p>
             </div>
           </div>
@@ -115,21 +115,21 @@ export default function Landing() {
         <div className="container mx-auto px-4 py-20 md:py-32">
           <div className="mx-auto max-w-4xl text-center">
             <h2 className="mb-6 text-5xl font-bold tracking-tight text-white md:text-7xl">
-              Scale Your Expertise.{' '}
+              Extend Your Care.{' '}
               <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-                Transform Lives.
+                Amplify Your Impact.
               </span>
             </h2>
             <p className="mb-8 text-xl text-slate-300 md:text-2xl">
-              Join Bloom to create an AI version of your methodology, providing 24/7
-              support to your clients and unlocking new levels of impact.
+              Train an AI companion with your methodology. It walks alongside your
+              clients daily, reinforcing your guidance when you can't be there.
             </p>
             <Link to="/auth">
               <Button 
                 size="lg" 
                 className="group bg-gradient-to-r from-purple-500 to-purple-600 text-lg hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/50"
               >
-                Enter Expert Dashboard
+                Create Your Haven
                 <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Button>
             </Link>
@@ -139,31 +139,31 @@ export default function Landing() {
           <div className="mx-auto mt-24 grid max-w-6xl gap-6 md:grid-cols-3">
             <div className="group rounded-2xl border border-white/10 bg-slate-900/50 p-8 backdrop-blur transition-all hover:border-purple-500/50 hover:bg-slate-900/80">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-                <CheckCircle className="h-6 w-6 text-purple-400" />
+                <Heart className="h-6 w-6 text-purple-400" />
               </div>
-              <h3 className="mb-3 text-xl font-semibold text-white">Extend Your Reach</h3>
+              <h3 className="mb-3 text-xl font-semibold text-white">Care Between Sessions</h3>
               <p className="text-slate-400">
-                Offer continuous support to your clients, reinforcing your guidance between sessions.
+                Your AI companion provides continuous support, reinforcing your guidance when you can't be there.
               </p>
             </div>
 
             <div className="group rounded-2xl border border-white/10 bg-slate-900/50 p-8 backdrop-blur transition-all hover:border-purple-500/50 hover:bg-slate-900/80">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-                <CheckCircle className="h-6 w-6 text-purple-400" />
+                <Eye className="h-6 w-6 text-purple-400" />
               </div>
-              <h3 className="mb-3 text-xl font-semibold text-white">Deeper Client Insights</h3>
+              <h3 className="mb-3 text-xl font-semibold text-white">See Their Journey Clearly</h3>
               <p className="text-slate-400">
-                Gain AI-powered summaries of client progress and sticking points to make your sessions more effective.
+                Gain AI-powered insights into client progress and sticking points to make your sessions more effective.
               </p>
             </div>
 
             <div className="group rounded-2xl border border-white/10 bg-slate-900/50 p-8 backdrop-blur transition-all hover:border-purple-500/50 hover:bg-slate-900/80">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-                <CheckCircle className="h-6 w-6 text-purple-400" />
+                <Sparkles className="h-6 w-6 text-purple-400" />
               </div>
-              <h3 className="mb-3 text-xl font-semibold text-white">Monetize Your IP</h3>
+              <h3 className="mb-3 text-xl font-semibold text-white">Scale Your Methodology</h3>
               <p className="text-slate-400">
-                Package your unique intellectual property into a scalable AI product on the Bloom platform.
+                Package your unique expertise into an AI companion that extends your reach to more people.
               </p>
             </div>
           </div>
@@ -173,7 +173,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-white/10 py-8">
         <div className="container mx-auto px-4 text-center text-sm text-slate-400">
-          <p>&copy; 2025 Bloom. Built with care for your growth journey.</p>
+          <p>&copy; 2025 Haven. Your safe space for growth.</p>
         </div>
       </footer>
     </div>

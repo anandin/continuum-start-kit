@@ -318,7 +318,7 @@ export default function ManualTestRunner() {
         <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-white">Test Runner</h1>
           <p className="text-slate-400">
-            Manual test workflows for Bloom platform. Follow the steps in each workflow to verify functionality.
+            Manual test workflows for Haven platform. Follow the steps in each workflow to verify functionality.
           </p>
         </div>
 
