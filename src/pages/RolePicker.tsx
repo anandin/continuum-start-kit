@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/queryClient';
 import { toast } from 'sonner';
 import { Briefcase, Search, Loader2 } from 'lucide-react';
 
@@ -13,12 +13,10 @@ export default function RolePicker() {
   const { user, role, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if user already has a role
   useEffect(() => {
     if (!user) {
       navigate('/auth');
     } else if (role) {
-      // User already has a role, redirect to dashboard
       navigate('/dashboard');
     }
   }, [user, role, navigate]);
@@ -34,42 +32,12 @@ export default function RolePicker() {
     setSelectedRole(role);
 
     try {
-      // Check if user already has a role
-      const { data: existingRole, error: checkError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const res = await apiRequest('POST', '/api/user/role', { role });
+      const data = await res.json();
 
-      if (checkError) {
-        console.error('Check role error:', checkError);
-        throw checkError;
-      }
-
-      if (existingRole) {
-        // Role already exists, just refresh and navigate
-        console.log('Role already exists:', existingRole.role);
-        await refreshProfile();
-        toast.success(`Welcome back!`);
-        navigate('/dashboard');
-        return;
-      }
-
-      // Insert new role
-      const { error: insertError } = await supabase
-        .from('user_roles')
-        .insert({ user_id: user.id, role });
-
-      if (insertError) {
-        console.error('Insert role error:', insertError);
-        throw insertError;
-      }
-
-      console.log('Role inserted successfully:', role);
       await refreshProfile();
       toast.success(`Welcome as a ${role}!`);
       
-      // Redirect new users to setup pages
       if (role === 'provider') {
         navigate('/provider/setup');
       } else {
@@ -99,6 +67,7 @@ export default function RolePicker() {
               onClick={() => handleRoleSelection('provider')}
               disabled={loading}
               className="group relative overflow-hidden rounded-2xl border-2 border-white/10 bg-slate-900/50 p-8 text-left transition-all hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="button-select-provider"
             >
               <div className="relative z-10">
                 <div className="mb-4 rounded-full bg-purple-500/10 p-4 w-fit group-hover:bg-purple-500/20 transition-colors">
@@ -120,6 +89,7 @@ export default function RolePicker() {
               onClick={() => handleRoleSelection('seeker')}
               disabled={loading}
               className="group relative overflow-hidden rounded-2xl border-2 border-white/10 bg-slate-900/50 p-8 text-left transition-all hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="button-select-seeker"
             >
               <div className="relative z-10">
                 <div className="mb-4 rounded-full bg-purple-500/10 p-4 w-fit group-hover:bg-purple-500/20 transition-colors">
