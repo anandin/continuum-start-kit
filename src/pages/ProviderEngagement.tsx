@@ -1,37 +1,45 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, ArrowLeft, MessageSquare, TrendingUp, TrendingDown, Activity, AlertTriangle } from 'lucide-react';
+import { Loader2, ArrowLeft, MessageSquare, TrendingUp, TrendingDown, Activity, AlertTriangle, Calendar, Users } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface Summary {
+  id: string;
+  assignedStage?: string;
+  assigned_stage?: string;
+  sessionSummary?: string;
+  session_summary?: string;
+  trajectoryStatus?: string;
+  trajectory_status?: string;
+  keyInsights?: any;
+  key_insights?: any;
+  nextAction?: string;
+  next_action?: string;
+}
 
 interface Session {
   id: string;
-  started_at: string;
-  ended_at: string | null;
+  startedAt?: string;
+  started_at?: string;
+  endedAt?: string | null;
+  ended_at?: string | null;
   status: string;
-  initial_stage: string | null;
-  summaries: Array<{
-    id: string;
-    assigned_stage: string;
-    session_summary: string;
-    trajectory_status: string;
-    key_insights: any;
-    next_action: string;
-  }>;
+  initialStage?: string | null;
+  initial_stage?: string | null;
+  summary?: Summary | null;
 }
 
 interface Engagement {
   id: string;
-  created_at: string;
-  seeker: {
-    id: string;
-  };
-  sessions: Session[];
+  createdAt?: string;
+  created_at?: string;
+  seekerId?: string;
+  seeker_id?: string;
 }
 
 export default function ProviderEngagement() {
@@ -41,6 +49,7 @@ export default function ProviderEngagement() {
   
   const [loading, setLoading] = useState(true);
   const [engagement, setEngagement] = useState<Engagement | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
 
   useEffect(() => {
     if (!user) {
@@ -66,46 +75,35 @@ export default function ProviderEngagement() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('engagements')
-        .select(`
-          id,
-          created_at,
-          seeker:seekers (
-            id
-          ),
-          sessions (
-            id,
-            started_at,
-            ended_at,
-            status,
-            initial_stage,
-            summaries (
-              id,
-              assigned_stage,
-              session_summary,
-              trajectory_status,
-              key_insights,
-              next_action
-            )
-          )
-        `)
-        .eq('id', engagementId)
-        .eq('provider_id', user?.id)
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('Engagement not found');
-      
-      // Sort sessions by date
-      const engagementData = data as any;
-      if (engagementData.sessions) {
-        engagementData.sessions.sort((a: Session, b: Session) => 
-          new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
-        );
-      }
-      
+      const engagementRes = await fetch(`/api/engagements/${engagementId}`, { credentials: 'include' });
+      if (!engagementRes.ok) throw new Error('Engagement not found');
+      const engagementData = await engagementRes.json();
       setEngagement(engagementData);
+
+      const sessionsRes = await fetch(`/api/engagements/${engagementId}/sessions`, { credentials: 'include' });
+      if (!sessionsRes.ok) throw new Error('Failed to load sessions');
+      const sessionsData = await sessionsRes.json();
+
+      const sessionsWithSummaries = await Promise.all(
+        sessionsData.map(async (session: any) => {
+          try {
+            const summaryRes = await fetch(`/api/sessions/${session.id}/summary`, { credentials: 'include' });
+            if (summaryRes.ok) {
+              const summaryData = await summaryRes.json();
+              return { ...session, summary: summaryData };
+            }
+          } catch {}
+          return { ...session, summary: null };
+        })
+      );
+
+      sessionsWithSummaries.sort((a: any, b: any) => {
+        const dateA = new Date(b.startedAt || b.started_at || b.createdAt || b.created_at).getTime();
+        const dateB = new Date(a.startedAt || a.started_at || a.createdAt || a.created_at).getTime();
+        return dateA - dateB;
+      });
+
+      setSessions(sessionsWithSummaries);
     } catch (error: any) {
       console.error('Error loading engagement:', error);
       toast.error(error.message || 'Failed to load engagement');
@@ -117,7 +115,8 @@ export default function ProviderEngagement() {
 
   const getSeekerAlias = () => {
     if (!engagement) return '';
-    return `Seeker-${engagement.seeker.id.slice(0, 8)}`;
+    const seekerId = engagement.seekerId || engagement.seeker_id || engagement.id;
+    return `Client ${seekerId.slice(0, 8)}`;
   };
 
   const getTrajectoryIcon = (status: string) => {
@@ -132,11 +131,11 @@ export default function ProviderEngagement() {
 
   const getTrajectoryColor = (status: string) => {
     switch (status) {
-      case 'accelerating': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'steady': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'drifting': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'stalling': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+      case 'accelerating': return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+      case 'steady': return 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300';
+      case 'drifting': return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+      case 'stalling': return 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
+      default: return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -157,8 +156,11 @@ export default function ProviderEngagement() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-warm" data-testid="loading-engagement">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground text-sm">Loading engagement details...</p>
+        </div>
       </div>
     );
   }
@@ -167,21 +169,30 @@ export default function ProviderEngagement() {
     return null;
   }
 
+  const engagementDate = engagement.createdAt || engagement.created_at;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">
-              <span className="bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
+    <div className="min-h-screen bg-gradient-warm">
+      <header className="border-b bg-card/80 backdrop-blur-lg shadow-warm sticky top-0 z-50">
+        <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-gradient-warm-accent flex items-center justify-center flex-shrink-0">
+              <Users className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground" data-testid="text-seeker-alias">
                 {getSeekerAlias()}
-              </span>
-            </h1>
-            <p className="text-sm text-slate-400">
-              Engagement started {new Date(engagement.created_at).toLocaleDateString()}
-            </p>
+              </h1>
+              <p className="text-sm text-muted-foreground" data-testid="text-engagement-date">
+                Engagement started {engagementDate ? new Date(engagementDate).toLocaleDateString() : 'recently'}
+              </p>
+            </div>
           </div>
-          <Button variant="outline" onClick={() => navigate('/provider/dashboard')} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
+          <Button 
+            variant="outline" 
+            onClick={() => navigate('/provider/dashboard')}
+            data-testid="button-back-dashboard"
+          >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dashboard
           </Button>
@@ -190,43 +201,52 @@ export default function ProviderEngagement() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-5xl space-y-6">
-          <Card className="bg-slate-900/50 border-white/10 backdrop-blur">
+          <Card className="shadow-warm-md" data-testid="card-session-history">
             <CardHeader>
-              <CardTitle className="text-white">Session History</CardTitle>
-              <CardDescription className="text-slate-400">
-                {engagement.sessions.length} session{engagement.sessions.length !== 1 ? 's' : ''} completed
+              <CardTitle>Session History</CardTitle>
+              <CardDescription>
+                {sessions.length} session{sessions.length !== 1 ? 's' : ''} recorded
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {engagement.sessions.length === 0 ? (
-                <div className="py-8 text-center text-slate-400">
-                  No sessions yet for this engagement.
+              {sessions.length === 0 ? (
+                <div className="py-12 text-center" data-testid="text-no-sessions">
+                  <Calendar className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground">No sessions yet for this engagement.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Sessions will appear here once the client begins.</p>
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {engagement.sessions.map((session, index) => {
-                    const summary = session.summaries?.[0];
-                    const sentimentScore = summary ? getSentimentScore(summary.key_insights) : null;
+                  {sessions.map((session, index) => {
+                    const summary = session.summary;
+                    const tStatus = summary?.trajectoryStatus || summary?.trajectory_status;
+                    const sStage = summary?.assignedStage || summary?.assigned_stage;
+                    const sSummary = summary?.sessionSummary || summary?.session_summary;
+                    const sInsights = summary?.keyInsights || summary?.key_insights;
+                    const sNextAction = summary?.nextAction || summary?.next_action;
+                    const sentimentScore = summary ? getSentimentScore(sInsights) : null;
+                    const sessionDate = session.startedAt || session.started_at;
+                    const sessionEndDate = session.endedAt || session.ended_at;
                     
                     return (
-                      <div key={session.id}>
-                        {index > 0 && <Separator className="my-6 bg-white/10" />}
+                      <div key={session.id} data-testid={`card-session-${session.id}`}>
+                        {index > 0 && <Separator className="my-6" />}
                         <div className="space-y-4">
-                          <div className="flex items-start justify-between">
+                          <div className="flex items-start justify-between gap-4 flex-wrap">
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-white">
-                                  Session {engagement.sessions.length - index}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-semibold text-foreground" data-testid={`text-session-number-${index}`}>
+                                  Session {sessions.length - index}
                                 </h3>
-                                <Badge variant={session.status === 'ended' ? 'secondary' : 'default'} className="bg-purple-500/20 text-purple-300 border-purple-500/30">
+                                <Badge variant={session.status === 'ended' ? 'secondary' : 'default'} data-testid={`badge-status-${session.id}`}>
                                   {session.status}
                                 </Badge>
                               </div>
-                              <p className="text-sm text-slate-400">
-                                {new Date(session.started_at).toLocaleDateString()} at{' '}
-                                {new Date(session.started_at).toLocaleTimeString()}
-                                {session.ended_at && (
-                                  <> • Ended {new Date(session.ended_at).toLocaleDateString()}</>
+                              <p className="text-sm text-muted-foreground">
+                                {sessionDate && new Date(sessionDate).toLocaleDateString()} at{' '}
+                                {sessionDate && new Date(sessionDate).toLocaleTimeString()}
+                                {sessionEndDate && (
+                                  <> &middot; Ended {new Date(sessionEndDate).toLocaleDateString()}</>
                                 )}
                               </p>
                             </div>
@@ -234,7 +254,7 @@ export default function ProviderEngagement() {
                               variant="outline"
                               size="sm"
                               onClick={() => navigate(`/chat/${session.id}`)}
-                              className="border-white/20 bg-white/5 text-white hover:bg-white/10"
+                              data-testid={`button-view-chat-${session.id}`}
                             >
                               <MessageSquare className="mr-2 h-4 w-4" />
                               View Chat
@@ -242,60 +262,69 @@ export default function ProviderEngagement() {
                           </div>
 
                           {summary ? (
-                            <div className="rounded-lg border border-white/10 bg-slate-800/50 p-4 space-y-3">
-                              <div className="flex items-center justify-between">
+                            <Card data-testid={`card-summary-${session.id}`}>
+                              <CardContent className="p-4 space-y-3">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <Badge variant="outline" className="border-white/20 bg-white/5 text-white">{summary.assigned_stage}</Badge>
-                                  <Badge className={getTrajectoryColor(summary.trajectory_status)}>
-                                    <span className="mr-1">{getTrajectoryIcon(summary.trajectory_status)}</span>
-                                    {summary.trajectory_status}
-                                  </Badge>
+                                  {sStage && (
+                                    <Badge variant="outline" data-testid={`badge-stage-${session.id}`}>{sStage}</Badge>
+                                  )}
+                                  {tStatus && (
+                                    <Badge className={getTrajectoryColor(tStatus)} data-testid={`badge-trajectory-${session.id}`}>
+                                      <span className="mr-1">{getTrajectoryIcon(tStatus)}</span>
+                                      {tStatus}
+                                    </Badge>
+                                  )}
                                   {sentimentScore !== null && (
-                                    <Badge variant="secondary" className="bg-slate-700/50 text-slate-200">
+                                    <Badge variant="secondary" data-testid={`badge-sentiment-${session.id}`}>
                                       Sentiment: {formatSentiment(sentimentScore)}
                                     </Badge>
                                   )}
                                 </div>
-                              </div>
-                              
-                              <div className="space-y-2">
-                                <p className="text-sm text-slate-300">
-                                  {summary.session_summary}
-                                </p>
-                              </div>
+                                
+                                {sSummary && (
+                                  <p className="text-sm text-muted-foreground" data-testid={`text-summary-${session.id}`}>
+                                    {sSummary}
+                                  </p>
+                                )}
 
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-white">Key Insights:</p>
-                                <ul className="space-y-1">
-                                  {Array.isArray(summary.key_insights) && 
-                                    summary.key_insights
-                                      .filter((insight: any) => 
-                                        typeof insight === 'string' || insight.label !== 'sentiment'
-                                      )
-                                      .map((insight: any, idx: number) => (
-                                        <li key={idx} className="flex gap-2 text-sm text-slate-300">
-                                          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 flex-shrink-0" />
-                                          {typeof insight === 'string' ? insight : insight.insight}
-                                        </li>
-                                      ))
-                                  }
-                                </ul>
-                              </div>
+                                {Array.isArray(sInsights) && sInsights.length > 0 && (
+                                  <div className="space-y-2">
+                                    <p className="text-sm font-medium text-foreground">Key Insights:</p>
+                                    <ul className="space-y-1">
+                                      {sInsights
+                                        .filter((insight: any) => 
+                                          typeof insight === 'string' || insight.label !== 'sentiment'
+                                        )
+                                        .map((insight: any, idx: number) => (
+                                          <li key={idx} className="flex gap-2 text-sm text-muted-foreground">
+                                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+                                            {typeof insight === 'string' ? insight : insight.insight}
+                                          </li>
+                                        ))
+                                      }
+                                    </ul>
+                                  </div>
+                                )}
 
-                              <div className="pt-2 border-t border-white/10">
-                                <p className="text-sm">
-                                  <span className="font-medium text-white">Next Action:</span>{' '}
-                                  <span className="text-slate-300">{summary.next_action}</span>
-                                </p>
-                              </div>
-                            </div>
+                                {sNextAction && (
+                                  <div className="pt-2 border-t">
+                                    <p className="text-sm">
+                                      <span className="font-medium text-foreground">Next Action:</span>{' '}
+                                      <span className="text-muted-foreground">{sNextAction}</span>
+                                    </p>
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
                           ) : (
-                            <div className="rounded-lg border border-white/10 bg-slate-800/50 p-4 text-sm text-slate-400">
-                              {session.status === 'active' 
-                                ? 'Session in progress - summary will be generated when completed'
-                                : 'No summary available for this session'
-                              }
-                            </div>
+                            <Card>
+                              <CardContent className="p-4 text-sm text-muted-foreground">
+                                {session.status === 'active' 
+                                  ? 'Session in progress \u2014 summary will be generated when completed'
+                                  : 'No summary available for this session'
+                                }
+                              </CardContent>
+                            </Card>
                           )}
                         </div>
                       </div>

@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Loader2, ArrowRight, CheckCircle, TrendingUp, TrendingDown, Activity, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowRight, CheckCircle, TrendingUp, TrendingDown, Activity, AlertTriangle, ArrowLeft, Sparkles, Heart } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SessionSummary() {
@@ -40,41 +39,20 @@ export default function SessionSummary() {
 
     setLoading(true);
     try {
-      // Load session
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('sessions')
-        .select(`
-          *,
-          engagement:engagements (
-            id,
-            provider_id,
-            seeker_id
-          )
-        `)
-        .eq('id', sessionId)
-        .single();
-
-      if (sessionError) throw sessionError;
-      if (!sessionData) throw new Error('Session not found');
+      const sessionRes = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
+      if (!sessionRes.ok) throw new Error('Session not found');
+      const sessionData = await sessionRes.json();
       setSession(sessionData);
 
-      // Load summary
-      const { data: summaryData, error: summaryError } = await supabase
-        .from('summaries')
-        .select('*')
-        .eq('session_id', sessionId)
-        .maybeSingle();
+      const summaryRes = await fetch(`/api/sessions/${sessionId}/summary`, { credentials: 'include' });
+      if (!summaryRes.ok) throw new Error('Failed to load summary');
+      const summaryData = await summaryRes.json();
 
-      if (summaryError) throw summaryError;
-      
-      // If no summary exists yet
       if (!summaryData) {
         if (sessionData.status === 'active') {
-          // Session still active - can't generate summary yet
           toast.info('This session is still active. End it to generate a summary.');
           navigate(`/chat/${sessionId}`);
         } else {
-          // Session ended but no summary - offer to generate
           setSummary(null);
         }
         setLoading(false);
@@ -96,12 +74,7 @@ export default function SessionSummary() {
     
     setCreating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('session-finish', {
-        body: { sessionId }
-      });
-
-      if (error) throw error;
-
+      await apiRequest('POST', `/api/sessions/${sessionId}/finish`);
       toast.success('Summary generated successfully!');
       await loadSummary();
     } catch (error: any) {
@@ -117,19 +90,11 @@ export default function SessionSummary() {
 
     setCreating(true);
     try {
-      // Create new session with assigned_stage from summary
-      const { data: newSession, error: sessionError } = await supabase
-        .from('sessions')
-        .insert({
-          engagement_id: session.engagement_id,
-          status: 'active',
-          initial_stage: summary.assigned_stage,
-        })
-        .select()
-        .single();
-
-      if (sessionError) throw sessionError;
-
+      const res = await apiRequest('POST', '/api/sessions', {
+        engagementId: session.engagementId,
+        initialStage: summary.assignedStage || summary.assigned_stage,
+      });
+      const newSession = await res.json();
       toast.success('New session started!');
       navigate(`/chat/${newSession.id}`);
     } catch (error: any) {
@@ -152,35 +117,44 @@ export default function SessionSummary() {
 
   const getTrajectoryColor = (status: string) => {
     switch (status) {
-      case 'accelerating': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'steady': return 'bg-sky-100 text-sky-800 border-sky-200';
-      case 'drifting': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'stalling': return 'bg-orange-100 text-orange-800 border-orange-200';
-      default: return 'bg-slate-100 text-slate-800 border-slate-200';
+      case 'accelerating': return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+      case 'steady': return 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300';
+      case 'drifting': return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+      case 'stalling': return 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
+      default: return 'bg-muted text-muted-foreground';
     }
   };
 
+  const trajectoryStatus = summary?.trajectoryStatus || summary?.trajectory_status;
+  const assignedStage = summary?.assignedStage || summary?.assigned_stage;
+  const sessionSummary = summary?.sessionSummary || summary?.session_summary;
+  const keyInsights = summary?.keyInsights || summary?.key_insights;
+  const nextAction = summary?.nextAction || summary?.next_action;
+
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 via-indigo-50 to-sky-50">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-warm" data-testid="loading-session-summary">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground text-sm">Loading your session summary...</p>
+        </div>
       </div>
     );
   }
 
   if (!summary && !creating) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-sky-50">
-        <header className="border-b border-sky-200 bg-white/80 backdrop-blur-lg shadow-sm">
-          <div className="container mx-auto flex items-center justify-between px-4 py-4">
+      <div className="min-h-screen bg-gradient-warm">
+        <header className="border-b bg-card/80 backdrop-blur-lg shadow-warm sticky top-0 z-50">
+          <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-4 flex-wrap">
             <div>
-              <h1 className="text-2xl font-bold text-indigo-900">Session Summary</h1>
-              <p className="text-sm text-slate-600">No summary available yet</p>
+              <h1 className="text-2xl font-bold text-foreground">Session Summary</h1>
+              <p className="text-sm text-muted-foreground">No summary available yet</p>
             </div>
             <Button 
               variant="outline" 
-              onClick={() => navigate('/dashboard')} 
-              className="border-sky-300 bg-white text-indigo-900 hover:bg-sky-50"
+              onClick={() => navigate('/dashboard')}
+              data-testid="button-back-dashboard"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Dashboard
@@ -190,13 +164,16 @@ export default function SessionSummary() {
 
         <main className="container mx-auto px-4 py-12">
           <div className="mx-auto max-w-2xl">
-            <Card className="bg-white border-sky-200 shadow-lg">
+            <Card className="shadow-warm-md" data-testid="card-no-summary">
               <CardHeader className="text-center">
-                <CardTitle className="text-indigo-900 mb-2">Summary Not Available</CardTitle>
-                <CardDescription className="text-slate-600">
+                <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-muted flex items-center justify-center">
+                  <Heart className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <CardTitle className="mb-2">Summary Not Available</CardTitle>
+                <CardDescription>
                   {session?.status === 'active' 
-                    ? 'This session is still active. End the session to generate a summary.'
-                    : 'This session has ended but no summary has been generated yet.'}
+                    ? 'This session is still in progress. End the session to see your personalized summary.'
+                    : 'This session has ended but no summary has been generated yet. Let us create one for you.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-4">
@@ -204,7 +181,7 @@ export default function SessionSummary() {
                   <Button
                     onClick={handleGenerateSummary}
                     disabled={creating}
-                    className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white"
+                    data-testid="button-generate-summary"
                   >
                     {creating ? (
                       <>
@@ -212,14 +189,17 @@ export default function SessionSummary() {
                         Generating Summary...
                       </>
                     ) : (
-                      'Generate Summary'
+                      <>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Generate Summary
+                      </>
                     )}
                   </Button>
                 )}
                 {session?.status === 'active' && (
                   <Button
                     onClick={() => navigate(`/chat/${sessionId}`)}
-                    className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white"
+                    data-testid="button-back-to-chat"
                   >
                     Back to Chat
                   </Button>
@@ -233,22 +213,22 @@ export default function SessionSummary() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-sky-50">
-      <header className="border-b border-sky-200 bg-white/80 backdrop-blur-lg shadow-sm">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
+    <div className="min-h-screen bg-gradient-warm">
+      <header className="border-b bg-card/80 backdrop-blur-lg shadow-warm sticky top-0 z-50">
+        <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-indigo-900 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2" data-testid="text-session-complete">
               <CheckCircle className="h-6 w-6 text-emerald-600" />
               Session Complete
             </h1>
-            <p className="text-sm text-slate-600">
-              Completed {new Date(session.ended_at || session.started_at).toLocaleDateString()}
+            <p className="text-sm text-muted-foreground" data-testid="text-session-date">
+              Completed {new Date(session?.endedAt || session?.ended_at || session?.startedAt || session?.started_at).toLocaleDateString()}
             </p>
           </div>
           <Button 
             variant="outline" 
-            onClick={() => navigate('/dashboard')} 
-            className="border-sky-300 bg-white text-indigo-900 hover:bg-sky-50"
+            onClick={() => navigate('/dashboard')}
+            data-testid="button-back-dashboard"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dashboard
@@ -258,96 +238,93 @@ export default function SessionSummary() {
 
       <main className="container mx-auto px-4 py-12">
         <div className="mx-auto max-w-4xl space-y-6">
-          {/* Status Card */}
-          <Card className="bg-white border-sky-200 shadow-lg">
+          <Card className="shadow-warm-md" data-testid="card-status">
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
-                    <CheckCircle className="h-6 w-6 text-white" />
+                  <div className="h-12 w-12 rounded-full bg-gradient-warm-accent flex items-center justify-center flex-shrink-0">
+                    <CheckCircle className="h-6 w-6 text-primary-foreground" />
                   </div>
                   <div>
-                    <CardTitle className="text-indigo-900">Session Completed Successfully</CardTitle>
-                    <CardDescription className="text-slate-600">
-                      Your progress has been analyzed and saved
+                    <CardTitle>Well Done! Session Completed</CardTitle>
+                    <CardDescription>
+                      Your progress has been thoughtfully analyzed and saved
                     </CardDescription>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {getTrajectoryIcon(summary.trajectory_status)}
-                  <Badge variant="outline" className={getTrajectoryColor(summary.trajectory_status)}>
-                    {summary.trajectory_status}
+                <div className="flex items-center gap-2" data-testid="badge-trajectory">
+                  {getTrajectoryIcon(trajectoryStatus)}
+                  <Badge variant="outline" className={getTrajectoryColor(trajectoryStatus)}>
+                    {trajectoryStatus}
                   </Badge>
                 </div>
               </div>
             </CardHeader>
           </Card>
 
-          {/* Current Stage */}
-          <Card className="bg-white border-sky-200 shadow-lg">
+          <Card className="shadow-warm-md" data-testid="card-next-stage">
             <CardHeader>
-              <CardTitle className="text-indigo-900">Next Stage</CardTitle>
-              <CardDescription className="text-slate-600">Based on your progress in this session</CardDescription>
+              <CardTitle>Your Next Stage</CardTitle>
+              <CardDescription>Based on the progress you made in this session</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-sky-50 p-6 border-2 border-indigo-200">
-                <p className="text-2xl font-bold text-indigo-900">{summary.assigned_stage}</p>
+              <div className="rounded-md bg-gradient-warm-card p-6 border" data-testid="text-assigned-stage">
+                <p className="text-2xl font-bold text-foreground">{assignedStage}</p>
               </div>
             </CardContent>
           </Card>
 
-          {/* Session Summary */}
-          <Card className="bg-white border-sky-200 shadow-lg">
+          <Card className="shadow-warm-md" data-testid="card-overview">
             <CardHeader>
-              <CardTitle className="text-indigo-900">Session Overview</CardTitle>
+              <CardTitle>Session Overview</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">
-                {summary.session_summary}
+              <p className="whitespace-pre-wrap text-muted-foreground leading-relaxed" data-testid="text-session-summary">
+                {sessionSummary}
               </p>
             </CardContent>
           </Card>
 
-          {/* Key Insights */}
-          <Card className="bg-white border-sky-200 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-indigo-900">Key Insights</CardTitle>
-              <CardDescription className="text-slate-600">Important patterns and observations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-3">
-                {Array.isArray(summary.key_insights) && summary.key_insights.map((insight: any, index: number) => (
-                  <li key={index} className="flex gap-3">
-                    <div className="mt-1 h-2 w-2 rounded-full bg-indigo-600 flex-shrink-0" />
-                    <p className="text-slate-700">{typeof insight === 'string' ? insight : insight.insight}</p>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
+          {Array.isArray(keyInsights) && keyInsights.length > 0 && (
+            <Card className="shadow-warm-md" data-testid="card-insights">
+              <CardHeader>
+                <CardTitle>Key Insights</CardTitle>
+                <CardDescription>Important patterns and observations from your session</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3">
+                  {keyInsights.map((insight: any, index: number) => (
+                    <li key={index} className="flex gap-3" data-testid={`text-insight-${index}`}>
+                      <div className="mt-1.5 h-2 w-2 rounded-full bg-primary flex-shrink-0" />
+                      <p className="text-muted-foreground">{typeof insight === 'string' ? insight : insight.insight}</p>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Next Action */}
-          <Card className="bg-white border-sky-200 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-indigo-900">Next Action</CardTitle>
-              <CardDescription className="text-slate-600">Your recommended next step</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-xl border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 to-sky-50 p-6">
-                <p className="font-medium text-indigo-900">{summary.next_action}</p>
-              </div>
-            </CardContent>
-          </Card>
+          {nextAction && (
+            <Card className="shadow-warm-md" data-testid="card-next-action">
+              <CardHeader>
+                <CardTitle>Recommended Next Step</CardTitle>
+                <CardDescription>Your path forward</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border bg-gradient-warm-card p-6">
+                  <p className="font-medium text-foreground" data-testid="text-next-action">{nextAction}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-          <Separator className="bg-sky-200" />
-
-          {/* Actions */}
-          <div className="flex gap-4">
+          <div className="flex gap-4 flex-wrap">
             <Button 
               onClick={handleStartNextSession} 
               disabled={creating}
               size="lg"
-              className="flex-1 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 shadow-lg"
+              className="flex-1"
+              data-testid="button-start-next-session"
             >
               {creating ? (
                 <>
@@ -356,7 +333,7 @@ export default function SessionSummary() {
                 </>
               ) : (
                 <>
-                  Start Next Session
+                  Continue Your Journey
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </>
               )}
@@ -365,7 +342,7 @@ export default function SessionSummary() {
               variant="outline" 
               onClick={() => navigate('/dashboard')}
               size="lg"
-              className="border-sky-300 bg-white text-indigo-900 hover:bg-sky-50"
+              data-testid="button-return-dashboard"
             >
               Return to Dashboard
             </Button>

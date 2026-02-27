@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 
 export interface Engagement {
@@ -31,115 +30,66 @@ export function useEngagements(userId: string | undefined, role: 'provider' | 's
   const [loading, setLoading] = useState(true);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
 
-  useEffect(() => {
-    if (!userId) return;
-    loadEngagements();
-  }, [userId, role]);
-
-  const loadEngagements = async () => {
+  const loadEngagements = useCallback(async () => {
     if (!userId) return;
     
     setLoading(true);
     try {
-      let query = supabase
-        .from('engagements')
-        .select(`
-          id,
-          created_at,
-          status,
-          seeker:seekers (
-            id,
-            owner_id
-          ),
-          provider:profiles (
-            id,
-            email
-          ),
-          sessions (
-            id,
-            started_at,
-            ended_at,
-            status,
-            initial_stage,
-            summaries (
-              assigned_stage,
-              trajectory_status,
-              session_summary
-            )
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (role === 'provider') {
-        query = query.eq('provider_id', userId);
-      } else {
-        // For seekers, we need to filter by seeker.owner_id
-        // First get the seeker ID for this user
-        const { data: seekerData } = await supabase
-          .from('seekers')
-          .select('id')
-          .eq('owner_id', userId)
-          .maybeSingle();
-        
-        if (seekerData) {
-          query = query.eq('seeker_id', seekerData.id);
-        } else {
-          // No seeker found, return empty
-          setEngagements([]);
-          setLoading(false);
-          return;
-        }
+      const res = await fetch('/api/engagements', { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error('Failed to load engagements');
       }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setEngagements((data as any) || []);
+      const data = await res.json();
+      setEngagements(data || []);
     } catch (error: any) {
       console.error('Error loading engagements:', error);
       toast.error(error.message || 'Failed to load engagements');
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
-  const getSeekerAlias = (engagement: Engagement) => {
-    return `Seeker-${engagement.seeker.id.slice(0, 8)}`;
-  };
+  useEffect(() => {
+    if (!userId) return;
+    loadEngagements();
+  }, [userId, role, loadEngagements]);
 
-  const getLastSessionDate = (engagement: Engagement) => {
+  const getSeekerAlias = useCallback((engagement: Engagement) => {
+    return `Seeker-${engagement.seeker?.id?.slice(0, 8) || 'unknown'}`;
+  }, []);
+
+  const getLastSessionDate = useCallback((engagement: Engagement) => {
     if (!engagement.sessions || engagement.sessions.length === 0) return 'Never';
-    const lastSession = engagement.sessions.sort((a, b) => 
+    const lastSession = [...engagement.sessions].sort((a, b) => 
       new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
     )[0];
     return new Date(lastSession.started_at).toLocaleDateString();
-  };
+  }, []);
 
-  const getLatestStage = (engagement: Engagement) => {
+  const getLatestStage = useCallback((engagement: Engagement) => {
     const sessionsWithSummaries = engagement.sessions
-      .filter(s => s.summaries && s.summaries.length > 0)
-      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+      ?.filter(s => s.summaries && s.summaries.length > 0)
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()) || [];
     
     if (sessionsWithSummaries.length === 0) {
-      // Fall back to initial_stage if no summaries
-      const lastSession = engagement.sessions.sort((a, b) => 
+      const lastSession = [...(engagement.sessions || [])].sort((a, b) => 
         new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
       )[0];
       return lastSession?.initial_stage || 'Not assessed';
     }
     return sessionsWithSummaries[0].summaries[0].assigned_stage;
-  };
+  }, []);
 
-  const getTrajectoryStatus = (engagement: Engagement): string => {
+  const getTrajectoryStatus = useCallback((engagement: Engagement): string => {
     const sessionsWithSummaries = engagement.sessions
-      .filter(s => s.summaries && s.summaries.length > 0)
-      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+      ?.filter(s => s.summaries && s.summaries.length > 0)
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()) || [];
     
     if (sessionsWithSummaries.length === 0) return 'steady';
 
     const latestSummary = sessionsWithSummaries[0].summaries[0];
     return latestSummary.trajectory_status || 'steady';
-  };
+  }, []);
 
   return {
     loading,
