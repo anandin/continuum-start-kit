@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Loader2, Save, User, Sparkles, ArrowLeft, Bot } from 'lucide-react';
+import { AppLayout } from '@/components/AppLayout';
 
 export default function AgentSetup() {
   const { user, role } = useAuth();
@@ -147,46 +148,39 @@ export default function AgentSetup() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background" data-testid="loading-state">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <AppLayout title="Agent settings">
+        <div className="flex justify-center py-12" data-testid="loading-state">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-50">
-        <div className="container mx-auto flex items-center justify-between gap-2 flex-wrap px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Bot className="h-6 w-6 text-primary" />
-            <div>
-              <h1 className="text-2xl font-bold" data-testid="text-page-title">Agent Setup</h1>
-              <p className="text-sm text-muted-foreground">Configure your AI coaching assistant</p>
+    <AppLayout title="Agent personality" subtitle="Shape how Haven sounds and shows up for clients">
+      <div className="space-y-6 animate-fade-in max-w-4xl">
+        <Card className="shadow-warm bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
+          <CardContent className="flex items-center justify-between gap-4 flex-wrap p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Want a fresh start?</p>
+                <p className="text-sm text-muted-foreground">Re-run the setup conversation to redefine your agent.</p>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" onClick={() => navigate('/dashboard')} data-testid="button-back-dashboard">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Dashboard
-            </Button>
-            <Button onClick={handleSave} disabled={saving} data-testid="button-save-agent">
-              {saving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
+            <div className="flex gap-2 flex-wrap">
+              <Button onClick={() => navigate('/provider/onboarding')} data-testid="button-rerun-setup">
+                <Sparkles className="mr-2 h-4 w-4" /> Re-run setup chat
+              </Button>
+              <Button variant="outline" onClick={handleSave} disabled={saving} data-testid="button-save-agent">
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -373,7 +367,7 @@ export default function AgentSetup() {
             </CardContent>
           </Card>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

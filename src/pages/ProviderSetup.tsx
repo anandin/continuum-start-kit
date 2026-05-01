@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Trash2, ArrowUp, ArrowDown, Save, Eye, Settings, ArrowLeft } from 'lucide-react';
 import TemplateSelector from '@/components/TemplateSelector';
 import { ProviderTemplate } from '@/data/providerTemplates';
+import { AppLayout } from '@/components/AppLayout';
+import { Sparkles } from 'lucide-react';
 
 interface Stage {
   name: string;
@@ -222,9 +224,11 @@ export default function ProviderSetup() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background" data-testid="loading-state">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <AppLayout title="Settings">
+        <div className="flex justify-center py-12" data-testid="loading-state">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
     );
   }
 
@@ -233,39 +237,31 @@ export default function ProviderSetup() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-50">
-        <div className="container mx-auto flex items-center justify-between gap-2 flex-wrap px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Settings className="h-6 w-6 text-primary" />
-            <div>
-              <h1 className="text-2xl font-bold" data-testid="text-page-title">Provider Setup</h1>
-              <p className="text-sm text-muted-foreground">Configure your coaching program</p>
+    <AppLayout title="Advanced settings" subtitle="Fine-tune your program — most providers prefer the setup chat">
+      <div className="space-y-6 animate-fade-in">
+        <Card className="shadow-warm bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20" data-testid="card-rerun-cta">
+          <CardContent className="flex items-center justify-between gap-4 flex-wrap p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Prefer to talk it out?</p>
+                <p className="text-sm text-muted-foreground">Re-run the setup conversation and Haven will rewrite your config.</p>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" onClick={() => navigate('/dashboard')} data-testid="button-back-dashboard">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Dashboard
-            </Button>
-            <Button onClick={handleSave} disabled={saving} data-testid="button-save-config">
-              {saving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Configuration
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </header>
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="default" onClick={() => navigate('/provider/onboarding')} data-testid="button-rerun-setup">
+                <Sparkles className="mr-2 h-4 w-4" /> Re-run setup chat
+              </Button>
+              <Button onClick={handleSave} disabled={saving} variant="outline" data-testid="button-save-config">
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-      <main className="container mx-auto px-4 py-8">
         <div className="grid gap-8 lg:grid-cols-2">
           <div className="space-y-6">
             <Card>
@@ -536,7 +532,7 @@ export default function ProviderSetup() {
             </Card>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

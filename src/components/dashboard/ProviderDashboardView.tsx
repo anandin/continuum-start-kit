@@ -15,7 +15,11 @@ import {
   MessageSquare,
   Settings,
   FileText,
-  Eye
+  Eye,
+  BookOpen,
+  ClipboardList,
+  BarChart3,
+  Sparkles
 } from 'lucide-react';
 import { useEngagements } from '@/hooks/useEngagements';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
@@ -243,31 +247,36 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
         </div>
 
         <div className="space-y-4">
-          <Card className="shadow-warm" data-testid="card-agent-program">
+          <Card className="shadow-warm" data-testid="card-quick-actions">
             <CardHeader>
-              <CardTitle className="text-base">Your Practice</CardTitle>
-              <CardDescription>Manage your coaching setup</CardDescription>
+              <CardTitle className="text-base">Quick actions</CardTitle>
+              <CardDescription>Tools at your fingertips</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               <Button 
-                onClick={() => navigate('/provider/agent-setup')} 
+                onClick={() => navigate('/provider/onboarding')} 
                 variant="outline" 
                 size="sm"
-                className="w-full justify-start"
-                data-testid="button-configure-agent"
+                className="w-full justify-start bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20"
+                data-testid="button-rerun-onboarding"
               >
-                <Settings className="mr-2 h-4 w-4" />
-                Configure AI Agent
+                <Sparkles className="mr-2 h-4 w-4 text-primary" />
+                Re-run setup chat
               </Button>
-              <Button 
-                onClick={() => navigate('/provider/setup')} 
-                variant="outline" 
-                size="sm"
-                className="w-full justify-start"
-                data-testid="button-edit-stages"
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                Edit Program Stages
+              <Button onClick={() => navigate('/provider/schedule')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-schedule">
+                <Calendar className="mr-2 h-4 w-4" /> Schedule
+              </Button>
+              <Button onClick={() => navigate('/provider/resources')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-resources">
+                <BookOpen className="mr-2 h-4 w-4" /> Resources
+              </Button>
+              <Button onClick={() => navigate('/provider/intake-forms')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-intake-forms">
+                <ClipboardList className="mr-2 h-4 w-4" /> Intake forms
+              </Button>
+              <Button onClick={() => navigate('/provider/analytics')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-analytics">
+                <BarChart3 className="mr-2 h-4 w-4" /> Insights
+              </Button>
+              <Button onClick={() => navigate('/provider/setup')} variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" data-testid="button-edit-stages">
+                <Settings className="mr-2 h-4 w-4" /> Settings
               </Button>
             </CardContent>
           </Card>

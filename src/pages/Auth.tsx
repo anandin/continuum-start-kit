@@ -105,6 +105,7 @@ export default function Auth() {
                     <Input
                       id="signin-email"
                       type="email"
+                      autoComplete="email"
                       placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -117,6 +118,7 @@ export default function Auth() {
                     <Input
                       id="signin-password"
                       type="password"
+                      autoComplete="current-password"
                       placeholder="Your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -140,6 +142,7 @@ export default function Auth() {
                     <Input
                       id="signup-email"
                       type="email"
+                      autoComplete="email"
                       placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -152,6 +155,7 @@ export default function Auth() {
                     <Input
                       id="signup-password"
                       type="password"
+                      autoComplete="new-password"
                       placeholder="Choose a password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}

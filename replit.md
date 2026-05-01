@@ -46,17 +46,16 @@ Haven is an AI-powered coaching platform connecting providers (coaches) with see
 ```
 
 ### Database Schema
-- **users**: Authentication users
-- **profiles**: User profile information
-- **user_roles**: Provider or Seeker role
-- **provider_configs**: Provider's coaching program configuration
-- **provider_agent_configs**: AI agent personality settings (core_identity, guiding_principles, tone, voice, rules, boundaries, provider_name, provider_title, avatar_url, selected_model)
-- **seekers**: Seeker records
-- **engagements**: Provider-Seeker relationships
-- **sessions**: Coaching sessions
-- **messages**: Chat messages
-- **summaries**: AI-generated session summaries
-- **progress_indicators**: Session progress tracking
+- **users / profiles / user_roles**: Auth & roles (provider or seeker)
+- **provider_configs**: Coaching program (title, methodology, stages, rules)
+- **provider_agent_configs**: AI agent personality (identity, tone, voice, rules)
+- **seekers / engagements / sessions / messages / summaries / progress_indicators**: Coaching engagements & session data
+- **client_notes**: Private provider notes per engagement (optionally tied to a session)
+- **goals**: Action items (active / completed / paused, optional due date)
+- **intake_forms / intake_responses**: Provider-built intake questionnaires & seeker responses
+- **resources / resource_assignments**: Resource library + per-engagement assignments
+- **alerts**: Inactivity, trajectory change, overdue goal, new intake notifications
+- **provider_onboarding_chats**: Conversational AI setup transcripts + generated configs
 
 ### Test Accounts
 - Coach: `coach@haven.test` / `test1234`
@@ -112,16 +111,37 @@ Required:
 
 ## Key Frontend Pages
 - **Landing** (`/`): Warm hero with "For Individuals" / "For Experts" toggle
-- **Auth** (`/auth`): Sign in / sign up with "Welcome Back" / "Get Started" tabs
+- **Auth** (`/auth`): Sign in / sign up with autofill-friendly fields
 - **RolePicker** (`/auth/role`): Choose provider or seeker role
-- **Dashboard** (`/dashboard`): Role-based view (SeekerDashboardView / ProviderDashboardView)
+- **Dashboard** (`/dashboard`): Role-based view wrapped in AppLayout (sidebar + alerts bell for providers)
 - **Onboarding** (`/onboarding`): Multi-step seeker onboarding with provider selection
 - **Chat** (`/chat/:sessionId`): Real-time AI coaching conversation
-- **SessionSummary** (`/session-summary/:sessionId`): Post-session insights
-- **ProviderSetup** (`/provider/setup`): Provider coaching program configuration
-- **AgentSetup** (`/provider/agent-setup`): AI agent personality configuration
-- **ProviderEngagement** (`/provider/engagement/:engagementId`): Client session timeline
-- **ClientSessionSummary** (`/provider/client/:clientId`): Provider's view of client progress
+- **SessionSummary** (`/session-summary/:sessionId`): Post-session insights for seekers
+- **ProviderOnboarding** (`/provider/onboarding`): **Conversational AI setup** — Haven interviews the provider and auto-generates the full provider + agent config; replaces the old form-heavy setup as the primary path
+- **ProviderSetup** (`/provider/setup`): Advanced settings editor (CTA at top to re-run setup chat)
+- **AgentSetup** (`/provider/agent-setup`): Advanced agent personality editor
+- **Schedule** (`/provider/schedule`): Recent sessions, inactive clients, overdue goals at a glance
+- **Resources** (`/provider/resources`): Resource library (links / exercises / docs) with per-client assignment
+- **IntakeForms** (`/provider/intake-forms`): Build intake questionnaires (text / multiple choice / scale)
+- **Analytics** (`/provider/analytics`): Practice-wide insights — clients, sessions, stage & trajectory distribution
+- **ProviderProfile** (`/coach/:providerId`): Public-facing shareable provider page (no auth)
+- **ClientSessionSummary** (`/provider/client/:clientId`): Tabbed client view (Sessions, Notes, Goals, Resources, Intake)
+
+### Reusable layout components
+- **AppLayout** + **ProviderSidebar** + **AlertsBell** — consistent header/sidebar shell across provider screens
+- **NotesPanel** — private notes per engagement (CRUD)
+- **GoalsTracker** — goals with status/due-date/completion
+
+## API Routes (additions)
+- **Notes**: `GET/POST /api/engagements/:id/notes`, `PUT/DELETE /api/notes/:id`
+- **Goals**: `GET/POST /api/engagements/:id/goals`, `PUT/DELETE /api/goals/:id`
+- **Resources**: `GET/POST /api/resources`, `PUT/DELETE /api/resources/:id`, `POST /api/resources/:id/assign`, `GET /api/engagements/:id/resources`
+- **Intake**: `GET/POST /api/intake-forms`, `GET /api/intake-forms/:id`, `POST /api/intake-responses`, `GET /api/engagements/:id/intake`
+- **Alerts**: `GET /api/alerts`, `GET /api/alerts/unread-count`, `PUT /api/alerts/:id/read`. Auto-generated on session finish (trajectory drift/stall).
+- **AI Onboarding**: `POST /api/provider-onboarding/chat` (chat turn), `POST /api/provider-onboarding/generate` (synthesize config), `POST /api/provider-onboarding/apply` (write to provider_configs + provider_agent_configs)
+- **Analytics**: `GET /api/analytics/practice-overview`, `GET /api/analytics/client/:id/trends`
+- **Schedule**: `GET /api/schedule/overview`
+- **Public profile**: `GET /api/public/provider/:providerId`
 
 ## Migration Status
 Fully migrated from Lovable/Supabase to Replit:

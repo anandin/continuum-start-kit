@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -6,6 +6,9 @@ export const appRoleEnum = pgEnum("app_role", ["provider", "seeker"]);
 export const engagementStatusEnum = pgEnum("engagement_status", ["active", "paused", "completed"]);
 export const msgRoleEnum = pgEnum("msg_role", ["seeker", "agent", "provider"]);
 export const sessionStatusEnum = pgEnum("session_status", ["active", "ended"]);
+export const goalStatusEnum = pgEnum("goal_status", ["active", "completed", "paused"]);
+export const resourceTypeEnum = pgEnum("resource_type", ["link", "document", "exercise"]);
+export const onboardingChatStatusEnum = pgEnum("onboarding_chat_status", ["in_progress", "completed"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -110,6 +113,87 @@ export const progressIndicators = pgTable("progress_indicators", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const clientNotes = pgTable("client_notes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  sessionId: uuid("session_id").references(() => sessions.id),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  content: text("content").notNull(),
+  isPrivate: boolean("is_private").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const goals = pgTable("goals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: goalStatusEnum("status").default("active"),
+  dueDate: timestamp("due_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const intakeForms = pgTable("intake_forms", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  questions: jsonb("questions").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const intakeResponses = pgTable("intake_responses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  intakeFormId: uuid("intake_form_id").references(() => intakeForms.id).notNull(),
+  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  seekerId: uuid("seeker_id").references(() => seekers.id).notNull(),
+  answers: jsonb("answers").notNull(),
+  completedAt: timestamp("completed_at").defaultNow(),
+});
+
+export const resources = pgTable("resources", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  type: resourceTypeEnum("type").notNull(),
+  url: text("url"),
+  content: text("content"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const resourceAssignments = pgTable("resource_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  resourceId: uuid("resource_id").references(() => resources.id).notNull(),
+  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+  viewedAt: timestamp("viewed_at"),
+});
+
+export const alerts = pgTable("alerts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  engagementId: uuid("engagement_id").references(() => engagements.id),
+  type: text("type").notNull(),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const providerOnboardingChats = pgTable("provider_onboarding_chats", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  messages: jsonb("messages").notNull().default([]),
+  status: onboardingChatStatusEnum("status").default("in_progress"),
+  generatedConfig: jsonb("generated_config"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, createdAt: true });
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
@@ -121,6 +205,14 @@ export const insertSessionSchema = createInsertSchema(sessions).omit({ id: true,
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 export const insertSummarySchema = createInsertSchema(summaries).omit({ id: true, createdAt: true });
 export const insertProgressIndicatorSchema = createInsertSchema(progressIndicators).omit({ id: true, createdAt: true });
+export const insertClientNoteSchema = createInsertSchema(clientNotes).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertGoalSchema = createInsertSchema(goals).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertIntakeFormSchema = createInsertSchema(intakeForms).omit({ id: true, createdAt: true });
+export const insertIntakeResponseSchema = createInsertSchema(intakeResponses).omit({ id: true, completedAt: true });
+export const insertResourceSchema = createInsertSchema(resources).omit({ id: true, createdAt: true });
+export const insertResourceAssignmentSchema = createInsertSchema(resourceAssignments).omit({ id: true, assignedAt: true });
+export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
+export const insertProviderOnboardingChatSchema = createInsertSchema(providerOnboardingChats).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -133,6 +225,14 @@ export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type InsertSummary = z.infer<typeof insertSummarySchema>;
 export type InsertProgressIndicator = z.infer<typeof insertProgressIndicatorSchema>;
+export type InsertClientNote = z.infer<typeof insertClientNoteSchema>;
+export type InsertGoal = z.infer<typeof insertGoalSchema>;
+export type InsertIntakeForm = z.infer<typeof insertIntakeFormSchema>;
+export type InsertIntakeResponse = z.infer<typeof insertIntakeResponseSchema>;
+export type InsertResource = z.infer<typeof insertResourceSchema>;
+export type InsertResourceAssignment = z.infer<typeof insertResourceAssignmentSchema>;
+export type InsertAlert = z.infer<typeof insertAlertSchema>;
+export type InsertProviderOnboardingChat = z.infer<typeof insertProviderOnboardingChatSchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -145,3 +245,11 @@ export type Session = typeof sessions.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Summary = typeof summaries.$inferSelect;
 export type ProgressIndicator = typeof progressIndicators.$inferSelect;
+export type ClientNote = typeof clientNotes.$inferSelect;
+export type Goal = typeof goals.$inferSelect;
+export type IntakeForm = typeof intakeForms.$inferSelect;
+export type IntakeResponse = typeof intakeResponses.$inferSelect;
+export type Resource = typeof resources.$inferSelect;
+export type ResourceAssignment = typeof resourceAssignments.$inferSelect;
+export type Alert = typeof alerts.$inferSelect;
+export type ProviderOnboardingChat = typeof providerOnboardingChats.$inferSelect;

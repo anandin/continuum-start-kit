@@ -1,12 +1,17 @@
 import { db } from "./db";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNull, lt, gte } from "drizzle-orm";
 import {
   users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs,
   engagements, sessions, messages, summaries, progressIndicators,
+  clientNotes, goals, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
-  InsertSummary, InsertProgressIndicator, User, Profile, UserRole, Seeker,
-  ProviderConfig, ProviderAgentConfig, Engagement, Session, Message, Summary, ProgressIndicator
+  InsertSummary, InsertProgressIndicator,
+  InsertClientNote, InsertGoal, InsertIntakeForm, InsertIntakeResponse,
+  InsertResource, InsertResourceAssignment, InsertAlert, InsertProviderOnboardingChat,
+  User, Profile, UserRole, Seeker,
+  ProviderConfig, ProviderAgentConfig, Engagement, Session, Message, Summary, ProgressIndicator,
+  ClientNote, Goal, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat
 } from "../shared/schema";
 
 export interface IStorage {
@@ -53,6 +58,56 @@ export interface IStorage {
   createProgressIndicator(data: InsertProgressIndicator): Promise<ProgressIndicator>;
   getProgressIndicatorsBySessionId(sessionId: string): Promise<ProgressIndicator[]>;
   getProgressIndicatorsByEngagementId(engagementId: string): Promise<ProgressIndicator[]>;
+
+  // Notes
+  createClientNote(data: InsertClientNote): Promise<ClientNote>;
+  getClientNotesByEngagementId(engagementId: string): Promise<ClientNote[]>;
+  getClientNoteById(id: string): Promise<ClientNote | undefined>;
+  updateClientNote(id: string, data: Partial<InsertClientNote>): Promise<ClientNote | undefined>;
+  deleteClientNote(id: string): Promise<void>;
+
+  // Goals
+  createGoal(data: InsertGoal): Promise<Goal>;
+  getGoalsByEngagementId(engagementId: string): Promise<Goal[]>;
+  getGoalById(id: string): Promise<Goal | undefined>;
+  updateGoal(id: string, data: Partial<InsertGoal>): Promise<Goal | undefined>;
+  deleteGoal(id: string): Promise<void>;
+
+  // Intake Forms
+  createIntakeForm(data: InsertIntakeForm): Promise<IntakeForm>;
+  getIntakeFormsByProviderId(providerId: string): Promise<IntakeForm[]>;
+  getIntakeFormById(id: string): Promise<IntakeForm | undefined>;
+  updateIntakeForm(id: string, data: Partial<InsertIntakeForm>): Promise<IntakeForm | undefined>;
+  deleteIntakeForm(id: string): Promise<void>;
+
+  // Intake Responses
+  createIntakeResponse(data: InsertIntakeResponse): Promise<IntakeResponse>;
+  getIntakeResponseByEngagementId(engagementId: string): Promise<IntakeResponse | undefined>;
+
+  // Resources
+  createResource(data: InsertResource): Promise<Resource>;
+  getResourcesByProviderId(providerId: string): Promise<Resource[]>;
+  getResourceById(id: string): Promise<Resource | undefined>;
+  updateResource(id: string, data: Partial<InsertResource>): Promise<Resource | undefined>;
+  deleteResource(id: string): Promise<void>;
+
+  // Resource Assignments
+  createResourceAssignment(data: InsertResourceAssignment): Promise<ResourceAssignment>;
+  getResourceAssignmentsByEngagementId(engagementId: string): Promise<Array<ResourceAssignment & { resource: Resource }>>;
+  getResourceAssignmentById(id: string): Promise<ResourceAssignment | undefined>;
+  markResourceViewed(id: string): Promise<void>;
+
+  // Alerts
+  createAlert(data: InsertAlert): Promise<Alert>;
+  getAlertsByProviderId(providerId: string): Promise<Alert[]>;
+  getUnreadAlertCountByProviderId(providerId: string): Promise<number>;
+  markAlertRead(id: string, providerId?: string): Promise<void>;
+  markAllAlertsRead(providerId: string): Promise<void>;
+
+  // Provider Onboarding Chats
+  createProviderOnboardingChat(data: InsertProviderOnboardingChat): Promise<ProviderOnboardingChat>;
+  getActiveOnboardingChatByProviderId(providerId: string): Promise<ProviderOnboardingChat | undefined>;
+  updateProviderOnboardingChat(id: string, data: Partial<InsertProviderOnboardingChat>): Promise<ProviderOnboardingChat | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -229,6 +284,182 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(progressIndicators)
       .where(eq(progressIndicators.engagementId, engagementId))
       .orderBy(desc(progressIndicators.createdAt));
+  }
+
+  // ============ Notes ============
+  async createClientNote(data: InsertClientNote): Promise<ClientNote> {
+    const [note] = await db.insert(clientNotes).values(data).returning();
+    return note;
+  }
+  async getClientNotesByEngagementId(engagementId: string): Promise<ClientNote[]> {
+    return db.select().from(clientNotes)
+      .where(eq(clientNotes.engagementId, engagementId))
+      .orderBy(desc(clientNotes.createdAt));
+  }
+  async getClientNoteById(id: string): Promise<ClientNote | undefined> {
+    const [note] = await db.select().from(clientNotes).where(eq(clientNotes.id, id));
+    return note;
+  }
+  async updateClientNote(id: string, data: Partial<InsertClientNote>): Promise<ClientNote | undefined> {
+    const [note] = await db.update(clientNotes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(clientNotes.id, id)).returning();
+    return note;
+  }
+  async deleteClientNote(id: string): Promise<void> {
+    await db.delete(clientNotes).where(eq(clientNotes.id, id));
+  }
+
+  // ============ Goals ============
+  async createGoal(data: InsertGoal): Promise<Goal> {
+    const [goal] = await db.insert(goals).values(data).returning();
+    return goal;
+  }
+  async getGoalsByEngagementId(engagementId: string): Promise<Goal[]> {
+    return db.select().from(goals)
+      .where(eq(goals.engagementId, engagementId))
+      .orderBy(desc(goals.createdAt));
+  }
+  async getGoalById(id: string): Promise<Goal | undefined> {
+    const [goal] = await db.select().from(goals).where(eq(goals.id, id));
+    return goal;
+  }
+  async updateGoal(id: string, data: Partial<InsertGoal>): Promise<Goal | undefined> {
+    const [goal] = await db.update(goals)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(goals.id, id)).returning();
+    return goal;
+  }
+  async deleteGoal(id: string): Promise<void> {
+    await db.delete(goals).where(eq(goals.id, id));
+  }
+
+  // ============ Intake Forms ============
+  async createIntakeForm(data: InsertIntakeForm): Promise<IntakeForm> {
+    const [form] = await db.insert(intakeForms).values(data).returning();
+    return form;
+  }
+  async getIntakeFormsByProviderId(providerId: string): Promise<IntakeForm[]> {
+    return db.select().from(intakeForms)
+      .where(eq(intakeForms.providerId, providerId))
+      .orderBy(desc(intakeForms.createdAt));
+  }
+  async getIntakeFormById(id: string): Promise<IntakeForm | undefined> {
+    const [form] = await db.select().from(intakeForms).where(eq(intakeForms.id, id));
+    return form;
+  }
+  async updateIntakeForm(id: string, data: Partial<InsertIntakeForm>): Promise<IntakeForm | undefined> {
+    const [form] = await db.update(intakeForms).set(data).where(eq(intakeForms.id, id)).returning();
+    return form;
+  }
+  async deleteIntakeForm(id: string): Promise<void> {
+    await db.delete(intakeForms).where(eq(intakeForms.id, id));
+  }
+
+  // ============ Intake Responses ============
+  async createIntakeResponse(data: InsertIntakeResponse): Promise<IntakeResponse> {
+    const [response] = await db.insert(intakeResponses).values(data).returning();
+    return response;
+  }
+  async getIntakeResponseByEngagementId(engagementId: string): Promise<IntakeResponse | undefined> {
+    const [response] = await db.select().from(intakeResponses)
+      .where(eq(intakeResponses.engagementId, engagementId))
+      .orderBy(desc(intakeResponses.completedAt))
+      .limit(1);
+    return response;
+  }
+
+  // ============ Resources ============
+  async createResource(data: InsertResource): Promise<Resource> {
+    const [resource] = await db.insert(resources).values(data).returning();
+    return resource;
+  }
+  async getResourcesByProviderId(providerId: string): Promise<Resource[]> {
+    return db.select().from(resources)
+      .where(eq(resources.providerId, providerId))
+      .orderBy(desc(resources.createdAt));
+  }
+  async getResourceById(id: string): Promise<Resource | undefined> {
+    const [resource] = await db.select().from(resources).where(eq(resources.id, id));
+    return resource;
+  }
+  async updateResource(id: string, data: Partial<InsertResource>): Promise<Resource | undefined> {
+    const [resource] = await db.update(resources).set(data).where(eq(resources.id, id)).returning();
+    return resource;
+  }
+  async deleteResource(id: string): Promise<void> {
+    await db.delete(resourceAssignments).where(eq(resourceAssignments.resourceId, id));
+    await db.delete(resources).where(eq(resources.id, id));
+  }
+
+  // ============ Resource Assignments ============
+  async createResourceAssignment(data: InsertResourceAssignment): Promise<ResourceAssignment> {
+    const [assignment] = await db.insert(resourceAssignments).values(data).returning();
+    return assignment;
+  }
+  async getResourceAssignmentsByEngagementId(engagementId: string): Promise<Array<ResourceAssignment & { resource: Resource }>> {
+    const rows = await db.select().from(resourceAssignments)
+      .innerJoin(resources, eq(resourceAssignments.resourceId, resources.id))
+      .where(eq(resourceAssignments.engagementId, engagementId))
+      .orderBy(desc(resourceAssignments.assignedAt));
+    return rows.map(r => ({ ...r.resource_assignments, resource: r.resources }));
+  }
+  async getResourceAssignmentById(id: string): Promise<ResourceAssignment | undefined> {
+    const [a] = await db.select().from(resourceAssignments).where(eq(resourceAssignments.id, id));
+    return a;
+  }
+  async markResourceViewed(id: string): Promise<void> {
+    await db.update(resourceAssignments)
+      .set({ viewedAt: new Date() })
+      .where(eq(resourceAssignments.id, id));
+  }
+
+  // ============ Alerts ============
+  async createAlert(data: InsertAlert): Promise<Alert> {
+    const [alert] = await db.insert(alerts).values(data).returning();
+    return alert;
+  }
+  async getAlertsByProviderId(providerId: string): Promise<Alert[]> {
+    return db.select().from(alerts)
+      .where(eq(alerts.providerId, providerId))
+      .orderBy(desc(alerts.createdAt))
+      .limit(50);
+  }
+  async getUnreadAlertCountByProviderId(providerId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)::int` })
+      .from(alerts)
+      .where(and(eq(alerts.providerId, providerId), eq(alerts.isRead, false)));
+    return result[0]?.count ?? 0;
+  }
+  async markAlertRead(id: string, providerId?: string): Promise<void> {
+    if (providerId) {
+      await db.update(alerts).set({ isRead: true }).where(and(eq(alerts.id, id), eq(alerts.providerId, providerId)));
+    } else {
+      await db.update(alerts).set({ isRead: true }).where(eq(alerts.id, id));
+    }
+  }
+  async markAllAlertsRead(providerId: string): Promise<void> {
+    await db.update(alerts).set({ isRead: true }).where(eq(alerts.providerId, providerId));
+  }
+
+  // ============ Provider Onboarding Chats ============
+  async createProviderOnboardingChat(data: InsertProviderOnboardingChat): Promise<ProviderOnboardingChat> {
+    const [chat] = await db.insert(providerOnboardingChats).values(data).returning();
+    return chat;
+  }
+  async getActiveOnboardingChatByProviderId(providerId: string): Promise<ProviderOnboardingChat | undefined> {
+    const [chat] = await db.select().from(providerOnboardingChats)
+      .where(and(eq(providerOnboardingChats.providerId, providerId), eq(providerOnboardingChats.status, "in_progress")))
+      .orderBy(desc(providerOnboardingChats.createdAt))
+      .limit(1);
+    return chat;
+  }
+  async updateProviderOnboardingChat(id: string, data: Partial<InsertProviderOnboardingChat>): Promise<ProviderOnboardingChat | undefined> {
+    const [chat] = await db.update(providerOnboardingChats)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(providerOnboardingChats.id, id))
+      .returning();
+    return chat;
   }
 }
 

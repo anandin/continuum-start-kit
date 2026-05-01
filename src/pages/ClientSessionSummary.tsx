@@ -19,6 +19,11 @@ import {
 } from 'lucide-react';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
 import { toast } from 'sonner';
+import { AppLayout } from '@/components/AppLayout';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { NotesPanel } from '@/components/NotesPanel';
+import { GoalsTracker } from '@/components/GoalsTracker';
+import { useQuery } from '@tanstack/react-query';
 
 export default function ClientSessionSummary() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -132,17 +137,12 @@ export default function ClientSessionSummary() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-warm p-4 md:p-8" data-testid="loading-client-summary">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <AppLayout title="Client overview">
+        <div className="space-y-6 animate-fade-in" data-testid="loading-client-summary">
           <Skeleton className="h-16 rounded-md" />
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-4">
-              <Skeleton className="h-96 rounded-md" />
-            </div>
-            <Skeleton className="h-96 rounded-md" />
-          </div>
+          <Skeleton className="h-96 rounded-md" />
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
@@ -155,8 +155,8 @@ export default function ClientSessionSummary() {
   const trajectoryStatus = getSummaryField(latestSummary, 'trajectoryStatus', 'trajectory_status') || 'steady';
 
   return (
-    <div className="min-h-screen bg-gradient-warm p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <AppLayout title={seekerAlias} subtitle="Complete client overview">
+      <div className="space-y-6 animate-fade-in">
         <Card className="shadow-warm-md" data-testid="card-header">
           <CardContent className="p-6">
             <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -191,6 +191,16 @@ export default function ClientSessionSummary() {
           </CardContent>
         </Card>
 
+        <Tabs defaultValue="sessions" className="w-full">
+          <TabsList className="bg-muted/40 p-1">
+            <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="notes" data-testid="tab-notes">Notes</TabsTrigger>
+            <TabsTrigger value="goals" data-testid="tab-goals">Goals</TabsTrigger>
+            <TabsTrigger value="resources" data-testid="tab-resources">Resources</TabsTrigger>
+            <TabsTrigger value="intake" data-testid="tab-intake">Intake</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="sessions" className="mt-6">
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
             <Card className="shadow-warm-md" data-testid="card-latest-summary">
@@ -360,7 +370,96 @@ export default function ClientSessionSummary() {
             </Card>
           </div>
         </div>
+          </TabsContent>
+
+          <TabsContent value="notes" className="mt-6">
+            <NotesPanel engagementId={engagement.id} />
+          </TabsContent>
+
+          <TabsContent value="goals" className="mt-6">
+            <GoalsTracker engagementId={engagement.id} />
+          </TabsContent>
+
+          <TabsContent value="resources" className="mt-6">
+            <AssignedResourcesPanel engagementId={engagement.id} />
+          </TabsContent>
+
+          <TabsContent value="intake" className="mt-6">
+            <IntakeResponsesPanel engagementId={engagement.id} />
+          </TabsContent>
+        </Tabs>
       </div>
-    </div>
+    </AppLayout>
+  );
+}
+
+function AssignedResourcesPanel({ engagementId }: { engagementId: string }) {
+  const { data: resources = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/engagements/${engagementId}/resources`],
+    enabled: !!engagementId,
+  });
+
+  return (
+    <Card className="shadow-warm">
+      <CardHeader>
+        <CardTitle className="text-base">Assigned resources</CardTitle>
+        <CardDescription>Materials shared with this client</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : resources.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No resources assigned yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {resources.map((row: any) => {
+              const r = row.resource ?? row;
+              return (
+                <div key={row.id} className="rounded-lg border border-border/60 p-3" data-testid={`resource-${row.id}`}>
+                  <p className="font-medium text-sm">{r.title}</p>
+                  {r.description && <p className="text-xs text-muted-foreground mt-1">{r.description}</p>}
+                  {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline mt-1 inline-block">Open link</a>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function IntakeResponsesPanel({ engagementId }: { engagementId: string }) {
+  const { data: response, isLoading } = useQuery<any>({
+    queryKey: [`/api/engagements/${engagementId}/intake`],
+    enabled: !!engagementId,
+  });
+
+  const answers = response?.answers || {};
+  const hasAnswers = response && Object.keys(answers).length > 0;
+
+  return (
+    <Card className="shadow-warm">
+      <CardHeader>
+        <CardTitle className="text-base">Intake responses</CardTitle>
+        <CardDescription>What this client shared during onboarding</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : !hasAnswers ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No intake responses yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {Object.entries(answers).map(([q, a]: [string, any]) => (
+              <div key={q} className="rounded-lg border border-border/60 p-3">
+                <p className="text-xs text-muted-foreground mb-1">{q}</p>
+                <p className="text-sm">{String(a)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
