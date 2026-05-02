@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean, varchar, json, index, integer, customType, real } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean, varchar, json, index, integer, customType, real, date, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -310,6 +310,27 @@ export const calibrationSessions = pgTable("calibration_sessions", {
   completedAt: timestamp("completed_at"),
 });
 
+// Daily mood check-ins from seekers (1–5 score + optional one-line note).
+// One row per (seeker, day); resubmits update the same row.
+export const moodEntries = pgTable(
+  "mood_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seekerId: uuid("seeker_id").references(() => seekers.id).notNull(),
+    engagementId: uuid("engagement_id").references(() => engagements.id),
+    day: date("day").notNull(),
+    score: integer("score").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    uniqSeekerDay: uniqueIndex("uniq_mood_seeker_day").on(t.seekerId, t.day),
+    seekerIdx: index("mood_seeker_idx").on(t.seekerId),
+    engagementIdx: index("mood_engagement_idx").on(t.engagementId),
+  }),
+);
+
 // L3 — per-client memory entries with optional embedding
 export const clientMemory = pgTable("client_memory", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -349,6 +370,7 @@ export const insertAgentVersionSchema = createInsertSchema(agentVersions).omit({
 export const insertPersonaExampleSchema = createInsertSchema(personaExamples).omit({ id: true, createdAt: true, embedding: true });
 export const insertCalibrationSessionSchema = createInsertSchema(calibrationSessions).omit({ id: true, createdAt: true, completedAt: true });
 export const insertClientMemorySchema = createInsertSchema(clientMemory).omit({ id: true, createdAt: true, redactedAt: true, redactedBy: true, embedding: true });
+export const insertMoodEntrySchema = createInsertSchema(moodEntries).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -374,6 +396,7 @@ export type InsertAgentVersion = z.infer<typeof insertAgentVersionSchema>;
 export type InsertPersonaExample = z.infer<typeof insertPersonaExampleSchema>;
 export type InsertCalibrationSession = z.infer<typeof insertCalibrationSessionSchema>;
 export type InsertClientMemory = z.infer<typeof insertClientMemorySchema>;
+export type InsertMoodEntry = z.infer<typeof insertMoodEntrySchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -400,3 +423,4 @@ export type AgentVersion = typeof agentVersions.$inferSelect;
 export type PersonaExample = typeof personaExamples.$inferSelect;
 export type CalibrationSession = typeof calibrationSessions.$inferSelect;
 export type ClientMemory = typeof clientMemory.$inferSelect;
+export type MoodEntry = typeof moodEntries.$inferSelect;

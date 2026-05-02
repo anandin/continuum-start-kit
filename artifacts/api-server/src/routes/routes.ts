@@ -1954,4 +1954,112 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // ============================================================
+  // MOOD CHECK-INS (seeker daily 1-5 + optional note)
+  // ============================================================
+
+  // Server-derived YYYY-MM-DD (UTC). Keeps "one per day" deterministic.
+  function todayYmd(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function shiftYmd(days: number): string {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function clampDays(raw: unknown, def: number, max: number): number {
+    const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n) || n <= 0) return def;
+    return Math.min(Math.floor(n), max);
+  }
+
+  // Seeker upserts today's mood entry.
+  app.post("/api/mood/today", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const seeker = await storage.getSeekerByOwnerId(userId);
+      if (!seeker) {
+        return res.status(403).json({ error: "Only seekers can log mood entries" });
+      }
+
+      const bodySchema = z.object({
+        score: z.number().int().min(1).max(5),
+        note: z.string().max(280).optional().nullable(),
+        engagementId: z.string().uuid().optional().nullable(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid mood entry", details: parsed.error.flatten() });
+      }
+      const { score, note, engagementId } = parsed.data;
+
+      // If an engagement is provided, ensure this seeker actually owns it.
+      let engagementIdToStore: string | null = null;
+      if (engagementId) {
+        const engagement = await storage.getEngagementById(engagementId);
+        if (!engagement || engagement.seekerId !== seeker.id) {
+          return res.status(403).json({ error: "Forbidden engagement" });
+        }
+        engagementIdToStore = engagement.id;
+      } else {
+        // Best-effort: attach the seeker's most recent active engagement so
+        // their coach automatically sees the mood trend.
+        const engagements = await storage.getEngagementsBySeekerId(seeker.id);
+        const active = engagements.find((e) => (e.status ?? "active") === "active") ?? engagements[0];
+        engagementIdToStore = active?.id ?? null;
+      }
+
+      const entry = await storage.upsertMoodEntry({
+        seekerId: seeker.id,
+        engagementId: engagementIdToStore,
+        day: todayYmd(),
+        score,
+        note: note ?? null,
+      });
+      return res.json(entry);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Seeker reads their own recent mood history.
+  app.get("/api/mood/me", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const seeker = await storage.getSeekerByOwnerId(userId);
+      if (!seeker) {
+        return res.json({ today: null, entries: [] });
+      }
+      const days = clampDays(req.query.days, 14, 90);
+      // Inclusive window: shift back days-1 so days=14 yields a 14-day window.
+      const sinceDay = shiftYmd(days - 1);
+      const entries = await storage.getMoodEntriesBySeekerId(seeker.id, sinceDay);
+      const today = todayYmd();
+      const todayEntry = entries.find((e) => e.day === today) ?? null;
+      return res.json({ today: todayEntry, entries });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Coach (or seeker on their own engagement) reads mood history for an engagement.
+  app.get("/api/engagements/:id/mood", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const engagementIdParam = String(req.params.id);
+      const m = await assertEngagementMember(req, engagementIdParam);
+      if (!m.ok) {
+        return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+      }
+      const days = clampDays(req.query.days, 14, 90);
+      const sinceDay = shiftYmd(days - 1);
+      const entries = await storage.getMoodEntriesByEngagementId(engagementIdParam, sinceDay);
+      const latest = entries.length > 0 ? entries[entries.length - 1] : null;
+      return res.json({ latest, entries });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
 }

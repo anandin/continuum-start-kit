@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HavenLogo } from "@/components/HavenLogo";
+import { MoodCard } from "@/components/MoodCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
@@ -234,6 +235,8 @@ export default function HomeScreen() {
             colors={colors}
           />
         </View>
+
+        <MoodCard engagementId={activeEngagement?.id ?? null} />
 
         {activeEngagement ? (
           <View

@@ -23,6 +23,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { NotesPanel } from '@/components/NotesPanel';
 import { GoalsTracker } from '@/components/GoalsTracker';
+import { MoodPanel } from '@/components/MoodPanel';
 import { useQuery } from '@tanstack/react-query';
 
 export default function ClientSessionSummary() {
@@ -203,6 +204,7 @@ export default function ClientSessionSummary() {
         <Tabs defaultValue="sessions" className="w-full">
           <TabsList className="bg-muted/40 p-1">
             <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="mood" data-testid="tab-mood">Mood</TabsTrigger>
             <TabsTrigger value="notes" data-testid="tab-notes">Notes</TabsTrigger>
             <TabsTrigger value="goals" data-testid="tab-goals">Goals</TabsTrigger>
             <TabsTrigger value="resources" data-testid="tab-resources">Resources</TabsTrigger>
@@ -379,6 +381,10 @@ export default function ClientSessionSummary() {
             </Card>
           </div>
         </div>
+          </TabsContent>
+
+          <TabsContent value="mood" className="mt-6">
+            <MoodPanel engagementId={engagement.id} />
           </TabsContent>
 
           <TabsContent value="notes" className="mt-6">

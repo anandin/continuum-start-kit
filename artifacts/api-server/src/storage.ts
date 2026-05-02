@@ -4,14 +4,17 @@ import {
   users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs,
   engagements, sessions, messages, summaries, progressIndicators,
   clientNotes, goals, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
+  moodEntries,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
   InsertSummary, InsertProgressIndicator,
   InsertClientNote, InsertGoal, InsertIntakeForm, InsertIntakeResponse,
   InsertResource, InsertResourceAssignment, InsertAlert, InsertProviderOnboardingChat,
+  InsertMoodEntry,
   User, Profile, UserRole, Seeker,
   ProviderConfig, ProviderAgentConfig, Engagement, Session, Message, Summary, ProgressIndicator,
-  ClientNote, Goal, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat
+  ClientNote, Goal, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat,
+  MoodEntry
 } from "@workspace/db";
 
 export interface IStorage {
@@ -108,6 +111,11 @@ export interface IStorage {
   createProviderOnboardingChat(data: InsertProviderOnboardingChat): Promise<ProviderOnboardingChat>;
   getActiveOnboardingChatByProviderId(providerId: string): Promise<ProviderOnboardingChat | undefined>;
   updateProviderOnboardingChat(id: string, data: Partial<InsertProviderOnboardingChat>): Promise<ProviderOnboardingChat | undefined>;
+
+  // Mood Entries
+  upsertMoodEntry(data: InsertMoodEntry): Promise<MoodEntry>;
+  getMoodEntriesBySeekerId(seekerId: string, sinceDay: string): Promise<MoodEntry[]>;
+  getMoodEntriesByEngagementId(engagementId: string, sinceDay: string): Promise<MoodEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -460,6 +468,33 @@ export class DatabaseStorage implements IStorage {
       .where(eq(providerOnboardingChats.id, id))
       .returning();
     return chat;
+  }
+
+  // ============ Mood Entries ============
+  async upsertMoodEntry(data: InsertMoodEntry): Promise<MoodEntry> {
+    const [entry] = await db.insert(moodEntries)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [moodEntries.seekerId, moodEntries.day],
+        set: {
+          score: data.score,
+          note: data.note ?? null,
+          engagementId: data.engagementId ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return entry;
+  }
+  async getMoodEntriesBySeekerId(seekerId: string, sinceDay: string): Promise<MoodEntry[]> {
+    return db.select().from(moodEntries)
+      .where(and(eq(moodEntries.seekerId, seekerId), gte(moodEntries.day, sinceDay)))
+      .orderBy(asc(moodEntries.day));
+  }
+  async getMoodEntriesByEngagementId(engagementId: string, sinceDay: string): Promise<MoodEntry[]> {
+    return db.select().from(moodEntries)
+      .where(and(eq(moodEntries.engagementId, engagementId), gte(moodEntries.day, sinceDay)))
+      .orderBy(asc(moodEntries.day));
   }
 }
 
