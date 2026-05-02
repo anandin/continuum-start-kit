@@ -3,11 +3,24 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "@/lib/queryClient";
 
+interface SyntheticClientProfile {
+  presenting: string;
+  tone: string;
+}
+
+interface CalibrationTurn {
+  client: string;
+  draft: string;
+  templated?: boolean;
+  label?: "this_is_me" | "needs_edit" | "not_me" | "never_say_this";
+  approvedEdit?: string;
+}
+
 interface CalibrationSession {
   id: string;
   scenarioName: string;
-  syntheticClientProfile: any;
-  transcript: any[];
+  syntheticClientProfile: SyntheticClientProfile;
+  transcript: CalibrationTurn[];
   status: "in_progress" | "completed" | "abandoned";
   createdAt: string;
 }
@@ -147,7 +160,7 @@ export default function Calibration() {
                 </div>
 
                 <div className="space-y-4">
-                  {(activeQ.data.transcript || []).map((t: any, i: number) => (
+                  {(activeQ.data.transcript || []).map((t: CalibrationTurn, i: number) => (
                     <TurnCard
                       key={i}
                       turn={t}
@@ -169,7 +182,7 @@ export default function Calibration() {
   );
 }
 
-function TurnCard({ turn, index, onLabel, busy }: { turn: any; index: number; onLabel: (label: string, approvedEdit?: string) => void; busy: boolean }) {
+function TurnCard({ turn, index, onLabel, busy }: { turn: CalibrationTurn; index: number; onLabel: (label: string, approvedEdit?: string) => void; busy: boolean }) {
   const [editing, setEditing] = useState(false);
   const [edited, setEdited] = useState(turn.draft);
 

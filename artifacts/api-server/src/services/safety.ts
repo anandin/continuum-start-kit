@@ -555,11 +555,12 @@ async function persist(
     });
   } catch (err) {
     logger.error({ err, decision: verdict.decision, stage }, "failed to persist safety event");
-    // Fail closed: for any non-allow decision the audit trail is mandatory.
-    // Bubble up so the orchestrator can refuse to return the response.
-    if (verdict.decision !== "allow") {
-      throw new Error(`safety_audit_persist_failed:${stage}:${verdict.decision}`);
-    }
+    // Fail closed for ALL decisions, including allow. Every L1 decision
+    // must reach safety_events; silently dropping allow rows would leave
+    // audit gaps that defeat the supervisor control surface. The
+    // orchestrator catches this throw and renders the fail-closed
+    // template.
+    throw new Error(`safety_audit_persist_failed:${stage}:${verdict.decision}`);
   }
 }
 

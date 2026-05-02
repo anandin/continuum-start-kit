@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
+type ClassifierPayload = Record<string, unknown>;
+
 interface SafetyEvent {
   id: string;
   sessionId: string | null;
@@ -12,7 +14,7 @@ interface SafetyEvent {
   decision: string;
   severity: "info" | "low" | "medium" | "high" | "critical";
   reason: string | null;
-  classifierLabels: any;
+  classifierLabels: ClassifierPayload | null;
   inputSnippet: string | null;
   outputSnippet: string | null;
   templateUsed: string | null;
@@ -160,7 +162,7 @@ export default function AuditLog() {
  * therapists / supervisors see "what flagged this" without expanding raw JSON,
  * and keep the full payload available behind a details toggle for compliance.
  */
-function ClassifierLabels({ labels }: { labels: any }) {
+function ClassifierLabels({ labels }: { labels: ClassifierPayload | null }) {
   if (!labels || typeof labels !== "object") return null;
   if (Array.isArray(labels) && labels.length === 0) return null;
   if (!Array.isArray(labels) && Object.keys(labels).length === 0) return null;
@@ -190,16 +192,23 @@ function ClassifierLabels({ labels }: { labels: any }) {
   // OpenAI moderation. Backend stores it FLAT on classifierLabels:
   //   { moderation: true, flagged, categories: {...}, category_scores: {...}, model }
   // Some older rows nested it under `labels.moderation`; handle both shapes.
-  const modSrc = labels.moderation === true
-    ? labels
-    : (labels.moderation && typeof labels.moderation === "object" ? labels.moderation : null);
-  const modFlagged: string[] = modSrc?.categories && typeof modSrc.categories === "object"
-    ? Object.entries(modSrc.categories)
-        .filter(([, v]) => v === true)
-        .map(([k]) => k)
+  const modSrc: Record<string, unknown> | null =
+    labels.moderation === true
+      ? labels
+      : labels.moderation && typeof labels.moderation === "object"
+        ? (labels.moderation as Record<string, unknown>)
+        : null;
+  const modCats = modSrc && typeof modSrc.categories === "object" && modSrc.categories !== null
+    ? (modSrc.categories as Record<string, unknown>)
+    : null;
+  const modScores = modSrc && typeof modSrc.category_scores === "object" && modSrc.category_scores !== null
+    ? (modSrc.category_scores as Record<string, unknown>)
+    : null;
+  const modFlagged: string[] = modCats
+    ? Object.entries(modCats).filter(([, v]) => v === true).map(([k]) => k)
     : [];
-  const modTop: Array<[string, number]> = modSrc?.category_scores && typeof modSrc.category_scores === "object"
-    ? Object.entries(modSrc.category_scores)
+  const modTop: Array<[string, number]> = modScores
+    ? Object.entries(modScores)
         .filter(([, v]) => typeof v === "number")
         .map(([k, v]) => [k, v as number] as [string, number])
         .sort((a, b) => b[1] - a[1])
