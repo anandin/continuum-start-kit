@@ -140,6 +140,7 @@ export const billingStorage = {
     tierId?: string | null;
     stripeCustomerId?: string | null;
     stripeSubscriptionId?: string | null;
+    stripePaymentMethodId?: string | null;
     lastPaymentIntentId?: string | null;
     status?: string;
     lastChargedAt?: Date | null;
@@ -152,6 +153,7 @@ export const billingStorage = {
       "tierId",
       "stripeCustomerId",
       "stripeSubscriptionId",
+      "stripePaymentMethodId",
       "lastPaymentIntentId",
       "status",
       "lastChargedAt",
@@ -175,6 +177,7 @@ export const billingStorage = {
         tierId: input.tierId ?? null,
         stripeCustomerId: input.stripeCustomerId ?? null,
         stripeSubscriptionId: input.stripeSubscriptionId ?? null,
+        stripePaymentMethodId: input.stripePaymentMethodId ?? null,
         lastPaymentIntentId: input.lastPaymentIntentId ?? null,
         status: input.status ?? "none",
         lastChargedAt: input.lastChargedAt ?? null,
