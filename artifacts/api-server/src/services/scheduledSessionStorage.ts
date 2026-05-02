@@ -67,8 +67,12 @@ export const scheduledSessionStorage = {
   },
 
   async listUpcomingForUser(userId: string): Promise<ScheduledSession[]> {
-    // Anything not cancelled where (a) still proposed OR (b) confirmed
-    // and the chosen time is in the future.
+    // Anything not cancelled where (a) proposed AND at least one of
+    // the proposed slots is still in the future OR (b) confirmed and
+    // the chosen time is in the future. The jsonb EXISTS clause
+    // prevents stale proposals (every slot already passed) from
+    // showing up as "upcoming" in seeker / coach UIs and from being
+    // confirmable into a past session.
     const now = new Date();
     return db
       .select()
@@ -80,7 +84,10 @@ export const scheduledSessionStorage = {
             eq(scheduledSessions.seekerUserId, userId),
           ),
           or(
-            eq(scheduledSessions.status, "proposed"),
+            and(
+              eq(scheduledSessions.status, "proposed"),
+              sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${scheduledSessions.proposedSlots}) AS s WHERE s::timestamptz > ${now})`,
+            ),
             and(
               eq(scheduledSessions.status, "confirmed"),
               gt(scheduledSessions.confirmedAt, now),

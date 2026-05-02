@@ -295,13 +295,25 @@ export function SchedulePanel({ engagementId }: { engagementId: string }) {
   const [cancelReason, setCancelReason] = useState("");
 
   const rows = data?.scheduledSessions ?? [];
+  // A proposed row is only "upcoming" if at least one of its proposed
+  // slots is still in the future. Otherwise the row is stale (every
+  // option has passed) and belongs in the past list with a hint to
+  // reschedule — matches the server-side listUpcomingForUser filter.
+  const proposedHasFutureSlot = (r: ScheduledSession) =>
+    Array.isArray(r.proposedSlots) &&
+    r.proposedSlots.some((s: string) => {
+      const t = new Date(s).getTime();
+      return Number.isFinite(t) && t > Date.now();
+    });
   const upcoming = useMemo(
     () =>
       rows.filter(
         (r) =>
           r.status !== "cancelled" &&
-          (r.status === "proposed" ||
-            (r.confirmedAt && new Date(r.confirmedAt).getTime() > Date.now())),
+          ((r.status === "proposed" && proposedHasFutureSlot(r)) ||
+            (r.status === "confirmed" &&
+              r.confirmedAt &&
+              new Date(r.confirmedAt).getTime() > Date.now())),
       ),
     [rows],
   );
@@ -310,6 +322,7 @@ export function SchedulePanel({ engagementId }: { engagementId: string }) {
       rows.filter(
         (r) =>
           r.status === "cancelled" ||
+          (r.status === "proposed" && !proposedHasFutureSlot(r)) ||
           (r.status === "confirmed" &&
             r.confirmedAt &&
             new Date(r.confirmedAt).getTime() <= Date.now()),

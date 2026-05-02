@@ -3304,6 +3304,18 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (Number.isNaN(chosen.getTime())) {
         return res.status(400).json({ error: "invalid slot" });
       }
+      // Reject confirmation of a slot that has already passed.
+      // Without this guard, a stale proposal whose times all aged
+      // out could still be confirmed and create a "confirmed"
+      // session in the past — visible as upcoming in every UI.
+      // Server-side enforcement is required because the seeker's
+      // client clock cannot be trusted.
+      if (chosen.getTime() <= Date.now()) {
+        return res.status(409).json({
+          error:
+            "That time has already passed. Ask your coach to propose new times.",
+        });
+      }
       const slotIso = chosen.toISOString();
       const proposedIso = ((row.proposedSlots ?? []) as unknown[]).map((s) => {
         try {
