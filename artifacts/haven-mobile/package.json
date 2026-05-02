@@ -58,6 +58,7 @@
   "dependencies": {
     "expo-audio": "~1.1.1",
     "expo-file-system": "~19.0.22",
+    "expo-local-authentication": "~17.0.8",
     "expo-secure-store": "~15.0.8"
   }
 }

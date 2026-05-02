@@ -42,6 +42,12 @@
         {
           "microphonePermission": "Haven uses your microphone so you can talk to your coach by voice instead of typing during stressful moments."
         }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Haven uses Face ID to keep your private reflections and conversations locked unless it's really you."
+        }
       ]
     ],
     "experiments": {

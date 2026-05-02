@@ -8,11 +8,17 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import {
+  biometricToggleSubtitle,
+  openSystemSettingsForBiometrics,
+  useBiometricLock,
+} from "@/components/BiometricLock";
 import { HavenLogo } from "@/components/HavenLogo";
 import { useCrisis } from "@/components/Crisis";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,7 +30,27 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const crisis = useCrisis();
+  const biometric = useBiometricLock();
   const [signingOut, setSigningOut] = React.useState(false);
+  const [togglingBiometric, setTogglingBiometric] = React.useState(false);
+
+  const biometricUnavailable =
+    biometric.support.kind !== "supported" && biometric.support.kind !== "unknown";
+
+  const handleToggleBiometric = async (next: boolean) => {
+    if (biometricUnavailable && next) {
+      if (biometric.support.kind === "not-enrolled") {
+        openSystemSettingsForBiometrics();
+      }
+      return;
+    }
+    setTogglingBiometric(true);
+    try {
+      await biometric.setEnabled(next);
+    } finally {
+      setTogglingBiometric(false);
+    }
+  };
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -86,6 +112,81 @@ export default function ProfileScreen() {
               Seeker
             </Text>
           </View>
+        </View>
+
+        <View style={styles.sectionLabel}>
+          <Text
+            style={[styles.sectionLabelText, { color: colors.mutedForeground }]}
+          >
+            PRIVACY
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.toggleRow,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: biometric.isLoadingPref ? 0.6 : 1,
+            },
+          ]}
+          testID="profile-biometric-row"
+        >
+          <View
+            style={[
+              styles.rowIcon,
+              {
+                backgroundColor: biometricUnavailable
+                  ? colors.muted
+                  : colors.gradientHeroMid,
+              },
+            ]}
+          >
+            <Feather
+              name="lock"
+              size={16}
+              color={biometricUnavailable ? colors.mutedForeground : colors.primary}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+              App lock
+            </Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
+              {biometricToggleSubtitle({
+                support: biometric.support,
+                enabled: biometric.enabled,
+              })}
+            </Text>
+            {biometric.support.kind === "not-enrolled" ? (
+              <Pressable
+                onPress={openSystemSettingsForBiometrics}
+                accessibilityLabel="Open device settings"
+                testID="profile-biometric-settings"
+                style={({ pressed }) => [
+                  styles.inlineLink,
+                  { opacity: pressed ? 0.6 : 1 },
+                ]}
+              >
+                <Text style={[styles.inlineLinkText, { color: colors.primary }]}>
+                  Open device settings
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {togglingBiometric ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <Switch
+              value={biometric.enabled}
+              onValueChange={handleToggleBiometric}
+              disabled={biometricUnavailable || biometric.isLoadingPref}
+              accessibilityLabel="Require biometric to open Haven"
+              testID="profile-biometric-toggle"
+            />
+          )}
         </View>
 
         <View style={styles.sectionLabel}>
@@ -330,6 +431,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     marginTop: 2,
+    lineHeight: 17,
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderWidth: 1,
+  },
+  inlineLink: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+  },
+  inlineLinkText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
   aboutCard: {
     borderWidth: 1,
