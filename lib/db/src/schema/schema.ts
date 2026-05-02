@@ -588,9 +588,6 @@ export const scheduledSessions = pgTable(
   }),
 );
 
-// ============================================================
-// Billing (Task #19 — Stripe Connect Express + sliding-scale tiers)
-// ============================================================
 // One row per coach who has begun Stripe Connect onboarding.
 // chargesEnabled / payoutsEnabled / detailsSubmitted mirror the Stripe
 // account status fields so the UI can show a clear "needs more info"

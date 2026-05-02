@@ -11,7 +11,7 @@ import {
   setEngagementDefaultPaymentMethod,
   retryPendingChargeForEngagement,
 } from "../services/billing";
-import { getStripe, stripeConfigured, stripePublishableKey } from "../lib/stripe";
+import { getStripe, stripeConfigured, stripePublishableKey, stripeWebhookSecret } from "../lib/stripe";
 import type { InsertPriceTier } from "@workspace/db/schema";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -338,12 +338,13 @@ export function registerBillingRoutes(app: Express): void {
     },
   );
 
-  // ---------------- payment-method management (seeker UI) ----------------
-  // Returns the publishable key (and configured flag) so the web UI
-  // can lazy-load Stripe.js only when billing is actually wired up.
+  // Publishable key + readiness flags for the web UI. webhookConfigured
+  // is exposed so the UI can warn admins when reconciliation is silently
+  // disabled (Stripe key set but no webhook secret).
   app.get("/api/billing/config", requireAuth, (_req, res) => {
     res.json({
       configured: stripeConfigured(),
+      webhookConfigured: !!stripeWebhookSecret(),
       publishableKey: stripePublishableKey() ?? null,
     });
   });

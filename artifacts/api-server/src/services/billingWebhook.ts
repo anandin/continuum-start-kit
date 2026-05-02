@@ -24,10 +24,10 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
   const stripe = getStripe();
   const secret = stripeWebhookSecret();
   if (!stripe || !secret) {
-    // Without a configured webhook secret we cannot trust the payload,
-    // so we simply acknowledge to keep Stripe from retrying forever in
-    // a half-configured environment.
-    res.status(200).json({ received: true, ignored: "not_configured" });
+    // Refuse to process unverifiable payloads. 503 makes the misconfig
+    // loud — Stripe will retry and the operator must set the secret.
+    logger.warn("stripe webhook: STRIPE_WEBHOOK_SECRET not set — refusing event");
+    res.status(503).json({ error: "webhook not configured" });
     return;
   }
 

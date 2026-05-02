@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createHash } from "crypto";
 import { storage } from "../storage";
+import { registerBillingRoutes } from "./billing";
 
 /**
  * Build redacted snippets for internal (non-seeker-facing) LLM call audit
@@ -96,13 +97,6 @@ async function requireProvider(req: Request, res: Response, next: NextFunction) 
 }
 
 export function registerRoutes(app: Express) {
-  // Billing: Stripe Connect onboarding, sliding-scale tiers, seeker
-  // tier selection, payment history. Lives in its own module to keep
-  // this file from growing further.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { registerBillingRoutes } = require("./billing") as {
-    registerBillingRoutes: (app: Express) => void;
-  };
   registerBillingRoutes(app);
 
   app.get("/api/health", (req, res) => {
