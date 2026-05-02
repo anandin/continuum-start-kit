@@ -170,21 +170,22 @@ export default function Onboarding() {
       // than blocking onboarding on a Stripe modal.
       let needsPaymentSetup = false;
       if (selectedTierId) {
-        const r = await apiRequest(
-          'POST',
-          `/api/engagements/${engagement.id}/billing/select-tier`,
-          { tierId: selectedTierId },
-        );
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          toast.error(
-            body?.error ??
-              'Could not save your payment tier. Please choose it on the Payment page.',
+        try {
+          const r = await apiRequest(
+            'POST',
+            `/api/engagements/${engagement.id}/billing/select-tier`,
+            { tierId: selectedTierId },
           );
-          needsPaymentSetup = true;
-        } else if (body?.subscription?.clientSecret) {
-          toast.message(
-            'Add a card on the Payment page to start your subscription.',
+          const body = await r.json().catch(() => ({}));
+          if (body?.subscription?.clientSecret) {
+            toast.message(
+              'Add a card on the Payment page to start your subscription.',
+            );
+            needsPaymentSetup = true;
+          }
+        } catch (err: any) {
+          toast.error(
+            'Could not save your payment tier. Please choose it on the Payment page.',
           );
           needsPaymentSetup = true;
         }
