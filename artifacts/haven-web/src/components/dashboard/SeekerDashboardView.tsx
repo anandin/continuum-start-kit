@@ -11,7 +11,8 @@ import {
   Sparkles,
   ArrowRight,
   Sunrise,
-  Heart
+  Heart,
+  BookOpen
 } from 'lucide-react';
 import { useEngagements } from '@/hooks/useEngagements';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
@@ -173,6 +174,32 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="shadow-warm border-primary/10" data-testid="card-journal-cta">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <BookOpen className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Reflection journal</p>
+                <p className="text-sm text-muted-foreground">
+                  Write between sessions. Share entries with your coach when you're ready.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/journal')}
+              data-testid="button-open-journal"
+            >
+              Open journal
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {hasEngagements && activeEngagements[0] && (
         <Card className="shadow-warm-md border-primary/10" data-testid="card-active-journey">

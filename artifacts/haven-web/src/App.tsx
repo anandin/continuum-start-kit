@@ -23,6 +23,7 @@ import AgentSetup from "./pages/AgentSetup";
 import Schedule from "./pages/Schedule";
 import Resources from "./pages/Resources";
 import JournalPromptLibrary from "./pages/JournalPromptLibrary";
+import Journal from "./pages/Journal";
 import IntakeForms from "./pages/IntakeForms";
 import Analytics from "./pages/Analytics";
 import ProviderProfile from "./pages/ProviderProfile";
@@ -57,6 +58,7 @@ const App = () => (
             <Route path="/provider/engagement/:engagementId" element={<ProtectedRoute><ProviderEngagement /></ProtectedRoute>} />
             <Route path="/provider/client/:clientId" element={<ProtectedRoute><ClientSessionSummary /></ProtectedRoute>} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+            <Route path="/journal" element={<ProtectedRoute><Journal /></ProtectedRoute>} />
             <Route path="/chat/:sessionId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/session-summary/:sessionId" element={<ProtectedRoute><SessionSummary /></ProtectedRoute>} />
             <Route path="/provider/twin/calibration" element={<ProtectedRoute><Calibration /></ProtectedRoute>} />
