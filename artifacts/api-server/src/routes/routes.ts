@@ -3362,6 +3362,18 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
               "Payment needs attention. Please add or update your payment method on the Payment tab before booking new sessions.",
           });
         }
+        // If the coach has published any active tiers, require the
+        // seeker to have selected one before sessions can be booked.
+        // Coaches who haven't set up billing at all skip this check.
+        if (!eb?.tierId) {
+          const tiers = await billingStorage.listTiersForProvider(row.providerId, true);
+          if (tiers.length > 0) {
+            return res.status(402).json({
+              error:
+                "Please choose a payment tier on the Payment tab before booking sessions.",
+            });
+          }
+        }
       } catch {
         // billing optional — never block confirm on internal billing errors
       }
@@ -3399,7 +3411,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         });
         if (!out.ok) {
           const k = out.error.kind;
-          if (k !== "not_configured" && k !== "no_tier_selected" && k !== "no_connected_account") {
+          // `no_tier_selected` is a real billing gap — surface it so
+          // the seeker fixes it before the next confirm. (The pre-confirm
+          // guard catches this when the coach has tiers, but if a tier
+          // gets removed mid-flight we still want a visible warning.)
+          if (k !== "not_configured" && k !== "no_connected_account") {
             billingWarning =
               k === "account_incomplete"
                 ? "Coach hasn't finished Stripe onboarding — payment will be retried later."

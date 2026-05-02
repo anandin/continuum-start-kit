@@ -1,17 +1,8 @@
 import Stripe from "stripe";
 import { logger } from "./logger";
 
-// Lazy singleton. The platform Stripe account is the parent — coaches
-// onboard as Stripe Connect Express *connected* accounts under it. All
-// per-session charges and subscriptions use destination charges with
-// `transfer_data.destination = <coach connected account id>` so the
-// coach is paid out and the platform keeps zero application_fee for
-// v1 (configurable later via STRIPE_PLATFORM_FEE_BPS).
-//
-// When STRIPE_SECRET_KEY is missing, getStripe() returns null and every
-// caller short-circuits gracefully (UI surfaces a "Billing not yet
-// configured" state). This keeps the rest of the app — chat, sessions,
-// scheduling — fully functional in environments without billing keys.
+// Lazy Stripe singleton. Returns null when STRIPE_SECRET_KEY is unset
+// so the rest of the app keeps working without billing configured.
 
 let cached: Stripe | null = null;
 let warned = false;
@@ -22,24 +13,18 @@ export function getStripe(): Stripe | null {
   if (!key) {
     if (!warned) {
       logger.warn(
-        "stripe: STRIPE_SECRET_KEY not set — billing endpoints will return 503 (set the secret to enable Stripe Connect billing)",
+        "stripe: STRIPE_SECRET_KEY not set — billing endpoints will return 503",
       );
       warned = true;
     }
     return null;
   }
+  // We deliberately don't pin `apiVersion` — the SDK's bundled default
+  // matches its declared types, and pinning required casts that the
+  // reviewer flagged as type-escape-hatches.
   cached = new Stripe(key, {
-    // Pin a recent stable API version so behaviour doesn't drift if the
-    // SDK default changes between deploys.
-    // Pin via cast — `LatestApiVersion` was removed from the type
-    // exports in stripe-node v18+, but a string literal still works at
-    // runtime. Bump as needed when Stripe publishes new API versions.
-    apiVersion: "2024-11-20.acacia" as never,
     typescript: true,
-    appInfo: {
-      name: "Haven",
-      version: "1.0.0",
-    },
+    appInfo: { name: "Haven", version: "1.0.0" },
   });
   return cached;
 }
@@ -58,16 +43,9 @@ export function stripePublishableKey(): string | null {
   return process.env.STRIPE_PUBLISHABLE_KEY ?? null;
 }
 
-// Bootstrap Stripe credentials from the Replit connector proxy. The
-// connector returns publishable + secret for the active environment
-// (development vs production). We mirror the secret into
-// `process.env.STRIPE_SECRET_KEY` so the rest of this module — which
-// already reads from env — picks it up without any other refactor.
-//
-// Called once from `index.ts` before the app boots. If the connector
-// isn't configured (running locally without Replit, or before the user
-// has connected Stripe) this resolves silently and getStripe() keeps
-// returning null — every billing endpoint stays a graceful no-op.
+// Bootstrap Stripe credentials from the Replit connector proxy and
+// mirror them into env vars so the rest of this module picks them up.
+// Silently no-ops when the connector isn't configured.
 export async function loadStripeCredentialsFromConnector(): Promise<void> {
   if (process.env.STRIPE_SECRET_KEY) return; // explicit env wins
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;

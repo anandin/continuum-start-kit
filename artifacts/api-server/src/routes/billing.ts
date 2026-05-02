@@ -11,7 +11,7 @@ import {
   setEngagementDefaultPaymentMethod,
   retryPendingChargeForEngagement,
 } from "../services/billing";
-import { stripeConfigured, stripePublishableKey } from "../lib/stripe";
+import { getStripe, stripeConfigured, stripePublishableKey } from "../lib/stripe";
 import type { InsertPriceTier } from "@workspace/db/schema";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -270,9 +270,32 @@ export function registerBillingRoutes(app: Express): void {
         if (!tier || tier.providerId !== party.engagementProviderId || !tier.isActive) {
           return res.status(404).json({ error: "Tier not available" });
         }
-        // Write the selection regardless of cadence so the seeker sees
-        // their pick immediately. Subscriptions only kick in if Stripe
-        // is configured AND the coach has a connected account.
+        // If the seeker is switching AWAY from a monthly tier, cancel
+        // the existing Stripe subscription first — otherwise they'd be
+        // billed monthly AND per-session simultaneously.
+        const existing = await billingStorage.getEngagementBilling(engagementId);
+        if (
+          existing?.stripeSubscriptionId &&
+          tier.billingCadence === "per_session"
+        ) {
+          if (stripeConfigured()) {
+            try {
+              const stripe = getStripe();
+              if (stripe) await stripe.subscriptions.cancel(existing.stripeSubscriptionId);
+            } catch (err: any) {
+              req.log.warn(
+                { err: err?.message },
+                "billing: failed cancelling prior subscription on tier switch",
+              );
+            }
+          }
+          await billingStorage.upsertEngagementBilling({
+            engagementId,
+            stripeSubscriptionId: null,
+            lastPaymentIntentId: null,
+          });
+        }
+
         await billingStorage.upsertEngagementBilling({
           engagementId,
           tierId: tier.id,
