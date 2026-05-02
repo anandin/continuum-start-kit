@@ -223,7 +223,11 @@ export default function Onboarding() {
       const session = await sessionRes.json();
 
       toast.success(`Welcome! You're starting at "${stageAssignment.initial_stage}"`);
-      navigate(`/chat/${session.id}`);
+      if (needsPaymentSetup) {
+        navigate(`/payment?engagementId=${engagement.id}`);
+      } else {
+        navigate(`/chat/${session.id}`);
+      }
     } catch (error: any) {
       console.error('Onboarding error:', error);
       toast.error(error.message || 'Failed to complete onboarding');
