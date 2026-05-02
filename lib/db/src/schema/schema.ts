@@ -266,18 +266,26 @@ export const agentVersions = pgTable("agent_versions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// L2 — therapist-approved exemplars used for retrieval
+// L2 — therapist-approved exemplars (and negative labels) used for retrieval
 export const personaExamples = pgTable("persona_examples", {
   id: uuid("id").primaryKey().defaultRandom(),
   providerId: uuid("provider_id").references(() => users.id).notNull(),
   source: personaExampleSourceEnum("source").notNull(),
+  // Therapist's review-queue label, when this row originated there. Distinguishes
+  // positive examples ("this_is_me", "needs_edit") from negatives ("not_me",
+  // "never_say_this"). Calibration-sourced rows leave this null.
+  label: reviewLabelEnum("label"),
   scenario: text("scenario").notNull(),       // synthetic client utterance / context
-  approvedResponse: text("approved_response").notNull(),
+  // Nullable: negative-label rows (not_me / never_say_this) carry no approved
+  // response — only a rejected one and the therapist's signal.
+  approvedResponse: text("approved_response"),
   rejectedResponse: text("rejected_response"), // what AI tried that was wrong
   notes: text("notes"),
   tags: jsonb("tags").default([]),
   weight: real("weight").default(1.0),
   embedding: vector("embedding"),
+  // Negative labels store isActive=false so retrieval naturally ignores them
+  // while preserving the audit trail.
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });

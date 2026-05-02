@@ -1783,24 +1783,43 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       const draft = item.draft;
       const scenario = item.scenario;
 
-      if (safeLabel === "this_is_me" || safeLabel === "needs_edit") {
-        const finalText = approvedEdit || draft;
-        const embedding = await embed(`${scenario}\n${finalText}`);
-        await createPersonaExample(
-          {
-            providerId: req.user!.id,
-            source: "review_queue",
-            scenario: scenario || "(prior context unavailable)",
-            approvedResponse: finalText,
-            rejectedResponse: safeLabel === "needs_edit" ? draft : null,
-            notes: null,
-            tags: Array.isArray(tags) ? tags : [],
-            weight: 1.0,
-            isActive: true,
-          },
-          embedding,
-        );
-      }
+      // Persist EVERY label as a persona_examples row so all four signals
+      // become L2 training artifacts and the queue de-dup naturally hides
+      // already-reviewed drafts (de-dup checks both approvedResponse and
+      // rejectedResponse content).
+      //
+      //   this_is_me / needs_edit -> positive: approvedResponse set, active,
+      //     full retrieval weight; embedding indexed for similarity recall.
+      //   not_me                  -> negative: rejectedResponse set, inactive
+      //     (excluded from retrieval), zero weight, captured for future
+      //     contrastive training and queue de-dup.
+      //   never_say_this          -> hard negative: same as not_me, plus a
+      //     review_never_say_this safety event so the audit log surfaces the
+      //     therapist's hard "do not generate this kind of reply" signal.
+      const isPositive = safeLabel === "this_is_me" || safeLabel === "needs_edit";
+      const finalApproved = isPositive ? (approvedEdit || draft) : null;
+      const embedding = isPositive && finalApproved
+        ? await embed(`${scenario}\n${finalApproved}`)
+        : null;
+      const labelTag = `label:${safeLabel}`;
+      const userTags = Array.isArray(tags) ? tags : [];
+      await createPersonaExample(
+        {
+          providerId: req.user!.id,
+          source: "review_queue",
+          label: safeLabel,
+          scenario: scenario || "(prior context unavailable)",
+          approvedResponse: finalApproved,
+          rejectedResponse: isPositive
+            ? (safeLabel === "needs_edit" ? draft : null)
+            : draft,
+          notes: null,
+          tags: userTags.includes(labelTag) ? userTags : [...userTags, labelTag],
+          weight: isPositive ? 1.0 : 0,
+          isActive: isPositive,
+        },
+        embedding,
+      );
 
       if (safeLabel === "never_say_this") {
         await logSafetyEvent({
@@ -1819,8 +1838,6 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           userId: req.user!.id,
         });
       }
-      // "not_me" is recorded only as feedback for now (no DB row); future work
-      // could store negatives to improve retrieval.
 
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
