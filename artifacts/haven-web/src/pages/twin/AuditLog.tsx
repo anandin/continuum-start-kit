@@ -133,6 +133,7 @@ export default function AuditLog() {
                   <p className="text-xs text-stone-700 mt-1 italic">{e.outputSnippet}</p>
                 </details>
               )}
+              <ClassifierLabels labels={e.classifierLabels} />
             </div>
           ))}
           {filtered.length === 0 && (
@@ -142,6 +143,88 @@ export default function AuditLog() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Render the classifier signals the L1 gate captured for this event.
+ *
+ * The backend stores three flavors of payload in classifierLabels:
+ *   - LLM crisis classifier: { categories: string[], confidence?: number, ... }
+ *   - OpenAI moderation:     { moderation: { categories: {sexual:bool,...},
+ *                              category_scores: {sexual:0.01,...} } }
+ *   - Internal/labeling:     arbitrary tags (purpose, kind, source, etc.)
+ *
+ * We surface the highest-signal slices first (categories + top scores) so
+ * therapists / supervisors see "what flagged this" without expanding raw JSON,
+ * and keep the full payload available behind a details toggle for compliance.
+ */
+function ClassifierLabels({ labels }: { labels: any }) {
+  if (!labels || typeof labels !== "object") return null;
+  if (Array.isArray(labels) && labels.length === 0) return null;
+  if (!Array.isArray(labels) && Object.keys(labels).length === 0) return null;
+
+  // Crisis-classifier categories (string[])
+  const cats: string[] | null = Array.isArray(labels.categories)
+    ? labels.categories.filter((c: unknown) => typeof c === "string")
+    : null;
+
+  // Crisis-classifier numeric confidence
+  const conf =
+    typeof labels.confidence === "number" ? labels.confidence : null;
+
+  // OpenAI moderation: surface true categories + top 3 scores
+  const mod = labels.moderation && typeof labels.moderation === "object" ? labels.moderation : null;
+  const modFlagged: string[] = mod?.categories
+    ? Object.entries(mod.categories)
+        .filter(([, v]) => v === true)
+        .map(([k]) => k)
+    : [];
+  const modTop: Array<[string, number]> = mod?.category_scores
+    ? Object.entries(mod.category_scores)
+        .filter(([, v]) => typeof v === "number")
+        .map(([k, v]) => [k, v as number] as [string, number])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+    : [];
+
+  return (
+    <div className="mt-2 border-t border-stone-100 pt-2 space-y-1">
+      {cats && cats.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-stone-500">classifier</span>
+          {cats.map((c) => (
+            <span key={c} className="text-xs px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800">
+              {c}
+            </span>
+          ))}
+          {conf !== null && (
+            <span className="text-xs text-stone-500">conf {conf.toFixed(2)}</span>
+          )}
+        </div>
+      )}
+      {(modFlagged.length > 0 || modTop.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-stone-500">moderation</span>
+          {modFlagged.map((c) => (
+            <span key={c} className="text-xs px-1.5 py-0.5 rounded bg-rose-50 text-rose-800">
+              {c}
+            </span>
+          ))}
+          {modTop.map(([k, v]) => (
+            <span key={`s-${k}`} className="text-xs px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">
+              {k} {v.toFixed(3)}
+            </span>
+          ))}
+        </div>
+      )}
+      <details className="mt-1">
+        <summary className="text-xs text-stone-500 cursor-pointer">Raw classifier payload</summary>
+        <pre className="text-[11px] text-stone-700 mt-1 whitespace-pre-wrap break-words bg-stone-50 p-2 rounded">
+{JSON.stringify(labels, null, 2)}
+        </pre>
+      </details>
     </div>
   );
 }
