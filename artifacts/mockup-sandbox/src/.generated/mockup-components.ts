@@ -6,5 +6,8 @@ export const modules: ModuleMap = {
   "./components/mockups/home-redesign/LateNight.tsx": () => import("../components/mockups/home-redesign/LateNight.tsx"),
   "./components/mockups/home-redesign/QuietMorning.tsx": () => import("../components/mockups/home-redesign/QuietMorning.tsx"),
   "./components/mockups/home-redesign/SingleBrief.tsx": () => import("../components/mockups/home-redesign/SingleBrief.tsx"),
-  "./components/mockups/home-redesign/TimelineHome.tsx": () => import("../components/mockups/home-redesign/TimelineHome.tsx")
+  "./components/mockups/home-redesign/TimelineHome.tsx": () => import("../components/mockups/home-redesign/TimelineHome.tsx"),
+  "./components/mockups/landing-vibes/PlainLibrary.tsx": () => import("../components/mockups/landing-vibes/PlainLibrary.tsx"),
+  "./components/mockups/landing-vibes/PragmaticStudio.tsx": () => import("../components/mockups/landing-vibes/PragmaticStudio.tsx"),
+  "./components/mockups/landing-vibes/QuietNightstand.tsx": () => import("../components/mockups/landing-vibes/QuietNightstand.tsx")
 };

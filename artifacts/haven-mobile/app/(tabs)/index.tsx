@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HavenLogo } from "@/components/HavenLogo";
-import { MoodCard } from "@/components/MoodCard";
+import { MoodSummaryRow } from "@/components/MoodSummaryRow";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
@@ -65,11 +65,22 @@ function getStage(s?: SessionRow): string | undefined {
   return s?.initialStage ?? s?.initial_stage;
 }
 
-function getGreeting(): string {
+function getPartOfDay(): string {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  return "evening";
+}
+
+function getWeekdayLong(d: Date): string {
+  return d.toLocaleDateString(undefined, { weekday: "long" });
+}
+
+function nameFromEmail(email?: string | null): string | null {
+  if (!email) return null;
+  const local = email.split("@")[0]?.split(/[._+-]/)[0];
+  if (!local) return null;
+  return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
 export default function HomeScreen() {
@@ -212,19 +223,29 @@ export default function HomeScreen() {
     [goalsQ.data],
   );
 
-  const lastSessionLabel = useMemo(() => {
+  const lastSessionDate = useMemo(() => {
     const sessions = activeEngagement?.sessions ?? [];
     const latest = sessions
       .slice()
       .sort((a, b) => getStarted(b) - getStarted(a))[0];
-    if (!latest) return "No sessions yet";
+    if (!latest) return null;
     const d = new Date(getStarted(latest));
-    if (Number.isNaN(d.getTime())) return "Recently";
-    return d.toLocaleDateString(undefined, {
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }, [activeEngagement]);
+
+  const lastSessionLabel = useMemo(() => {
+    if (!lastSessionDate) return "No sessions yet";
+    return lastSessionDate.toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
     });
-  }, [activeEngagement]);
+  }, [lastSessionDate]);
+
+  const lastSessionWeekday = useMemo(
+    () => (lastSessionDate ? getWeekdayLong(lastSessionDate) : null),
+    [lastSessionDate],
+  );
 
   const currentStage = useMemo(() => {
     const sessions = activeEngagement?.sessions ?? [];
@@ -233,6 +254,38 @@ export default function HomeScreen() {
       .sort((a, b) => getStarted(b) - getStarted(a))[0];
     return getStage(latest) ?? "Not started";
   }, [activeEngagement]);
+
+  const coachName = useMemo(
+    () => nameFromEmail(activeEngagement?.provider?.email) ?? "your coach",
+    [activeEngagement],
+  );
+
+  const seekerName = useMemo(
+    () => nameFromEmail(user?.email) ?? "there",
+    [user],
+  );
+
+  const greetingLine = useMemo(() => {
+    const today = new Date();
+    return `${getWeekdayLong(today)} ${getPartOfDay()} · ${seekerName}`;
+  }, [seekerName]);
+
+  const insightsList = useMemo(() => {
+    const items = summaryQ.data?.key_insights ?? [];
+    return items
+      .slice(0, 2)
+      .map((it) => (typeof it === "string" ? it : it.insight))
+      .filter((s): s is string => !!s);
+  }, [summaryQ.data]);
+
+  const coachSubline = useMemo(() => {
+    if (!summaryQ.data) return null;
+    const n = insightsList.length;
+    if (!n) return null;
+    return `Your last session was ${lastSessionLabel} — ${n} thing${n === 1 ? "" : "s"} to try`;
+  }, [summaryQ.data, insightsList.length, lastSessionLabel]);
+
+  const completedGoalCount = activeGoals.filter((g) => seekerDone[g.id]).length;
 
   return (
     <LinearGradient
@@ -243,7 +296,7 @@ export default function HomeScreen() {
         contentContainerStyle={[
           styles.scroll,
           {
-            paddingTop: insets.top + 16,
+            paddingTop: insets.top + 12,
             paddingBottom: insets.bottom + 140,
           },
         ]}
@@ -263,206 +316,137 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.greetingBlock}>
-          <Text style={[styles.greeting, { color: colors.foreground }]}>
-            {getGreeting()}
-          </Text>
-          <Text style={[styles.subGreeting, { color: colors.mutedForeground }]}>
-            {activeEngagement
-              ? "Continue your journey of growth and self-discovery"
-              : "Your safe space — let's get you set up"}
-          </Text>
-        </View>
+        <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
+          {greetingLine}
+        </Text>
 
         {engagementsQ.isLoading ? (
           <View style={styles.loadingBlock}>
             <ActivityIndicator color={colors.primary} />
           </View>
-        ) : null}
-
-        <View style={styles.statsRow}>
-          <StatCard
-            icon="calendar"
-            label="Sessions"
-            value={String(completedSessions)}
-            colors={colors}
-          />
-          <StatCard
-            icon="target"
-            label="Stage"
-            value={currentStage}
-            colors={colors}
-            tone="accent"
-          />
-          <StatCard
-            icon="message-circle"
-            label="Last"
-            value={lastSessionLabel}
-            colors={colors}
-          />
-        </View>
-
-        <MoodCard engagementId={activeEngagement?.id ?? null} />
-
-        <Pressable
-          onPress={() => router.push("/progress")}
-          accessibilityLabel="Open my progress"
-          testID="home-open-progress"
-          style={({ pressed }) => [
-            styles.progressLinkCard,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              borderRadius: colors.radius,
-              opacity: pressed ? 0.85 : 1,
-            },
-          ]}
-        >
+        ) : activeEngagement ? (
           <View
             style={[
-              styles.progressLinkIcon,
-              { backgroundColor: colors.gradientHeroMid },
-            ]}
-          >
-            <Feather name="trending-up" size={16} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.progressLinkTitle, { color: colors.foreground }]}>
-              My progress
-            </Text>
-            <Text
-              style={[styles.progressLinkSub, { color: colors.mutedForeground }]}
-            >
-              Streak, sessions, goals, and your 30-day mood trend.
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
-        </Pressable>
-
-        {activeEngagement ? (
-          <View
-            style={[
-              styles.journeyCard,
+              styles.dominantCard,
               {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
                 borderRadius: colors.radius,
-                shadowColor: "#7A5A3C",
               },
             ]}
           >
-            <View style={styles.cardHeaderRow}>
-              <View style={styles.cardHeaderLeft}>
-                <Feather name="heart" size={16} color={colors.primary} />
-                <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                  Your Active Journey
-                </Text>
-              </View>
-            </View>
+            <View
+              style={[styles.leftRule, { backgroundColor: colors.primary }]}
+            />
 
-            <View style={styles.journeyMain}>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[styles.coachLabel, { color: colors.foreground }]}
-                  numberOfLines={1}
-                >
-                  {activeEngagement.provider?.email ?? "Your coach"}
-                </Text>
-                <Text
-                  style={[styles.coachStage, { color: colors.mutedForeground }]}
-                >
-                  Stage: {currentStage}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => router.push("/(tabs)/chat")}
-                accessibilityLabel="Continue session"
-                testID="home-continue-chat"
-                style={({ pressed }) => [
-                  styles.primaryBtn,
-                  {
-                    backgroundColor: colors.primary,
-                    opacity: pressed ? 0.85 : 1,
-                  },
+            <Text
+              style={[styles.eyebrow, { color: colors.primary }]}
+              accessibilityRole="text"
+            >
+              THIS WEEK WITH
+            </Text>
+            <Text
+              style={[styles.coachName, { color: colors.foreground }]}
+              numberOfLines={2}
+            >
+              {coachName}
+            </Text>
+            <Text
+              style={[styles.metaLine, { color: colors.mutedForeground }]}
+              numberOfLines={1}
+            >
+              Stage {currentStage}
+            </Text>
+            {lastSessionDate ? (
+              <Text
+                style={[styles.metaLineDim, { color: colors.mutedForeground }]}
+                numberOfLines={1}
+              >
+                Last met {lastSessionLabel}
+              </Text>
+            ) : null}
+            {coachSubline ? (
+              <Text
+                style={[styles.metaLine, { color: colors.mutedForeground }]}
+                numberOfLines={2}
+              >
+                {coachSubline}
+              </Text>
+            ) : null}
+
+            <Pressable
+              onPress={() => router.push("/(tabs)/chat")}
+              accessibilityLabel="Continue session"
+              testID="home-continue-chat"
+              style={({ pressed }) => [
+                styles.continueBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.continueLabel,
+                  { color: colors.primaryForeground },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.primaryBtnLabel,
-                    { color: colors.primaryForeground },
-                  ]}
-                >
-                  Continue
-                </Text>
-                <Feather name="arrow-right" size={16} color={colors.primaryForeground} />
-              </Pressable>
-            </View>
+                Continue session
+              </Text>
+              <Feather
+                name="chevron-right"
+                size={16}
+                color={colors.primaryForeground}
+              />
+            </Pressable>
 
-            {summaryQ.data?.key_insights?.length ? (
+            {insightsList.length ? (
               <View
                 style={[
-                  styles.insightsBlock,
+                  styles.sectionBlock,
                   { borderTopColor: colors.border },
                 ]}
               >
-                <View style={styles.insightsHeader}>
-                  <Feather name="zap" size={14} color={colors.accent} />
-                  <Text
-                    style={[
-                      styles.insightsTitle,
-                      { color: colors.foreground },
-                    ]}
-                  >
-                    Recent Insights
-                  </Text>
-                </View>
-                {summaryQ.data.key_insights.slice(0, 2).map((item, idx) => {
-                  const text =
-                    typeof item === "string" ? item : item.insight;
-                  return (
-                    <View key={idx} style={styles.insightRow}>
-                      <View
-                        style={[
-                          styles.insightDot,
-                          { backgroundColor: colors.primary },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.insightText,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {text}
-                      </Text>
-                    </View>
-                  );
-                })}
+                <Text
+                  style={[styles.sectionEyebrow, { color: colors.mutedForeground }]}
+                >
+                  {`FROM ${(lastSessionWeekday ?? "your last session").toUpperCase()}`}
+                </Text>
+                {insightsList.map((text, idx) => (
+                  <View key={idx} style={styles.numberedRow}>
+                    <Text
+                      style={[styles.numberMark, { color: colors.primary }]}
+                    >
+                      {idx + 1}
+                    </Text>
+                    <Text
+                      style={[styles.numberedText, { color: colors.foreground }]}
+                    >
+                      {text}
+                    </Text>
+                  </View>
+                ))}
               </View>
             ) : null}
 
             {activeGoals.length > 0 ? (
               <View
                 style={[
-                  styles.goalsBlock,
+                  styles.sectionBlock,
                   { borderTopColor: colors.border },
                 ]}
               >
-                <View style={styles.insightsHeader}>
-                  <Feather name="check-square" size={14} color={colors.primary} />
+                <View style={styles.commitmentsHeader}>
                   <Text
-                    style={[styles.insightsTitle, { color: colors.foreground }]}
+                    style={[styles.sectionEyebrow, { color: colors.mutedForeground }]}
                   >
-                    Today's Goals
+                    COMMITMENTS
                   </Text>
                   <Text
-                    style={[
-                      styles.goalsCount,
-                      { color: colors.mutedForeground },
-                    ]}
+                    style={[styles.commitmentsCount, { color: colors.primary }]}
                   >
-                    {activeGoals.filter((g) => seekerDone[g.id]).length}/
-                    {activeGoals.length}
+                    {completedGoalCount} / {activeGoals.length}
                   </Text>
                 </View>
                 {activeGoals.slice(0, 3).map((g) => {
@@ -473,7 +457,7 @@ export default function HomeScreen() {
                       onPress={() => toggleGoal(g.id)}
                       accessibilityLabel={`${
                         checked ? "Uncheck" : "Check off"
-                      } goal: ${g.title}`}
+                      } commitment: ${g.title}`}
                       testID={`home-goal-${g.id}`}
                       style={({ pressed }) => [
                         styles.goalRow,
@@ -496,7 +480,7 @@ export default function HomeScreen() {
                         {checked ? (
                           <Feather
                             name="check"
-                            size={12}
+                            size={11}
                             color={colors.primaryForeground}
                           />
                         ) : null}
@@ -505,7 +489,9 @@ export default function HomeScreen() {
                         style={[
                           styles.goalText,
                           {
-                            color: colors.foreground,
+                            color: checked
+                              ? colors.mutedForeground
+                              : colors.foreground,
                             textDecorationLine: checked
                               ? "line-through"
                               : "none",
@@ -521,15 +507,10 @@ export default function HomeScreen() {
                 {activeGoals.length > 3 ? (
                   <Pressable
                     onPress={() => router.push("/(tabs)/goals")}
-                    accessibilityLabel="See all goals"
+                    accessibilityLabel="See all commitments"
                   >
-                    <Text
-                      style={[
-                        styles.seeAll,
-                        { color: colors.primary },
-                      ]}
-                    >
-                      See all {activeGoals.length} goals →
+                    <Text style={[styles.seeAll, { color: colors.primary }]}>
+                      See all {activeGoals.length} commitments →
                     </Text>
                   </Pressable>
                 ) : null}
@@ -539,34 +520,24 @@ export default function HomeScreen() {
             {summaryQ.data?.next_action ? (
               <View
                 style={[
-                  styles.nextStep,
-                  {
-                    backgroundColor: colors.gradientHeroMid,
-                    borderColor: colors.border,
-                    borderRadius: 12,
-                  },
+                  styles.sectionBlock,
+                  { borderTopColor: colors.border },
                 ]}
               >
-                <View style={styles.insightsHeader}>
-                  <Feather name="target" size={14} color={colors.primary} />
-                  <Text
-                    style={[
-                      styles.insightsTitle,
-                      { color: colors.foreground },
-                    ]}
-                  >
-                    Recommended Next Step
-                  </Text>
-                </View>
                 <Text
-                  style={[styles.insightText, { color: colors.mutedForeground }]}
+                  style={[styles.sectionEyebrow, { color: colors.primary }]}
                 >
-                  {summaryQ.data.next_action}
+                  TRY THIS
+                </Text>
+                <Text
+                  style={[styles.tryThisText, { color: colors.foreground }]}
+                >
+                  &ldquo;{summaryQ.data.next_action}&rdquo;
                 </Text>
               </View>
             ) : null}
           </View>
-        ) : engagementsQ.isLoading ? null : (
+        ) : (
           <View
             style={[
               styles.emptyCard,
@@ -578,238 +549,230 @@ export default function HomeScreen() {
             ]}
           >
             <View
-              style={[
-                styles.emptyIcon,
-                { backgroundColor: colors.gradientHeroMid },
-              ]}
-            >
-              <Feather name="sun" size={22} color={colors.primary} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              Begin Your First Journey
+              style={[styles.leftRule, { backgroundColor: colors.primary }]}
+            />
+            <Text style={[styles.eyebrow, { color: colors.primary }]}>
+              GET STARTED
+            </Text>
+            <Text style={[styles.coachName, { color: colors.foreground }]}>
+              Connect with a coach to get started
             </Text>
             <Text
-              style={[styles.emptyBody, { color: colors.mutedForeground }]}
+              style={[styles.metaLine, { color: colors.mutedForeground }]}
             >
-              Connect with a coach in the web app, then continue right here on
-              your phone.
+              Once you&apos;re paired with a coach, your sessions, commitments,
+              and reflections will live here.
             </Text>
+            <Pressable
+              onPress={() => router.push("/invite")}
+              accessibilityLabel="Start your work with a coach"
+              testID="home-start-coach"
+              style={({ pressed }) => [
+                styles.continueBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.continueLabel,
+                  { color: colors.primaryForeground },
+                ]}
+              >
+                Start your work with a coach
+              </Text>
+              <Feather
+                name="chevron-right"
+                size={16}
+                color={colors.primaryForeground}
+              />
+            </Pressable>
           </View>
         )}
+
+        {/* Demoted status strip — facts + today's check-in folded inline */}
+        {activeEngagement ? (
+          <View style={styles.demotedStrip}>
+            <View
+              style={[styles.factsRow, { borderColor: colors.border }]}
+            >
+              <Text style={[styles.factText, { color: colors.mutedForeground }]}>
+                <Text style={styles.factLabel}>SESSIONS </Text>
+                <Text style={{ color: colors.foreground }}>
+                  {completedSessions}
+                </Text>
+                <Text>   ·   </Text>
+                <Text style={styles.factLabel}>STAGE </Text>
+                <Text style={{ color: colors.foreground }}>{currentStage}</Text>
+              </Text>
+            </View>
+            <MoodSummaryRow engagementId={activeEngagement?.id ?? null} />
+          </View>
+        ) : (
+          <MoodSummaryRow engagementId={null} />
+        )}
+
+        <Pressable
+          onPress={() => router.push("/progress")}
+          accessibilityLabel="View full progress"
+          testID="home-open-progress"
+          style={({ pressed }) => [
+            styles.progressLinkRow,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Feather name="trending-up" size={16} color={colors.primary} />
+          <Text style={[styles.progressLinkText, { color: colors.foreground }]}>
+            View full progress
+          </Text>
+          <Feather
+            name="chevron-right"
+            size={16}
+            color={colors.mutedForeground}
+            style={{ marginLeft: "auto" }}
+          />
+        </Pressable>
       </ScrollView>
     </LinearGradient>
-  );
-}
-
-interface StatCardProps {
-  icon: keyof typeof Feather.glyphMap;
-  label: string;
-  value: string;
-  colors: ReturnType<typeof useColors>;
-  tone?: "primary" | "accent";
-}
-
-function StatCard({ icon, label, value, colors, tone = "primary" }: StatCardProps) {
-  const iconBg =
-    tone === "accent" ? colors.gradientHeroMid : colors.gradientHeroMid;
-  const iconColor = tone === "accent" ? colors.accent : colors.primary;
-
-  return (
-    <View
-      style={[
-        styles.statCard,
-        {
-          backgroundColor: colors.card,
-          borderColor: colors.border,
-          borderRadius: colors.radius,
-        },
-      ]}
-    >
-      <View style={[styles.statIcon, { backgroundColor: iconBg }]}>
-        <Feather name={icon} size={16} color={iconColor} />
-      </View>
-      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-        {label}
-      </Text>
-      <Text
-        style={[styles.statValue, { color: colors.foreground }]}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 18,
-    gap: 18,
+    gap: 16,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 4,
   },
   avatarBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
   },
-  greetingBlock: {
-    gap: 4,
-    marginBottom: 4,
-  },
   greeting: {
-    fontSize: 26,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.3,
-  },
-  subGreeting: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 20,
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.4,
+    marginTop: -4,
   },
   loadingBlock: {
     paddingVertical: 24,
     alignItems: "center",
   },
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
+  dominantCard: {
+    position: "relative",
     borderWidth: 1,
-    padding: 12,
-    gap: 6,
+    paddingTop: 18,
+    paddingBottom: 18,
+    paddingLeft: 20,
+    paddingRight: 18,
+    overflow: "hidden",
   },
-  statIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
+  leftRule: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
   },
-  statLabel: {
+  eyebrow: {
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
-  },
-  statValue: {
-    fontSize: 16,
     fontFamily: "Inter_700Bold",
+    letterSpacing: 1.2,
+    marginBottom: 6,
   },
-  journeyCard: {
-    borderWidth: 1,
-    padding: 16,
-    gap: 14,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+  coachName: {
+    fontSize: 26,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.4,
+    lineHeight: 30,
+    marginBottom: 6,
   },
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  cardHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-  },
-  journeyMain: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  coachLabel: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  coachStage: {
+  metaLine: {
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Inter_500Medium",
+    lineHeight: 17,
     marginTop: 2,
   },
-  primaryBtn: {
+  metaLineDim: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 17,
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  continueBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 999,
+    marginTop: 14,
   },
-  primaryBtnLabel: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
+  continueLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
   },
-  insightsBlock: {
+  sectionBlock: {
     borderTopWidth: 1,
     paddingTop: 14,
+    marginTop: 16,
     gap: 8,
   },
-  insightsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  sectionEyebrow: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.1,
   },
-  insightsTitle: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  insightRow: {
+  numberedRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
+    gap: 10,
   },
-  insightDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
+  numberMark: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    lineHeight: 18,
+    width: 12,
   },
-  insightText: {
+  numberedText: {
     flex: 1,
     fontSize: 13,
     fontFamily: "Inter_400Regular",
-    lineHeight: 19,
+    lineHeight: 18,
   },
-  nextStep: {
-    borderWidth: 1,
-    padding: 12,
-    gap: 6,
+  commitmentsHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
   },
-  goalsBlock: {
-    borderTopWidth: 1,
-    paddingTop: 14,
-    gap: 10,
-  },
-  goalsCount: {
-    marginLeft: "auto",
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
+  commitmentsCount: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
   },
   goalRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10,
   },
   goalCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 4,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 2,
   },
   goalText: {
     flex: 1,
@@ -822,52 +785,45 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     marginTop: 2,
   },
-  emptyCard: {
-    borderWidth: 1,
-    padding: 22,
-    alignItems: "center",
-    gap: 10,
-  },
-  emptyIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
-  },
-  emptyBody: {
+  tryThisText: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
-    textAlign: "center",
+    fontStyle: "italic",
     lineHeight: 19,
   },
-  progressLinkCard: {
+  emptyCard: {
+    position: "relative",
+    borderWidth: 1,
+    paddingTop: 18,
+    paddingBottom: 18,
+    paddingLeft: 20,
+    paddingRight: 18,
+    overflow: "hidden",
+  },
+  demotedStrip: {
+    gap: 0,
+  },
+  factsRow: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: 10,
+  },
+  factText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  factLabel: {
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1,
+  },
+  progressLinkRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    gap: 10,
+    paddingVertical: 10,
   },
-  progressLinkIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressLinkTitle: {
+  progressLinkText: {
     fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  progressLinkSub: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
-    lineHeight: 17,
+    fontFamily: "Inter_700Bold",
   },
 });

@@ -48,6 +48,8 @@ export function MoodCard({ engagementId }: MoodCardProps) {
   const moodQ = useQuery({
     queryKey: ["mood", "me"],
     queryFn: () => api<MoodMeResponse>("/api/mood/me?days=14"),
+    staleTime: 60_000,
+    refetchOnMount: false,
   });
 
   const today = moodQ.data?.today ?? null;
