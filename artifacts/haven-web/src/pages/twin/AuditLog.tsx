@@ -165,24 +165,41 @@ function ClassifierLabels({ labels }: { labels: any }) {
   if (Array.isArray(labels) && labels.length === 0) return null;
   if (!Array.isArray(labels) && Object.keys(labels).length === 0) return null;
 
-  // Crisis-classifier categories (string[])
-  const cats: string[] | null = Array.isArray(labels.categories)
+  // Crisis-classifier categories. The backend classifier emits flat boolean
+  // fields ({crisis:true, self_harm:true, ...}) rather than a categories[]
+  // array, so we derive categories from any boolean-true keys (excluding
+  // shape/metadata keys like "moderation"/"flagged"/"model"). We also
+  // accept a categories[] array if present (forward compatibility).
+  const META_KEYS = new Set([
+    "moderation", "flagged", "model", "categories", "category_scores",
+    "confidence", "reason", "purpose", "kind", "source", "messageId",
+    "internal", "moderation_run", "regex", "turnIndex",
+  ]);
+  const arrayCats: string[] = Array.isArray(labels.categories)
     ? labels.categories.filter((c: unknown) => typeof c === "string")
-    : null;
+    : [];
+  const flatCats: string[] = Object.entries(labels)
+    .filter(([k, v]) => v === true && !META_KEYS.has(k))
+    .map(([k]) => k);
+  const cats: string[] = Array.from(new Set([...arrayCats, ...flatCats]));
 
   // Crisis-classifier numeric confidence
   const conf =
     typeof labels.confidence === "number" ? labels.confidence : null;
 
-  // OpenAI moderation: surface true categories + top 3 scores
-  const mod = labels.moderation && typeof labels.moderation === "object" ? labels.moderation : null;
-  const modFlagged: string[] = mod?.categories
-    ? Object.entries(mod.categories)
+  // OpenAI moderation. Backend stores it FLAT on classifierLabels:
+  //   { moderation: true, flagged, categories: {...}, category_scores: {...}, model }
+  // Some older rows nested it under `labels.moderation`; handle both shapes.
+  const modSrc = labels.moderation === true
+    ? labels
+    : (labels.moderation && typeof labels.moderation === "object" ? labels.moderation : null);
+  const modFlagged: string[] = modSrc?.categories && typeof modSrc.categories === "object"
+    ? Object.entries(modSrc.categories)
         .filter(([, v]) => v === true)
         .map(([k]) => k)
     : [];
-  const modTop: Array<[string, number]> = mod?.category_scores
-    ? Object.entries(mod.category_scores)
+  const modTop: Array<[string, number]> = modSrc?.category_scores && typeof modSrc.category_scores === "object"
+    ? Object.entries(modSrc.category_scores)
         .filter(([, v]) => typeof v === "number")
         .map(([k, v]) => [k, v as number] as [string, number])
         .sort((a, b) => b[1] - a[1])
@@ -191,7 +208,7 @@ function ClassifierLabels({ labels }: { labels: any }) {
 
   return (
     <div className="mt-2 border-t border-stone-100 pt-2 space-y-1">
-      {cats && cats.length > 0 && (
+      {cats.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-[10px] uppercase tracking-wide text-stone-500">classifier</span>
           {cats.map((c) => (
