@@ -350,6 +350,11 @@ export const journalPrompts = pgTable(
   (t) => ({
     providerIdx: index("journal_prompts_provider_idx").on(t.providerId),
     engagementIdx: index("journal_prompts_engagement_idx").on(t.engagementId),
+    // Unique starter rows so re-seeding can use ON CONFLICT DO NOTHING and
+    // recover from partial states without duplicating built-in prompts.
+    starterUnique: uniqueIndex("journal_prompts_starter_unique_idx")
+      .on(t.text)
+      .where(sql`provider_id IS NULL`),
   }),
 );
 
