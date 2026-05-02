@@ -652,23 +652,30 @@ export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLM
   // also localized.
   const outVerdict = await checkOutput(raw, inputText, ctx);
 
-  // Always write a tagged audit event so EVERY guarded call is recorded
-  // (in addition to the input/output gate events persist() already wrote).
-  await logSafetyEvent({
-    sessionId: opts.ctx.sessionId ?? null,
-    engagementId: opts.ctx.engagementId ?? null,
-    userId: opts.ctx.userId ?? null,
-    providerId: opts.ctx.providerId ?? null,
-    stage: "input",
-    decision: outVerdict.decision === "allow" ? "allow" : outVerdict.decision,
-    severity: outVerdict.severity,
-    reason: `guarded_llm:${opts.purpose}:${opts.kind}`,
-    classifierLabels: { internal: true, purpose: opts.purpose, kind: opts.kind },
-    inputSnippet: null, // raw text already redacted in caller-side audit if desired
-    outputSnippet: null,
-    templateUsed: outVerdict.templatedResponse ? outVerdict.templatedResponse.slice(0, 80) : null,
-    agentVersionId: opts.ctx.agentVersionId ?? null,
-  });
+  // Audit policy: checkInput / checkOutput already persist the canonical
+  // gate decision rows. To keep the audit log high signal, we ONLY write
+  // an additional aggregate row for guarded internal calls when the output
+  // gate did not allow the reply — that's the case operators actually need
+  // to query by (purpose, kind). Allow-path internal calls leave only the
+  // two canonical gate rows. Stage "guarded_summary" distinguishes this
+  // aggregate row from the gate rows in supervisor queries.
+  if (outVerdict.decision !== "allow") {
+    await logSafetyEvent({
+      sessionId: opts.ctx.sessionId ?? null,
+      engagementId: opts.ctx.engagementId ?? null,
+      userId: opts.ctx.userId ?? null,
+      providerId: opts.ctx.providerId ?? null,
+      stage: "guarded_summary",
+      decision: outVerdict.decision,
+      severity: outVerdict.severity,
+      reason: `guarded_llm:${opts.purpose}:${opts.kind}`,
+      classifierLabels: { internal: true, purpose: opts.purpose, kind: opts.kind },
+      inputSnippet: null,
+      outputSnippet: null,
+      templateUsed: outVerdict.templatedResponse ? outVerdict.templatedResponse.slice(0, 80) : null,
+      agentVersionId: opts.ctx.agentVersionId ?? null,
+    });
+  }
 
   if (outVerdict.decision !== "allow" && outVerdict.templatedResponse) {
     return {
