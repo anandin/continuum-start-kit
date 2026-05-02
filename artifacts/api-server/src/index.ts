@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import { ensureExtensions } from "./db";
 import { logger } from "./lib/logger";
 import { startReminderCron } from "./services/scheduling";
+import { loadStripeCredentialsFromConnector } from "./lib/stripe";
 
 const rawPort = process.env["PORT"];
 
@@ -21,6 +22,7 @@ if (Number.isNaN(port) || port <= 0) {
 // Failing fast here prevents the server from coming up with broken L2/L3
 // retrieval against a database that doesn't have the vector type installed.
 ensureExtensions()
+  .then(() => loadStripeCredentialsFromConnector())
   .then(() => createApp())
   .then((app) => {
     app.listen(port, (err) => {

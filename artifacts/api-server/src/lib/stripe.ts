@@ -52,6 +52,52 @@ export function stripeWebhookSecret(): string | null {
   return process.env.STRIPE_WEBHOOK_SECRET ?? null;
 }
 
+// Bootstrap Stripe credentials from the Replit connector proxy. The
+// connector returns publishable + secret for the active environment
+// (development vs production). We mirror the secret into
+// `process.env.STRIPE_SECRET_KEY` so the rest of this module — which
+// already reads from env — picks it up without any other refactor.
+//
+// Called once from `index.ts` before the app boots. If the connector
+// isn't configured (running locally without Replit, or before the user
+// has connected Stripe) this resolves silently and getStripe() keeps
+// returning null — every billing endpoint stays a graceful no-op.
+export async function loadStripeCredentialsFromConnector(): Promise<void> {
+  if (process.env.STRIPE_SECRET_KEY) return; // explicit env wins
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+  if (!hostname) return;
+  const xReplitToken = process.env.REPL_IDENTITY
+    ? "repl " + process.env.REPL_IDENTITY
+    : process.env.WEB_REPL_RENEWAL
+      ? "depl " + process.env.WEB_REPL_RENEWAL
+      : null;
+  if (!xReplitToken) return;
+  try {
+    const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
+    const targetEnvironment = isProduction ? "production" : "development";
+    const url = new URL(`https://${hostname}/api/v2/connection`);
+    url.searchParams.set("include_secrets", "true");
+    url.searchParams.set("connector_names", "stripe");
+    url.searchParams.set("environment", targetEnvironment);
+    const r = await fetch(url.toString(), {
+      headers: { Accept: "application/json", "X-Replit-Token": xReplitToken },
+    });
+    if (!r.ok) {
+      logger.warn({ status: r.status }, "stripe: connector lookup failed");
+      return;
+    }
+    const data = (await r.json()) as { items?: Array<{ settings?: { secret?: string; publishable?: string } }> };
+    const item = data.items?.[0];
+    const secret = item?.settings?.secret;
+    if (secret) {
+      process.env.STRIPE_SECRET_KEY = secret;
+      logger.info("stripe: credentials loaded from Replit connector");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "stripe: connector bootstrap errored");
+  }
+}
+
 // Best-effort base URL for return/refresh URLs in account links and
 // for billing portal returns. Falls back to localhost for dev.
 export function publicBaseUrl(): string {
