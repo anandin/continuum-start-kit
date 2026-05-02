@@ -29,6 +29,7 @@ import Calibration from "./pages/twin/Calibration";
 import PersonaLibrary from "./pages/twin/PersonaLibrary";
 import MemoryInspector from "./pages/twin/MemoryInspector";
 import AuditLog from "./pages/twin/AuditLog";
+import ReviewQueue from "./pages/twin/ReviewQueue";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/session-summary/:sessionId" element={<ProtectedRoute><SessionSummary /></ProtectedRoute>} />
             <Route path="/provider/twin/calibration" element={<ProtectedRoute><Calibration /></ProtectedRoute>} />
             <Route path="/provider/twin/persona" element={<ProtectedRoute><PersonaLibrary /></ProtectedRoute>} />
+            <Route path="/provider/twin/review" element={<ProtectedRoute><ReviewQueue /></ProtectedRoute>} />
             <Route path="/provider/twin/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
             <Route path="/provider/twin/memory/:engagementId" element={<ProtectedRoute><MemoryInspector /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

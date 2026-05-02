@@ -68,10 +68,38 @@ export async function classify<T>(prompt: string, schemaHint: string): Promise<T
  * Best-effort embedding. Returns null if no embedding provider is configured;
  * callers must handle null and fall back to non-vector retrieval.
  *
- * OpenRouter does not reliably expose embedding endpoints. We leave this as a
- * stub that can be wired to a Replit AI integration or OpenAI when an API key
- * becomes available.
+ * If `OPENAI_API_KEY` is present we call OpenAI's embeddings API directly
+ * (Replit's AI-Integrations OpenAI proxy does not currently expose
+ * embeddings). Otherwise we return null and the storage layer falls back to
+ * recency / tag-based retrieval.
  */
-export async function embed(_text: string): Promise<number[] | null> {
-  return null;
+const EMBED_MODEL = "text-embedding-3-small"; // 1536 dims — matches schema
+const EMBED_URL = "https://api.openai.com/v1/embeddings";
+
+export function embedConfigured(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
+export async function embed(text: string): Promise<number[] | null> {
+  const k = process.env.OPENAI_API_KEY;
+  if (!k) return null;
+  try {
+    const trimmed = text.slice(0, 8000); // safety: stay well under context
+    const res = await fetch(EMBED_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: EMBED_MODEL, input: trimmed }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      logger.warn({ status: res.status, errText }, "embedding call failed; falling back");
+      return null;
+    }
+    const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> };
+    const vec = data.data?.[0]?.embedding;
+    return Array.isArray(vec) ? vec : null;
+  } catch (err) {
+    logger.warn({ err }, "embedding call threw; falling back");
+    return null;
+  }
 }

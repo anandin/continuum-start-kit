@@ -1,11 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { z } from "zod/v4";
+import type { Engagement, Session as DbSession } from "@workspace/db";
 import { runTwinTurn } from "../services/twinChat";
 import { reflectAndWrite } from "../services/memory";
 import { checkOutput } from "../services/safety";
 import {
   listSafetyEventsByProvider,
+  listSafetyEventsByEngagement,
   createPersonaExample,
   listPersonaExamplesByProvider,
   deactivatePersonaExample,
@@ -17,10 +19,19 @@ import {
   updateCalibrationSession,
   listClientMemoryByEngagement,
   redactClientMemory,
+  updateClientMemory,
+  listReviewQueueForProvider,
+  getReviewItemForMessage,
   logSafetyEvent,
 } from "../services/twinStorage";
 import { chat } from "../lib/llm";
 import { embed } from "../lib/llm";
+import type {
+  SyntheticClientProfile,
+  CalibrationTurn,
+  CalibrationLabel,
+  ProviderConfigStage,
+} from "../services/twinTypes";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated() || !req.user) {
@@ -373,7 +384,7 @@ export function registerRoutes(app: Express) {
         timestamp: m.createdAt,
       }));
 
-      const stagesList = ((providerConfig.stages as any[]) || []).map((s: any) => s.name).join(", ");
+      const stagesList = ((providerConfig.stages as ProviderConfigStage[] | null) ?? []).map((s) => s.name).join(", ");
 
       const prompt = `Summarize this session for durable storage.
 
@@ -557,7 +568,13 @@ If ambiguous, choose the earliest relevant stage.`;
   // ============================================================
   // Helper: ensure provider owns engagement
   // ============================================================
-  async function assertProviderOwnsEngagement(req: Request, engagementId: string): Promise<{ ok: boolean; engagement?: any; error?: string }> {
+  type AuthOk<T> = { ok: true } & T;
+  type AuthFail = { ok: false; error: string };
+
+  async function assertProviderOwnsEngagement(
+    req: Request,
+    engagementId: string,
+  ): Promise<AuthOk<{ engagement: Engagement }> | AuthFail> {
     const engagement = await storage.getEngagementById(engagementId);
     if (!engagement) return { ok: false, error: "Engagement not found" };
     if (engagement.providerId !== req.user!.id) return { ok: false, error: "Forbidden" };
@@ -565,7 +582,10 @@ If ambiguous, choose the earliest relevant stage.`;
   }
 
   // Allow either the provider OR the engagement's seeker (its owner).
-  async function assertEngagementMember(req: Request, engagementId: string): Promise<{ ok: boolean; engagement?: any; error?: string }> {
+  async function assertEngagementMember(
+    req: Request,
+    engagementId: string,
+  ): Promise<AuthOk<{ engagement: Engagement }> | AuthFail> {
     const engagement = await storage.getEngagementById(engagementId);
     if (!engagement) return { ok: false, error: "Engagement not found" };
     const userId = req.user!.id;
@@ -578,7 +598,10 @@ If ambiguous, choose the earliest relevant stage.`;
   }
 
   // For session-scoped routes: load session, then check engagement membership.
-  async function assertSessionMember(req: Request, sessionId: string): Promise<{ ok: boolean; session?: any; engagement?: any; error?: string }> {
+  async function assertSessionMember(
+    req: Request,
+    sessionId: string,
+  ): Promise<AuthOk<{ session: DbSession; engagement: Engagement }> | AuthFail> {
     const session = await storage.getSessionById(sessionId);
     if (!session) return { ok: false, error: "Session not found" };
     if (!session.engagementId) return { ok: false, error: "Forbidden" };
@@ -1121,7 +1144,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     try {
       const userId = req.user!.id;
       const chat = await storage.getActiveOnboardingChatByProviderId(userId);
-      const config = req.body.config || (chat?.generatedConfig as any);
+      const config = (req.body.config ?? chat?.generatedConfig) as Record<string, unknown> | null;
       if (!config) return res.status(400).json({ error: "No config to apply" });
 
       // Upsert provider_configs
@@ -1323,7 +1346,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           tags: Array.isArray(tags) ? tags : [],
           weight: 1.0,
           isActive: true,
-        } as any,
+        },
         embedding,
       );
       res.json(row);
@@ -1344,16 +1367,17 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   app.post("/api/twin/calibration", requireProvider, async (req, res) => {
     try {
       const { scenarioName, syntheticClientProfile } = req.body;
+      const profile: SyntheticClientProfile = (syntheticClientProfile as SyntheticClientProfile | undefined) ?? {
+        presenting: "feeling stuck at work",
+        tone: "anxious but reflective",
+      };
       const row = await createCalibrationSession({
         providerId: req.user!.id,
         scenarioName: scenarioName || "Untitled scenario",
-        syntheticClientProfile: syntheticClientProfile || {
-          presenting: "feeling stuck at work",
-          tone: "anxious but reflective",
-        },
-        transcript: [],
+        syntheticClientProfile: profile,
+        transcript: [] satisfies CalibrationTurn[],
         status: "in_progress",
-      } as any);
+      });
       res.json(row);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -1382,10 +1406,10 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (!calib || calib.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Not found" });
       }
-      const transcript = (calib.transcript as any[]) || [];
+      const transcript: CalibrationTurn[] = (calib.transcript as CalibrationTurn[] | null) ?? [];
 
       // 1. Synthetic client speaks
-      const profile = calib.syntheticClientProfile as any;
+      const profile = calib.syntheticClientProfile as SyntheticClientProfile;
       const clientHistory = transcript
         .map((t) => `Client: ${t.client}\nTherapist Twin: ${t.draft}${t.approvedEdit ? ` (therapist approved as: ${t.approvedEdit})` : ""}`)
         .join("\n\n");
@@ -1423,7 +1447,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         recentMessages: [],
       });
 
-      const newTurn = {
+      const newTurn: CalibrationTurn = {
         client: clientUtterance,
         draft: draftResult.reply,
         templated: draftResult.templated,
@@ -1445,29 +1469,39 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (!calib || calib.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Not found" });
       }
-      const { turnIndex, label, approvedEdit, tags } = req.body;
-      const transcript = (calib.transcript as any[]) || [];
+      const { turnIndex, label, approvedEdit, tags } = req.body as {
+        turnIndex?: number;
+        label?: CalibrationLabel;
+        approvedEdit?: string;
+        tags?: string[];
+      };
+      const transcript: CalibrationTurn[] = (calib.transcript as CalibrationTurn[] | null) ?? [];
       if (typeof turnIndex !== "number" || !transcript[turnIndex]) {
         return res.status(400).json({ error: "Invalid turnIndex" });
       }
-      transcript[turnIndex] = { ...transcript[turnIndex], label, approvedEdit: approvedEdit || transcript[turnIndex].draft };
+      const turn = transcript[turnIndex];
+      transcript[turnIndex] = {
+        ...turn,
+        label: label ?? null,
+        approvedEdit: approvedEdit || turn.draft,
+      };
 
       // Promote into persona_examples if it's an approved/edited example
       if (label === "this_is_me" || label === "needs_edit") {
-        const finalText = approvedEdit || transcript[turnIndex].draft;
-        const embedding = await embed(`${transcript[turnIndex].client}\n${finalText}`);
+        const finalText = approvedEdit || turn.draft;
+        const embedding = await embed(`${turn.client}\n${finalText}`);
         await createPersonaExample(
           {
             providerId: req.user!.id,
             source: "calibration",
-            scenario: transcript[turnIndex].client,
+            scenario: turn.client,
             approvedResponse: finalText,
-            rejectedResponse: label === "needs_edit" ? transcript[turnIndex].draft : null,
+            rejectedResponse: label === "needs_edit" ? turn.draft : null,
             notes: null,
             tags: Array.isArray(tags) ? tags : [],
             weight: 1.0,
             isActive: true,
-          } as any,
+          },
           embedding,
         );
       }
@@ -1481,14 +1515,14 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           severity: "high",
           reason: "calibration_never_say_this",
           classifierLabels: { source: "calibration", turnIndex },
-          inputSnippet: transcript[turnIndex].client?.slice(0, 500) ?? null,
-          outputSnippet: transcript[turnIndex].draft?.slice(0, 500) ?? null,
+          inputSnippet: turn.client?.slice(0, 500) ?? null,
+          outputSnippet: turn.draft?.slice(0, 500) ?? null,
           templateUsed: null,
           agentVersionId: null,
           sessionId: null,
           engagementId: null,
           userId: req.user!.id,
-        } as any);
+        });
       }
 
       const updated = await updateCalibrationSession(calib.id, { transcript });
@@ -1531,11 +1565,145 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Therapist edits a memory entry (content, tags, importance, kind).
+  // Recomputes the embedding when content changes so retrieval reflects edits.
+  app.patch("/api/twin/memory/:id", requireProvider, async (req, res) => {
+    try {
+      const mem = await getClientMemoryById(req.params.id);
+      if (!mem) return res.status(404).json({ error: "Not found" });
+      const ownerCheck = await assertProviderOwnsEngagement(req, mem.engagementId);
+      if (!ownerCheck.ok) return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
+      const { content, tags, importance, kind } = req.body as {
+        content?: string;
+        tags?: string[];
+        importance?: number;
+        kind?: string;
+      };
+      const patch: Partial<{ kind: string; content: string; tags: string[]; importance: number }> = {};
+      if (typeof content === "string" && content.trim().length > 0) patch.content = content.slice(0, 240);
+      if (Array.isArray(tags)) patch.tags = tags.slice(0, 4).map(String);
+      if (typeof importance === "number") patch.importance = Math.min(1, Math.max(0, importance));
+      if (typeof kind === "string") patch.kind = kind;
+      const newEmbedding = patch.content ? await embed(patch.content) : null;
+      const updated = await updateClientMemory(req.params.id, patch, newEmbedding);
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ---- Safety event audit log (L1) ----
+  // Provider-wide audit (used by AuditLog page).
   app.get("/api/twin/safety-events", requireProvider, async (req, res) => {
     try {
       const rows = await listSafetyEventsByProvider(req.user!.id, 200);
       res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Per-client (engagement-scoped) audit log. Provider must own the engagement.
+  app.get("/api/clients/:engagementId/safety-events", requireProvider, async (req, res) => {
+    try {
+      const ownerCheck = await assertProviderOwnsEngagement(req, req.params.engagementId);
+      if (!ownerCheck.ok) {
+        return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
+      }
+      const rows = await listSafetyEventsByEngagement(req.params.engagementId, 200);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ---- Review queue (sample recent agent messages for therapist labeling) ----
+  app.get("/api/twin/review-queue", requireProvider, async (req, res) => {
+    try {
+      const items = await listReviewQueueForProvider(req.user!.id, 20);
+      res.json(items);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Therapist labels a sampled message: this_is_me / not_me / never_say_this / needs_edit.
+  // Approved/edited samples are written to persona_examples (source: review_queue).
+  // "never_say_this" also writes a safety_event so it surfaces in the audit log.
+  app.post("/api/twin/review-queue/:messageId/label", requireProvider, async (req, res) => {
+    try {
+      const { messageId } = req.params;
+      // Only `label`, `approvedEdit`, and `tags` are accepted from the client.
+      // Everything else (draft, scenario, engagementId, sessionId) is loaded
+      // server-side from the message record so a forged payload cannot
+      // attribute persona examples or safety events to the wrong engagement.
+      const VALID_LABELS = ["this_is_me", "not_me", "never_say_this", "needs_edit"] as const;
+      type ReviewLabel = (typeof VALID_LABELS)[number];
+      const { label, approvedEdit, tags } = req.body as {
+        label?: string;
+        approvedEdit?: string;
+        tags?: string[];
+      };
+      if (!label || !(VALID_LABELS as readonly string[]).includes(label)) {
+        return res.status(400).json({
+          error: `label is required and must be one of: ${VALID_LABELS.join(", ")}`,
+        });
+      }
+      const safeLabel = label as ReviewLabel;
+      if (approvedEdit !== undefined && typeof approvedEdit !== "string") {
+        return res.status(400).json({ error: "approvedEdit must be a string" });
+      }
+      if (tags !== undefined && (!Array.isArray(tags) || tags.some((t) => typeof t !== "string"))) {
+        return res.status(400).json({ error: "tags must be an array of strings" });
+      }
+
+      const item = await getReviewItemForMessage(messageId);
+      if (!item) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+      // Verify the provider owns the engagement this message came from.
+      const ownerCheck = await assertProviderOwnsEngagement(req, item.engagementId);
+      if (!ownerCheck.ok) {
+        return res
+          .status(ownerCheck.error === "Forbidden" ? 403 : 404)
+          .json({ error: ownerCheck.error });
+      }
+
+      const draft = item.draft;
+      const scenario = item.scenario;
+
+      if (safeLabel === "this_is_me" || safeLabel === "needs_edit") {
+        const finalText = approvedEdit || draft;
+        const embedding = await embed(`${scenario}\n${finalText}`);
+        await createPersonaExample(
+          {
+            providerId: req.user!.id,
+            source: "review_queue",
+            scenario: scenario || "(prior context unavailable)",
+            approvedResponse: finalText,
+            rejectedResponse: safeLabel === "needs_edit" ? draft : null,
+            notes: null,
+            tags: Array.isArray(tags) ? tags : [],
+            weight: 1.0,
+            isActive: true,
+          },
+          embedding,
+        );
+      }
+
+      if (safeLabel === "never_say_this") {
+        await logSafetyEvent({
+          providerId: req.user!.id,
+          stage: "review_label",
+          decision: "block_with_template",
+          severity: "high",
+          reason: "review_never_say_this",
+          classifierLabels: { source: "review_queue", messageId },
+          inputSnippet: scenario.slice(0, 500),
+          outputSnippet: draft.slice(0, 500),
+          templateUsed: null,
+          agentVersionId: null,
+          sessionId: item.sessionId,
+          engagementId: item.engagementId,
+          userId: req.user!.id,
+        });
+      }
+      // "not_me" is recorded only as feedback for now (no DB row); future work
+      // could store negatives to improve retrieval.
+
+      res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 }

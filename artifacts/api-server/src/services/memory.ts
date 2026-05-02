@@ -89,7 +89,7 @@ export async function reflectAndWrite(opts: {
           content: trimmed.content,
           tags: trimmed.tags,
           importance: trimmed.importance,
-        } as any,
+        },
         embedding,
       );
       written.push(row);

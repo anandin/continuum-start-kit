@@ -1,11 +1,14 @@
 import { db } from "../db";
-import { eq, and, desc, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, isNull, sql, inArray } from "drizzle-orm";
 import {
   safetyEvents,
   agentVersions,
   personaExamples,
   calibrationSessions,
   clientMemory,
+  engagements,
+  sessions,
+  messages,
   type InsertSafetyEvent,
   type InsertAgentVersion,
   type InsertPersonaExample,
@@ -16,6 +19,7 @@ import {
   type PersonaExample,
   type CalibrationSession,
   type ClientMemory,
+  type Message,
 } from "@workspace/db";
 
 // ============ Safety events (L1 audit log) ============
@@ -29,6 +33,19 @@ export async function listSafetyEventsByProvider(providerId: string, limit = 200
     .select()
     .from(safetyEvents)
     .where(eq(safetyEvents.providerId, providerId))
+    .orderBy(desc(safetyEvents.createdAt))
+    .limit(limit);
+}
+
+// Per-client (engagement-scoped) audit log — what one client triggered.
+export async function listSafetyEventsByEngagement(
+  engagementId: string,
+  limit = 200,
+): Promise<SafetyEvent[]> {
+  return db
+    .select()
+    .from(safetyEvents)
+    .where(eq(safetyEvents.engagementId, engagementId))
     .orderBy(desc(safetyEvents.createdAt))
     .limit(limit);
 }
@@ -54,8 +71,7 @@ export async function createPersonaExample(
   data: InsertPersonaExample,
   embedding: number[] | null,
 ): Promise<PersonaExample> {
-  const insertVal: any = { ...data };
-  if (embedding) insertVal.embedding = embedding;
+  const insertVal = embedding ? { ...data, embedding } : data;
   const [row] = await db.insert(personaExamples).values(insertVal).returning();
   return row;
 }
@@ -132,7 +148,7 @@ export async function listCalibrationSessionsByProvider(providerId: string): Pro
 
 export async function updateCalibrationSession(
   id: string,
-  data: Partial<{ transcript: any; status: "in_progress" | "completed" | "abandoned"; completedAt: Date }>,
+  data: Partial<{ transcript: unknown; status: "in_progress" | "completed" | "abandoned"; completedAt: Date }>,
 ): Promise<CalibrationSession | undefined> {
   const [row] = await db.update(calibrationSessions).set(data).where(eq(calibrationSessions.id, id)).returning();
   return row;
@@ -143,8 +159,7 @@ export async function writeClientMemory(
   data: InsertClientMemory,
   embedding: number[] | null,
 ): Promise<ClientMemory> {
-  const insertVal: any = { ...data };
-  if (embedding) insertVal.embedding = embedding;
+  const insertVal = embedding ? { ...data, embedding } : data;
   const [row] = await db.insert(clientMemory).values(insertVal).returning();
   return row;
 }
@@ -199,4 +214,145 @@ export async function topClientMemory(
   });
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, k).map((s) => s.m);
+}
+
+// Edit a memory entry's content/tags/importance/kind. Used by the Memory
+// Inspector. Embedding is recomputed by the caller when content changes.
+export async function updateClientMemory(
+  id: string,
+  patch: Partial<{
+    kind: string;
+    content: string;
+    tags: string[];
+    importance: number;
+  }>,
+  embedding: number[] | null,
+): Promise<ClientMemory | undefined> {
+  const setVal = embedding ? { ...patch, embedding } : patch;
+  const [row] = await db
+    .update(clientMemory)
+    .set(setVal)
+    .where(eq(clientMemory.id, id))
+    .returning();
+  return row;
+}
+
+// ============ Review queue ============
+// Sample recent assistant messages from this provider's engagements that the
+// therapist hasn't already labelled (no persona_example with the same scenario).
+export interface ReviewItem {
+  messageId: string;
+  sessionId: string;
+  engagementId: string;
+  scenario: string; // the prior user message, or "" if none
+  draft: string;   // the assistant message text
+  createdAt: Date | null;
+}
+
+export async function listReviewQueueForProvider(
+  providerId: string,
+  limit = 20,
+): Promise<ReviewItem[]> {
+  // 1. Find this provider's engagements
+  const engs = await db
+    .select({ id: engagements.id })
+    .from(engagements)
+    .where(eq(engagements.providerId, providerId));
+  if (engs.length === 0) return [];
+  const engIds = engs.map((e) => e.id);
+
+  // 2. Find sessions for those engagements
+  const sess = await db
+    .select({ id: sessions.id, engagementId: sessions.engagementId })
+    .from(sessions)
+    .where(inArray(sessions.engagementId, engIds));
+  if (sess.length === 0) return [];
+  const sessionIdToEng = new Map(sess.map((s) => [s.id, s.engagementId ?? ""]));
+  const sessIds = sess.map((s) => s.id);
+
+  // 3. Pull recent agent messages
+  const agentMsgs = await db
+    .select()
+    .from(messages)
+    .where(and(inArray(messages.sessionId, sessIds), eq(messages.role, "agent")))
+    .orderBy(desc(messages.createdAt))
+    .limit(limit * 3); // overfetch so we can pair with prior user msg
+
+  if (agentMsgs.length === 0) return [];
+
+  // 4. For each, fetch the immediately-prior user message in the same session
+  //    (cheap: one batched query per session is overkill — just walk recent).
+  const allMsgs: Message[] = await db
+    .select()
+    .from(messages)
+    .where(inArray(messages.sessionId, agentMsgs.map((m) => m.sessionId).filter((s): s is string => !!s)))
+    .orderBy(messages.createdAt);
+
+  const bySession = new Map<string, Message[]>();
+  for (const m of allMsgs) {
+    if (!m.sessionId) continue;
+    const arr = bySession.get(m.sessionId) ?? [];
+    arr.push(m);
+    bySession.set(m.sessionId, arr);
+  }
+
+  const items: ReviewItem[] = [];
+  for (const am of agentMsgs) {
+    if (!am.sessionId) continue;
+    const session = bySession.get(am.sessionId) ?? [];
+    const idx = session.findIndex((m) => m.id === am.id);
+    const prior = idx > 0 ? session.slice(0, idx).reverse().find((m) => m.role === "seeker") : undefined;
+    items.push({
+      messageId: am.id,
+      sessionId: am.sessionId,
+      engagementId: sessionIdToEng.get(am.sessionId) ?? "",
+      scenario: prior?.content ?? "",
+      draft: am.content,
+      createdAt: am.createdAt,
+    });
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
+// Server-side lookup for the review-queue label endpoint. Loads a single
+// agent message + its prior user message + the engagement so the route can
+// derive draft/scenario/sessionId/engagementId WITHOUT trusting client input.
+// Returns null if the message doesn't exist or isn't an agent message.
+export async function getReviewItemForMessage(
+  messageId: string,
+): Promise<ReviewItem | null> {
+  const [msg] = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .limit(1);
+  if (!msg || msg.role !== "agent" || !msg.sessionId) return null;
+
+  const [sess] = await db
+    .select({ id: sessions.id, engagementId: sessions.engagementId })
+    .from(sessions)
+    .where(eq(sessions.id, msg.sessionId))
+    .limit(1);
+  if (!sess?.engagementId) return null;
+
+  // Find the immediately-prior seeker message in this session for context.
+  const sessionMsgs = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.sessionId, msg.sessionId))
+    .orderBy(messages.createdAt);
+  const idx = sessionMsgs.findIndex((m) => m.id === msg.id);
+  const prior = idx > 0
+    ? sessionMsgs.slice(0, idx).reverse().find((m) => m.role === "seeker")
+    : undefined;
+
+  return {
+    messageId: msg.id,
+    sessionId: msg.sessionId,
+    engagementId: sess.engagementId,
+    scenario: prior?.content ?? "",
+    draft: msg.content,
+    createdAt: msg.createdAt,
+  };
 }

@@ -23,6 +23,7 @@ import {
   Brain,
   Library,
   Shield,
+  ListChecks,
 } from 'lucide-react';
 import { useEngagements } from '@/hooks/useEngagements';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
@@ -298,6 +299,9 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
               </Button>
               <Button onClick={() => navigate('/provider/twin/persona')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-twin-persona">
                 <Library className="mr-2 h-4 w-4" /> Persona library
+              </Button>
+              <Button onClick={() => navigate('/provider/twin/review')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-twin-review">
+                <ListChecks className="mr-2 h-4 w-4" /> Review queue
               </Button>
               <Button onClick={() => navigate('/provider/twin/audit')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-twin-audit">
                 <Shield className="mr-2 h-4 w-4" /> Safety audit log

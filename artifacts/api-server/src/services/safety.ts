@@ -91,12 +91,15 @@ discuss it together.
 export type SafetyDecision = "allow" | "soften" | "block_with_template" | "escalate";
 export type SafetySeverity = "info" | "low" | "medium" | "high" | "critical";
 
+export type SafetyRegion = "US" | "INTL";
+
 export interface SafetyContext {
   sessionId?: string;
   engagementId?: string;
   userId?: string;
   providerId?: string;
   agentVersionId?: string;
+  region?: SafetyRegion;
 }
 
 export interface SafetyVerdict {
@@ -172,6 +175,12 @@ async function classifyMessage(text: string): Promise<ClassifierOutput | null> {
   }
 }
 
+// Choose the locale-appropriate crisis template. Region defaults to US (Haven's
+// initial market) when not specified by the caller.
+export function crisisTemplateFor(ctx: SafetyContext): string {
+  return ctx.region === "INTL" ? CRISIS_TEMPLATE_INTL : CRISIS_TEMPLATE_US;
+}
+
 // ---------------------------------------------------------------- public API
 
 /**
@@ -188,7 +197,7 @@ export async function checkInput(text: string, ctx: SafetyContext): Promise<Safe
       severity: "critical",
       reason: "regex_crisis_match",
       labels: { regex: true, crisis: true },
-      templatedResponse: CRISIS_TEMPLATE_US,
+      templatedResponse: crisisTemplateFor(ctx),
       alertProvider: true,
     };
     await persist(verdict, "input", text, undefined, ctx);
@@ -208,14 +217,18 @@ export async function checkInput(text: string, ctx: SafetyContext): Promise<Safe
     return verdict;
   }
 
-  // LLM-based classifier (best-effort; we conservatively allow if it fails)
+  // LLM-based classifier. If it fails we fail SAFE: soften with a redirect
+  // template (rather than letting an unscreened message reach the model) and
+  // alert the supervising therapist so they can review.
   const labels = await classifyMessage(text);
   if (!labels) {
     const verdict: SafetyVerdict = {
-      decision: "allow",
-      severity: "info",
-      reason: "classifier_unavailable_default_allow",
-      labels: {},
+      decision: "soften",
+      severity: "medium",
+      reason: "classifier_unavailable_fail_safe",
+      labels: { classifier_unavailable: true },
+      templatedResponse: SOFT_REDIRECT_TEMPLATE,
+      alertProvider: true,
     };
     await persist(verdict, "input", text, undefined, ctx);
     return verdict;
@@ -227,7 +240,7 @@ export async function checkInput(text: string, ctx: SafetyContext): Promise<Safe
       severity: "critical",
       reason: labels.reason || "classifier_crisis",
       labels: labels as unknown as Record<string, unknown>,
-      templatedResponse: CRISIS_TEMPLATE_US,
+      templatedResponse: crisisTemplateFor(ctx),
       alertProvider: true,
     };
     await persist(verdict, "input", text, undefined, ctx);
@@ -349,7 +362,7 @@ export async function checkOutput(
       severity: "high",
       reason: "model_improvised_crisis_response",
       labels: { improvised_crisis: true },
-      templatedResponse: CRISIS_TEMPLATE_US,
+      templatedResponse: crisisTemplateFor(ctx),
       alertProvider: true,
     };
     await persist(verdict, "output", inputText, outputText, ctx);
@@ -388,7 +401,7 @@ async function persist(
       outputSnippet: outputText?.slice(0, 500) ?? null,
       templateUsed: verdict.templatedResponse ? verdict.templatedResponse.slice(0, 80) : null,
       agentVersionId: ctx.agentVersionId ?? null,
-    } as any);
+    });
   } catch (err) {
     logger.error({ err, decision: verdict.decision, stage }, "failed to persist safety event");
     // Fail closed: for any non-allow decision the audit trail is mandatory.
