@@ -103,3 +103,77 @@ export async function embed(text: string): Promise<number[] | null> {
     return null;
   }
 }
+
+// ---------------------------------------------------------------- moderation
+//
+// OpenAI's content-moderation endpoint. Used by the L1 safety gate as a
+// dedicated harm-categories check, in parallel with our regex prescreen and
+// LLM crisis classifier. Returns null when the key is missing or the call
+// fails — the caller is expected to treat null as "moderation unavailable"
+// and fall back to its own conservative behaviour.
+
+export interface ModerationCategoryScores {
+  hate?: number;
+  "hate/threatening"?: number;
+  harassment?: number;
+  "harassment/threatening"?: number;
+  "self-harm"?: number;
+  "self-harm/intent"?: number;
+  "self-harm/instructions"?: number;
+  sexual?: number;
+  "sexual/minors"?: number;
+  violence?: number;
+  "violence/graphic"?: number;
+  [k: string]: number | undefined;
+}
+
+export interface ModerationResult {
+  flagged: boolean;
+  categories: Record<string, boolean>;
+  category_scores: ModerationCategoryScores;
+  model: string;
+}
+
+const MODERATION_URL = "https://api.openai.com/v1/moderations";
+const MODERATION_MODEL = "omni-moderation-latest";
+
+export function moderationConfigured(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
+export async function moderate(text: string): Promise<ModerationResult | null> {
+  const k = process.env.OPENAI_API_KEY;
+  if (!k) return null;
+  if (!text || text.trim().length === 0) return null;
+  try {
+    const res = await fetch(MODERATION_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: MODERATION_MODEL, input: text.slice(0, 8000) }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      logger.warn({ status: res.status, errText }, "moderation call failed");
+      return null;
+    }
+    const data = (await res.json()) as {
+      model?: string;
+      results?: Array<{
+        flagged?: boolean;
+        categories?: Record<string, boolean>;
+        category_scores?: ModerationCategoryScores;
+      }>;
+    };
+    const r = data.results?.[0];
+    if (!r) return null;
+    return {
+      flagged: Boolean(r.flagged),
+      categories: r.categories ?? {},
+      category_scores: r.category_scores ?? {},
+      model: data.model ?? MODERATION_MODEL,
+    };
+  } catch (err) {
+    logger.warn({ err }, "moderation call threw");
+    return null;
+  }
+}

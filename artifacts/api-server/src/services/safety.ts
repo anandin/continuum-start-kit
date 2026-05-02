@@ -16,7 +16,7 @@
  */
 
 import { logger } from "../lib/logger";
-import { classify, chat as rawChat, type ChatMessage } from "../lib/llm";
+import { classify, chat as rawChat, moderate, type ChatMessage, type ModerationResult } from "../lib/llm";
 import { logSafetyEvent } from "./twinStorage";
 
 // ---------------------------------------------------------------- constitution
@@ -149,6 +149,81 @@ function regexPrescreen(text: string): { crisis: boolean; harmfulRequest: boolea
   };
 }
 
+// ---------------------------------------------------------------- moderation
+//
+// OpenAI moderation runs as a *separate* defense-in-depth check next to the
+// LLM crisis classifier. It catches harm categories the regex prescreen
+// misses (violence, hate, sexual content) using OpenAI's purpose-built
+// classifier. Returns a verdict when the moderator flagged anything
+// actionable, or null when nothing actionable was found.
+
+interface ModerationVerdictHints {
+  decision: SafetyDecision;
+  severity: SafetySeverity;
+  reason: string;
+  template: string;
+  alertProvider?: boolean;
+}
+
+function interpretModeration(
+  result: ModerationResult,
+  ctx: SafetyContext,
+  side: "input" | "output",
+): ModerationVerdictHints | null {
+  if (!result.flagged) return null;
+  const cat = result.categories;
+
+  // Crisis-tier: self-harm signals → escalate with crisis template (input
+  // side) or soften with crisis template (output side; we never let the
+  // model improvise crisis content).
+  if (cat["self-harm"] || cat["self-harm/intent"] || cat["self-harm/instructions"]) {
+    return {
+      decision: side === "input" ? "escalate" : "soften",
+      severity: "critical",
+      reason: `moderation_self_harm:${side}`,
+      template: crisisTemplateFor(ctx),
+      alertProvider: true,
+    };
+  }
+
+  // Hard refusals: minors-related sexual content, threat-tier hate or
+  // harassment, graphic violence, explicit threats.
+  if (cat["sexual/minors"]) {
+    return {
+      decision: "block_with_template",
+      severity: "critical",
+      reason: `moderation_sexual_minors:${side}`,
+      template: HARMFUL_REQUEST_TEMPLATE,
+      alertProvider: true,
+    };
+  }
+  if (cat["hate/threatening"] || cat["harassment/threatening"] || cat["violence/graphic"]) {
+    return {
+      decision: "block_with_template",
+      severity: "high",
+      reason: `moderation_threatening:${side}`,
+      template: HARMFUL_REQUEST_TEMPLATE,
+      alertProvider: true,
+    };
+  }
+
+  // Lower-tier flags (general violence, hate, harassment, sexual). On the
+  // input side we let the conversation continue but soften so the therapist
+  // is alerted; on the output side we replace with a soft redirect so the
+  // model's response never relays harmful content.
+  if (cat.violence || cat.hate || cat.harassment || cat.sexual) {
+    return {
+      decision: side === "output" ? "block_with_template" : "soften",
+      severity: "medium",
+      reason: `moderation_general:${side}`,
+      template: side === "output" ? HARMFUL_REQUEST_TEMPLATE : SOFT_REDIRECT_TEMPLATE,
+      alertProvider: side === "output", // surface model misbehaviour explicitly
+    };
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------- LLM classifier
 
 async function classifyMessage(text: string): Promise<ClassifierOutput | null> {
@@ -215,6 +290,33 @@ export async function checkInput(text: string, ctx: SafetyContext): Promise<Safe
     };
     await persist(verdict, "input", text, undefined, ctx);
     return verdict;
+  }
+
+  // OpenAI moderation — purpose-built harm-category classifier. Runs in
+  // addition to the LLM crisis classifier below for defense in depth.
+  // Returns null when the API key is absent or the call fails; we treat
+  // that as "moderation unavailable" and continue to the LLM classifier.
+  const mod = await moderate(text);
+  if (mod) {
+    const hint = interpretModeration(mod, ctx, "input");
+    if (hint) {
+      const verdict: SafetyVerdict = {
+        decision: hint.decision,
+        severity: hint.severity,
+        reason: hint.reason,
+        labels: {
+          moderation: true,
+          flagged: mod.flagged,
+          categories: mod.categories,
+          category_scores: mod.category_scores,
+          model: mod.model,
+        },
+        templatedResponse: hint.template,
+        alertProvider: hint.alertProvider,
+      };
+      await persist(verdict, "input", text, undefined, ctx);
+      return verdict;
+    }
   }
 
   // LLM-based classifier. If it fails we fail SAFE: soften with a redirect
@@ -369,11 +471,38 @@ export async function checkOutput(
     return verdict;
   }
 
+  // OpenAI moderation on the model's reply (defense-in-depth — catches
+  // categories our identity/leak/improvised-crisis regexes don't cover, e.g.
+  // hate, harassment, sexual, violence). Null = moderation unavailable; we
+  // fall through to "allow" rather than blocking on infra failure.
+  const mod = await moderate(outputText);
+  if (mod) {
+    const hint = interpretModeration(mod, ctx, "output");
+    if (hint) {
+      const verdict: SafetyVerdict = {
+        decision: hint.decision,
+        severity: hint.severity,
+        reason: hint.reason,
+        labels: {
+          moderation: true,
+          flagged: mod.flagged,
+          categories: mod.categories,
+          category_scores: mod.category_scores,
+          model: mod.model,
+        },
+        templatedResponse: hint.template,
+        alertProvider: hint.alertProvider,
+      };
+      await persist(verdict, "output", inputText, outputText, ctx);
+      return verdict;
+    }
+  }
+
   const verdict: SafetyVerdict = {
     decision: "allow",
     severity: "info",
     reason: "ok",
-    labels: {},
+    labels: { moderation_run: Boolean(mod) },
   };
   await persist(verdict, "output", inputText, outputText, ctx);
   return verdict;

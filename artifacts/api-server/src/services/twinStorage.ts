@@ -270,22 +270,28 @@ export async function listReviewQueueForProvider(
   const sessionIdToEng = new Map(sess.map((s) => [s.id, s.engagementId ?? ""]));
   const sessIds = sess.map((s) => s.id);
 
-  // 3. Pull recent agent messages
+  // 3. Pull recent agent messages (overfetch so we can prioritize after
+  //    scoring rather than slicing by recency alone).
+  const overfetch = Math.max(limit * 5, 60);
   const agentMsgs = await db
     .select()
     .from(messages)
     .where(and(inArray(messages.sessionId, sessIds), eq(messages.role, "agent")))
     .orderBy(desc(messages.createdAt))
-    .limit(limit * 3); // overfetch so we can pair with prior user msg
+    .limit(overfetch);
 
   if (agentMsgs.length === 0) return [];
 
-  // 4. For each, fetch the immediately-prior user message in the same session
-  //    (cheap: one batched query per session is overkill — just walk recent).
+  // 4. Pull every message in the touched sessions so we can find the prior
+  //    seeker turn AND detect immediate negative feedback (the next seeker
+  //    message after the agent reply).
+  const touchedSessIds = agentMsgs
+    .map((m) => m.sessionId)
+    .filter((s): s is string => !!s);
   const allMsgs: Message[] = await db
     .select()
     .from(messages)
-    .where(inArray(messages.sessionId, agentMsgs.map((m) => m.sessionId).filter((s): s is string => !!s)))
+    .where(inArray(messages.sessionId, touchedSessIds))
     .orderBy(messages.createdAt);
 
   const bySession = new Map<string, Message[]>();
@@ -296,23 +302,150 @@ export async function listReviewQueueForProvider(
     bySession.set(m.sessionId, arr);
   }
 
-  const items: ReviewItem[] = [];
+  // 5. Already-labeled drafts → skip. The therapist has already taught the
+  //    agent on this exact response (positive or negative); reshowing wastes
+  //    their attention and biases the queue toward repeat topics.
+  const labeled = await db
+    .select({
+      approvedResponse: personaExamples.approvedResponse,
+      rejectedResponse: personaExamples.rejectedResponse,
+    })
+    .from(personaExamples)
+    .where(eq(personaExamples.providerId, providerId));
+  const labeledDrafts = new Set<string>();
+  for (const row of labeled) {
+    if (row.approvedResponse) labeledDrafts.add(row.approvedResponse.trim());
+    if (row.rejectedResponse) labeledDrafts.add(row.rejectedResponse.trim());
+  }
+
+  // 6. Pull output-stage safety events for these sessions — used as the
+  //    uncertainty signal. Any non-allow decision or non-info severity
+  //    means the L1 gate flagged something on this turn; therapist review
+  //    is highest leverage there.
+  const safetyRows = await db
+    .select({
+      sessionId: safetyEvents.sessionId,
+      decision: safetyEvents.decision,
+      severity: safetyEvents.severity,
+      reason: safetyEvents.reason,
+      createdAt: safetyEvents.createdAt,
+      stage: safetyEvents.stage,
+    })
+    .from(safetyEvents)
+    .where(and(
+      inArray(safetyEvents.sessionId, touchedSessIds),
+      eq(safetyEvents.stage, "output"),
+    ))
+    .orderBy(desc(safetyEvents.createdAt));
+  // Bucket by session; we approximate per-message uncertainty by matching
+  // the safety event closest in time to the agent message.
+  const safetyBySession = new Map<string, typeof safetyRows>();
+  for (const ev of safetyRows) {
+    if (!ev.sessionId) continue;
+    const arr = safetyBySession.get(ev.sessionId) ?? [];
+    arr.push(ev);
+    safetyBySession.set(ev.sessionId, arr);
+  }
+
+  // 7. Score each candidate.
+  type Scored = { item: ReviewItem; score: number };
+  const scored: Scored[] = [];
+  const seenTopicHashes = new Set<string>();
+  // Coverage of "topics already represented" — we use the prior seeker
+  // message's first 6 normalised words as a cheap topic key. Once we've
+  // chosen a candidate from a topic, later candidates from the same topic
+  // get a coverage penalty so the queue spans the conversation rather than
+  // hammering one thread.
+  function topicKey(scenario: string): string {
+    return scenario
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 6)
+      .join(" ");
+  }
+
   for (const am of agentMsgs) {
     if (!am.sessionId) continue;
+    const draftKey = am.content.trim();
+    if (labeledDrafts.has(draftKey)) continue;
+
     const session = bySession.get(am.sessionId) ?? [];
     const idx = session.findIndex((m) => m.id === am.id);
     const prior = idx > 0 ? session.slice(0, idx).reverse().find((m) => m.role === "seeker") : undefined;
-    items.push({
-      messageId: am.id,
-      sessionId: am.sessionId,
-      engagementId: sessionIdToEng.get(am.sessionId) ?? "",
-      scenario: prior?.content ?? "",
-      draft: am.content,
-      createdAt: am.createdAt,
+
+    // Client-feedback signal: the seeker's NEXT message after this agent
+    // reply. Short replies, repeated complaints, or "no/that's not what i
+    // mean" patterns count as implicit dissatisfaction. We don't track
+    // explicit ratings, so this is a proxy.
+    const nextSeeker = idx >= 0 ? session.slice(idx + 1).find((m) => m.role === "seeker") : undefined;
+    let clientFeedbackScore = 0;
+    if (nextSeeker) {
+      const t = nextSeeker.content.toLowerCase();
+      if (t.length < 20) clientFeedbackScore += 1; // terse follow-up = often disappointed
+      if (/\b(no|not|wrong|that'?s not|don'?t|doesn'?t|didn'?t)\b/.test(t)) clientFeedbackScore += 2;
+      if (/\bi (already|just) said\b/.test(t)) clientFeedbackScore += 2;
+    }
+
+    // Uncertainty signal from the L1 safety gate.
+    let uncertaintyScore = 0;
+    const evs = safetyBySession.get(am.sessionId) ?? [];
+    // Pick the output event temporally closest to (and at or before) this
+    // agent message — within 60s window.
+    const amTime = am.createdAt ? new Date(am.createdAt).getTime() : 0;
+    let bestEv: (typeof safetyRows)[number] | undefined;
+    let bestDelta = Number.POSITIVE_INFINITY;
+    for (const ev of evs) {
+      const evTime = ev.createdAt ? new Date(ev.createdAt).getTime() : 0;
+      const delta = Math.abs(evTime - amTime);
+      if (delta < bestDelta && delta < 60_000) {
+        bestDelta = delta;
+        bestEv = ev;
+      }
+    }
+    if (bestEv) {
+      if (bestEv.decision && bestEv.decision !== "allow") uncertaintyScore += 3;
+      if (bestEv.severity && bestEv.severity !== "info") uncertaintyScore += 2;
+      // Specific tags we especially want a human eye on.
+      const r = bestEv.reason || "";
+      if (r.startsWith("moderation_")) uncertaintyScore += 2;
+      if (r === "model_improvised_crisis_response" || r === "output_claims_to_be_human_or_licensed") {
+        uncertaintyScore += 4;
+      }
+    }
+
+    // Coverage: penalise messages whose topic is already represented in our
+    // selection so unlabeled topics surface.
+    const tk = topicKey(prior?.content ?? "");
+    const coveragePenalty = tk && seenTopicHashes.has(tk) ? -1 : 0;
+    if (tk) seenTopicHashes.add(tk);
+
+    // Recency tiebreaker — newer messages slightly favoured.
+    const recencyRank = agentMsgs.indexOf(am); // 0 = newest
+    const recencyScore = Math.max(0, 1 - recencyRank / overfetch);
+
+    const score =
+      uncertaintyScore * 1.5 +
+      clientFeedbackScore * 1.0 +
+      coveragePenalty * 1.5 +
+      recencyScore * 0.5;
+
+    scored.push({
+      score,
+      item: {
+        messageId: am.id,
+        sessionId: am.sessionId,
+        engagementId: sessionIdToEng.get(am.sessionId) ?? "",
+        scenario: prior?.content ?? "",
+        draft: am.content,
+        createdAt: am.createdAt,
+      },
     });
-    if (items.length >= limit) break;
   }
-  return items;
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((s) => s.item);
 }
 
 // Server-side lookup for the review-queue label endpoint. Loads a single

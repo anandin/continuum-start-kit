@@ -1458,6 +1458,16 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       }
     }
 
+    // /api/review-queue[/:messageId/label] aliases for the spec contract.
+    if (req.path === "/api/review-queue" && req.method === "GET") {
+      req.url = `/api/twin/review-queue${qs}`;
+    } else {
+      const labelMatch = req.path.match(/^\/api\/review-queue\/([^/]+)\/label$/);
+      if (labelMatch && req.method === "POST") {
+        req.url = `/api/twin/review-queue/${labelMatch[1]}/label${qs}`;
+      }
+    }
+
     // /api/clients/:engagementId/memory[/:entryId] aliases for the spec contract.
     // Provider ownership is still enforced by the underlying handler (which
     // validates against the entry's engagementId, not the URL param), so the
