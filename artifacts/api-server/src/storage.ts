@@ -992,6 +992,7 @@ export class DatabaseStorage implements IStorage {
       // Active dismissals
       db.select({
         engagementId: coachInboxDismissals.engagementId,
+        dismissedAt: coachInboxDismissals.dismissedAt,
         expiresAt: coachInboxDismissals.expiresAt,
       })
         .from(coachInboxDismissals)
@@ -1039,12 +1040,17 @@ export class DatabaseStorage implements IStorage {
     // Multiple active sessions per engagement is unusual, but if it happens we
     // just keep one — any active session works for the "Open chat" CTA.
     for (const r of activeSessionRows) if (r.engagementId) activeSessionMap.set(r.engagementId, r.sessionId);
-    const dismissalMap = new Map<string, Date>();
+    // Keep the *most recent* dismissal per engagement (latest dismissedAt) so a
+    // fresh "Handled" replaces an older one cleanly.
+    const dismissalMap = new Map<string, { dismissedAt: Date; expiresAt: Date }>();
     for (const r of dismissalRows) {
-      const expires = toDate(r.expiresAt);
-      if (!expires) continue;
+      const dismissedAt = toDate(r.dismissedAt);
+      const expiresAt = toDate(r.expiresAt);
+      if (!dismissedAt || !expiresAt) continue;
       const existing = dismissalMap.get(r.engagementId);
-      if (!existing || expires > existing) dismissalMap.set(r.engagementId, expires);
+      if (!existing || dismissedAt > existing.dismissedAt) {
+        dismissalMap.set(r.engagementId, { dismissedAt, expiresAt });
+      }
     }
 
     const rows: CoachInboxRow[] = engagementRows.map((eng) => {
@@ -1053,7 +1059,9 @@ export class DatabaseStorage implements IStorage {
       const lastProviderMessageAt = lastProviderMessageMap.get(eng.engagementId) ?? null;
       const alert = alertMap.get(eng.engagementId);
       const safetyAt = safetyMap.get(eng.engagementId) ?? null;
-      const dismissedUntil = dismissalMap.get(eng.engagementId) ?? null;
+      const dismissal = dismissalMap.get(eng.engagementId) ?? null;
+      const dismissedUntil = dismissal?.expiresAt ?? null;
+      const dismissedAt = dismissal?.dismissedAt ?? null;
 
       const reasons: CoachInboxReason[] = [];
 
@@ -1137,9 +1145,40 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
-    // Filter: keep rows with at least one reason. Suppress dismissed rows
-    // entirely until the 24h window expires — that's what "handled" promises.
-    const visible = rows.filter((r) => r.reasons.length > 0 && !r.dismissedUntil);
+    // Filter + dismissal handling.
+    //
+    // A "Handled" click suppresses an engagement for 24h, BUT critical safety
+    // signals must still re-surface a row when something *new* happens inside
+    // that window — a coach should never miss a fresh crisis just because they
+    // dismissed yesterday's. We honor the dismissal for slow-moving reasons
+    // (no_contact, awaiting reply) but allow safety/alerts that arrived AFTER
+    // the dismissal time to break through.
+    const visible: CoachInboxRow[] = [];
+    for (const row of rows) {
+      if (row.reasons.length === 0) continue;
+      if (!row.dismissedUntil) {
+        visible.push(row);
+        continue;
+      }
+      const dismissedAtIso = dismissalMap.get(row.engagementId)?.dismissedAt.toISOString() ?? "";
+      const survivingReasons = row.reasons.filter((reason) => {
+        // Slow-moving reasons stay hidden during the dismissal window.
+        if (reason.kind === "no_contact" || reason.kind === "unread_messages") return false;
+        // Safety + alerts re-surface only when they're strictly newer than the
+        // dismissal — i.e., something new happened after the coach handled it.
+        if (!reason.timestamp) return false;
+        return reason.timestamp > dismissedAtIso;
+      });
+      if (survivingReasons.length === 0) continue;
+      // Recompute severity from surviving reasons so the pill matches what's shown.
+      const hasSafety = survivingReasons.some((r) => r.kind === "safety");
+      const hasAlertOrUnread = survivingReasons.some((r) => r.kind === "alerts" || r.kind === "unread_messages");
+      visible.push({
+        ...row,
+        reasons: survivingReasons,
+        severity: hasSafety ? "critical" : hasAlertOrUnread ? "elevated" : "quiet",
+      });
+    }
 
     // Sort: critical first, then elevated, then quiet (oldest contact first).
     const severityRank: Record<CoachInboxSeverity, number> = {
