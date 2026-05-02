@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/mobile/"
+title = "Haven"
+version = "1.0.0"
+id = "artifacts/haven-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/mobile/" ]
+localPort = 21119
+
+[services.development]
+run = "pnpm --filter @workspace/haven-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/haven-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/haven-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "21119"
+BASE_PATH = "/mobile/"
