@@ -82,9 +82,12 @@ export function SeekerScheduledSessionsCard() {
       );
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["scheduled-sessions", "me"] });
       toast.success("Session confirmed — calendar invite emailed.");
+      if (data?.billingWarning) {
+        toast.warning(`Heads up: ${data.billingWarning}`, { duration: 8000 });
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });

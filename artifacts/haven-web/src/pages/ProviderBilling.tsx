@@ -48,6 +48,7 @@ export default function ProviderBilling() {
   const [newDescription, setNewDescription] = useState("");
   const [newAmount, setNewAmount] = useState("75");
   const [newCadence, setNewCadence] = useState<"per_session" | "monthly">("per_session");
+  const [newSaveAsDraft, setNewSaveAsDraft] = useState(false);
   const [creating, setCreating] = useState(false);
 
   async function load() {
@@ -97,14 +98,25 @@ export default function ProviderBilling() {
         description: newDescription.trim() || null,
         amountCents: Math.round(dollars * 100),
         billingCadence: newCadence,
+        isActive: !newSaveAsDraft,
       });
-      setNewLabel(""); setNewDescription(""); setNewAmount("75"); setNewCadence("per_session");
+      setNewLabel(""); setNewDescription(""); setNewAmount("75"); setNewCadence("per_session"); setNewSaveAsDraft(false);
       await load();
-      toast.success("Tier added");
+      toast.success(newSaveAsDraft ? "Draft tier saved" : "Tier added");
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to add tier");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function activateTier(id: string) {
+    try {
+      await apiRequest("PATCH", `/api/billing/tiers/${id}`, { isActive: true });
+      await load();
+      toast.success("Tier activated");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not activate tier");
     }
   }
 
@@ -186,9 +198,14 @@ export default function ProviderBilling() {
                       {t.description && <div className="text-xs text-muted-foreground mt-0.5">{t.description}</div>}
                       {!t.isActive && <Badge variant="secondary" className="mt-1">Archived</Badge>}
                     </div>
-                    {t.isActive && (
-                      <Button size="icon" variant="ghost" onClick={() => deleteTier(t.id)} data-testid={`button-delete-tier-${t.id}`}><Trash2 className="h-4 w-4" /></Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {!t.isActive && (
+                        <Button size="sm" variant="outline" onClick={() => activateTier(t.id)} disabled={!status?.chargesEnabled} data-testid={`button-activate-tier-${t.id}`}>Activate</Button>
+                      )}
+                      {t.isActive && (
+                        <Button size="icon" variant="ghost" onClick={() => deleteTier(t.id)} data-testid={`button-delete-tier-${t.id}`}><Trash2 className="h-4 w-4" /></Button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 <div className="rounded-md border bg-muted/30 p-4 space-y-3">
@@ -222,8 +239,25 @@ export default function ProviderBilling() {
                       <Textarea id="tier-desc" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Who is this for?" rows={2} data-testid="input-tier-description" />
                     </div>
                   </div>
-                  <Button onClick={createTier} disabled={creating} data-testid="button-add-tier">
-                    {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />} Add tier
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="tier-draft"
+                      type="checkbox"
+                      checked={newSaveAsDraft}
+                      onChange={(e) => setNewSaveAsDraft(e.target.checked)}
+                      data-testid="checkbox-tier-draft"
+                    />
+                    <Label htmlFor="tier-draft" className="text-sm font-normal text-muted-foreground">
+                      Save as draft (don't show to seekers yet)
+                      {!status?.chargesEnabled && " — required until Stripe is connected"}
+                    </Label>
+                  </div>
+                  <Button
+                    onClick={createTier}
+                    disabled={creating || (!status?.chargesEnabled && !newSaveAsDraft)}
+                    data-testid="button-add-tier"
+                  >
+                    {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />} {newSaveAsDraft ? "Save draft" : "Add tier"}
                   </Button>
                 </div>
               </CardContent>
