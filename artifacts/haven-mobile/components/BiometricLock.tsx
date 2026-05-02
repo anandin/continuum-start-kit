@@ -93,8 +93,14 @@ export function BiometricLockProvider({
   const [enabled, setEnabledState] = useState(false);
   const [isLoadingPref, setIsLoadingPref] = useState(true);
   const [support, setSupport] = useState<BiometricSupport>({ kind: "unknown" });
-  // Locked on first mount when pref is on; "unknown" until pref + support resolved.
+  // `locked` triggers the real LockScreen (with biometric auto-prompt). It's
+  // set on cold-launch and on return-to-active after the grace window.
   const [locked, setLocked] = useState<boolean>(true);
+  // `veiled` is a lightweight privacy curtain shown while the app is
+  // inactive/background. It hides app content from the iOS app-switcher
+  // snapshot WITHOUT triggering a biometric prompt, so brief
+  // backgrounding (notification banner, control center) is friction-free.
+  const [veiled, setVeiled] = useState<boolean>(false);
   const lastBackgroundedAt = useRef<number | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
@@ -122,12 +128,14 @@ export function BiometricLockProvider({
     };
   }, []);
 
-  // AppState background tracking. Two responsibilities:
-  //  1) When leaving active state (active -> inactive/background), pre-emptively
-  //     lock if the pref is on. Setting locked BEFORE iOS captures the app-
-  //     switcher snapshot ensures no tab content is visible in the switcher.
-  //  2) On return to active, decide whether to keep the lock based on the
-  //     RELOCK_AFTER_MS grace window.
+  // AppState background tracking.
+  //  1) Leaving active (active -> inactive/background): drop the privacy
+  //     veil over the UI so the iOS app-switcher snapshot doesn't expose
+  //     tab content. We deliberately do NOT set `locked` here — that would
+  //     re-prompt biometrics on every brief background trip.
+  //  2) Returning to active: only escalate to the real lock screen when the
+  //     background duration met the RELOCK_AFTER_MS threshold. Always lift
+  //     the veil so the user sees either their content or the lock screen.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
       const prev = appState.current;
@@ -136,19 +144,19 @@ export function BiometricLockProvider({
       if (prev === "active" && next !== "active") {
         lastBackgroundedAt.current = Date.now();
         if (enabled && support.kind === "supported") {
-          setLocked(true);
+          setVeiled(true);
         }
         return;
       }
       if (next === "active" && prev !== "active") {
         const since = lastBackgroundedAt.current;
         lastBackgroundedAt.current = null;
-        if (!enabled || support.kind !== "supported") return;
-        // Brief return within the grace window — unlock silently. Otherwise
-        // we keep the lock that was set when leaving active state above.
-        if (since && Date.now() - since < RELOCK_AFTER_MS) {
-          setLocked(false);
+        if (enabled && support.kind === "supported") {
+          if (since && Date.now() - since >= RELOCK_AFTER_MS) {
+            setLocked(true);
+          }
         }
+        setVeiled(false);
       }
     });
     return () => sub.remove();
@@ -156,7 +164,10 @@ export function BiometricLockProvider({
 
   // If user signs out, drop the lock so the auth screen is reachable.
   useEffect(() => {
-    if (!user) setLocked(false);
+    if (!user) {
+      setLocked(false);
+      setVeiled(false);
+    }
   }, [user]);
 
   const setEnabled = useCallback(async (next: boolean) => {
@@ -208,13 +219,17 @@ export function BiometricLockProvider({
   // While we're loading the preference on a cold-launch, a user that ends up with
   // pref-on would briefly see the app — so block the children behind a neutral
   // splash-like view too.
-  const shouldShowLock = locked && enabled && support.kind === "supported" && !!user;
+  const isProtected =
+    enabled && support.kind === "supported" && !!user;
+  const shouldShowLock = locked && isProtected;
+  const shouldShowVeil = veiled && isProtected && !shouldShowLock;
   const shouldShowGate = isLoadingPref;
 
   return (
     <BiometricLockContext.Provider value={value}>
       {children}
       {shouldShowGate ? <LoadingGate /> : null}
+      {shouldShowVeil ? <PrivacyVeil /> : null}
       {shouldShowLock ? (
         <LockScreen
           support={support}
@@ -222,6 +237,23 @@ export function BiometricLockProvider({
         />
       ) : null}
     </BiometricLockContext.Provider>
+  );
+}
+
+function PrivacyVeil() {
+  const colors = useColors();
+  return (
+    <View
+      pointerEvents="auto"
+      style={[
+        StyleSheet.absoluteFillObject,
+        styles.veil,
+        { backgroundColor: colors.background },
+      ]}
+      testID="biometric-privacy-veil"
+    >
+      <HavenLogo size={48} />
+    </View>
   );
 }
 
@@ -430,6 +462,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 9998,
+  },
+  veil: {
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9991,
   },
   lockRoot: {
     paddingHorizontal: 24,
