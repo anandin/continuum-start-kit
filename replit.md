@@ -51,7 +51,8 @@ user_sessions (created manually for connect-pg-simple).
 
 Therapist Twin tables: safety_events, agent_versions, persona_examples, calibration_sessions,
 client_memory (uses pgvector for optional semantic retrieval; falls back to recency + tag scoring
-when embeddings are absent).
+when embeddings are absent), nudges (daily inter-session AI micro-nudges, one row per
+seeker/day enforced by unique index).
 
 ## Therapist Twin Architecture
 
@@ -68,6 +69,14 @@ Three-layer system enforced server-side in `artifacts/api-server/src/services/`:
 
 Orchestration in `services/twinChat.ts:runTwinTurn()`. Calibration synthetic-client text also routes
 through L1 output gate (defense-in-depth).
+
+Daily nudges (`services/nudges.ts` + `services/nudgeStorage.ts`): lazy-generated on first
+`GET /api/nudges/today` per seeker per UTC day (no cron). Composes a one-sentence prompt from the
+seeker's last session next_action / insights / active goals via OpenRouter chat, then runs the
+result through L1 `checkOutput` defense-in-depth before persisting. Suppressed entirely when the
+seeker has any high/critical safety_event in the last 24h. Best-effort push delivery; in-app card
+on the mobile Home tab is the source of truth. Tri-action response (`POST /api/nudges/:id/respond`
+with `done|skip|snooze`) — only the owning seeker can respond.
 
 Therapist control tower pages in `artifacts/haven-web/src/pages/twin/`: Calibration.tsx,
 PersonaLibrary.tsx, MemoryInspector.tsx, AuditLog.tsx — linked from ProviderDashboardView.

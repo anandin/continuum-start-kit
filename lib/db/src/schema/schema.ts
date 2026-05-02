@@ -476,6 +476,35 @@ export const clientMemory = pgTable("client_memory", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Daily inter-session AI micro-nudges. One row per (seekerUserId, day) is the
+// expected v1 cadence; the unique index enforces it. Status lifecycle:
+//   pending -> sent -> done | skipped | snoozed
+//   pending -> blocked (L1 output gate refused)
+export const nudges = pgTable(
+  "nudges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+    engagementId: uuid("engagement_id").references(() => engagements.id),
+    sourceSessionId: uuid("source_session_id").references(() => sessions.id),
+    sourceGoalId: uuid("source_goal_id").references(() => goals.id),
+    body: text("body").notNull(),
+    // "next_action" | "goal" | "fallback"
+    source: text("source").notNull().default("fallback"),
+    // "pending" | "sent" | "done" | "skipped" | "snoozed" | "blocked"
+    status: text("status").notNull().default("pending"),
+    day: date("day").notNull(),
+    snoozeUntil: timestamp("snooze_until"),
+    sentAt: timestamp("sent_at"),
+    respondedAt: timestamp("responded_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    uniqSeekerDay: uniqueIndex("uniq_nudges_seeker_day").on(t.seekerUserId, t.day),
+    seekerIdx: index("nudges_seeker_idx").on(t.seekerUserId),
+  }),
+);
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, createdAt: true });
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
@@ -507,6 +536,7 @@ export const insertJournalPromptSchema = createInsertSchema(journalPrompts).omit
 export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true, updatedAt: true, sharedAt: true });
 export const insertCoachInboxDismissalSchema = createInsertSchema(coachInboxDismissals).omit({ id: true, dismissedAt: true });
 export const insertPlaybookSchema = createInsertSchema(playbooks).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertNudgeSchema = createInsertSchema(nudges).omit({ id: true, createdAt: true, sentAt: true, respondedAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -539,6 +569,7 @@ export type InsertJournalPrompt = z.infer<typeof insertJournalPromptSchema>;
 export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
 export type InsertCoachInboxDismissal = z.infer<typeof insertCoachInboxDismissalSchema>;
 export type InsertPlaybook = z.infer<typeof insertPlaybookSchema>;
+export type InsertNudge = z.infer<typeof insertNudgeSchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -572,3 +603,4 @@ export type JournalPrompt = typeof journalPrompts.$inferSelect;
 export type JournalEntry = typeof journalEntries.$inferSelect;
 export type CoachInboxDismissal = typeof coachInboxDismissals.$inferSelect;
 export type Playbook = typeof playbooks.$inferSelect;
+export type Nudge = typeof nudges.$inferSelect;

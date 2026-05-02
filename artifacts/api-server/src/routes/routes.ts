@@ -2976,4 +2976,61 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       return res.status(500).json({ error: error.message });
     }
   });
+
+  // ============================================================
+  // Daily inter-session AI micro-nudges
+  // ============================================================
+  // Lazy-generated on first GET per day so we don't need a cron. The mobile
+  // app polls `/api/nudges/today` when the home tab opens; the response is
+  // either today's nudge (existing or freshly composed) or null when nudges
+  // are suppressed (active high-severity safety event in the last 24h, or
+  // the seeker has no engagement yet).
+
+  app.get("/api/nudges/today", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      // Only seekers receive nudges. Providers/coaches get null silently.
+      const seeker = await storage.getSeekerByOwnerId(userId);
+      if (!seeker) {
+        return res.json({ nudge: null });
+      }
+      const { generateOrFetchTodaysNudge } = await import("../services/nudges");
+      const nudge = await generateOrFetchTodaysNudge(userId);
+      return res.json({ nudge });
+    } catch (error: any) {
+      req.log.error({ err: error }, "GET /api/nudges/today failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/nudges/:id/respond", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const idParam = String(req.params.id);
+
+      const bodySchema = z.object({
+        action: z.enum(["done", "skip", "snooze"]),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid action", details: parsed.error.flatten() });
+      }
+
+      const { getNudgeById, respondToNudge } = await import("../services/nudgeStorage");
+      const existing = await getNudgeById(idParam);
+      if (!existing) {
+        return res.status(404).json({ error: "Nudge not found" });
+      }
+      // Authz: only the owning seeker can respond to their own nudge.
+      if (existing.seekerUserId !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const updated = await respondToNudge(idParam, parsed.data.action);
+      return res.json({ nudge: updated });
+    } catch (error: any) {
+      req.log.error({ err: error }, "POST /api/nudges/:id/respond failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
 }

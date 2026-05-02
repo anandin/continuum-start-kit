@@ -57,6 +57,16 @@ interface Goal {
   status?: string;
 }
 
+interface Nudge {
+  id: string;
+  body: string;
+  source?: string;
+  status?: string;
+  createdAt?: string;
+}
+
+type NudgeAction = "done" | "skip" | "snooze";
+
 function getStarted(s: SessionRow): number {
   return new Date(s.startedAt ?? s.started_at ?? 0).getTime();
 }
@@ -133,6 +143,41 @@ export default function HomeScreen() {
   });
 
   const qc = useQueryClient();
+
+  const nudgeQ = useQuery({
+    queryKey: ["nudge", "today"],
+    queryFn: () => api<{ nudge: Nudge | null }>("/api/nudges/today"),
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+
+  const nudgeMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: NudgeAction }) =>
+      api<{ nudge: Nudge }>(`/api/nudges/${id}/respond`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData<{ nudge: Nudge | null }>(["nudge", "today"], {
+        nudge: data.nudge,
+      });
+    },
+  });
+
+  const handleNudge = useCallback(
+    (id: string, action: NudgeAction) => {
+      if (Platform.OS !== "web") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
+      nudgeMutation.mutate({ id, action });
+    },
+    [nudgeMutation],
+  );
+
+  const todaysNudge = nudgeQ.data?.nudge ?? null;
+  const nudgePending =
+    todaysNudge &&
+    (todaysNudge.status === "pending" || todaysNudge.status === "sent");
   const progressQ = useQuery({
     queryKey: ["goal-progress", activeEngagement?.id],
     queryFn: () => fetchGoalProgress(activeEngagement!.id),
@@ -517,7 +562,110 @@ export default function HomeScreen() {
               </View>
             ) : null}
 
-            {summaryQ.data?.next_action ? (
+            {todaysNudge ? (
+              <View
+                style={[
+                  styles.sectionBlock,
+                  { borderTopColor: colors.border },
+                ]}
+              >
+                <Text
+                  style={[styles.sectionEyebrow, { color: colors.primary }]}
+                >
+                  TODAY&apos;S NUDGE
+                </Text>
+                <Text
+                  style={[styles.tryThisText, { color: colors.foreground }]}
+                >
+                  &ldquo;{todaysNudge.body}&rdquo;
+                </Text>
+                {nudgePending ? (
+                  <View style={styles.nudgeActionsRow}>
+                    <Pressable
+                      onPress={() => handleNudge(todaysNudge.id, "done")}
+                      accessibilityLabel="I did this"
+                      testID={`nudge-done-${todaysNudge.id}`}
+                      disabled={nudgeMutation.isPending}
+                      style={({ pressed }) => [
+                        styles.nudgePrimaryBtn,
+                        {
+                          backgroundColor: colors.primary,
+                          opacity: pressed || nudgeMutation.isPending ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Feather
+                        name="check"
+                        size={13}
+                        color={colors.primaryForeground}
+                      />
+                      <Text
+                        style={[
+                          styles.nudgePrimaryLabel,
+                          { color: colors.primaryForeground },
+                        ]}
+                      >
+                        I did this
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleNudge(todaysNudge.id, "snooze")}
+                      accessibilityLabel="Snooze a day"
+                      testID={`nudge-snooze-${todaysNudge.id}`}
+                      disabled={nudgeMutation.isPending}
+                      style={({ pressed }) => [
+                        styles.nudgeGhostBtn,
+                        {
+                          borderColor: colors.border,
+                          opacity: pressed || nudgeMutation.isPending ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.nudgeGhostLabel,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        Snooze
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleNudge(todaysNudge.id, "skip")}
+                      accessibilityLabel="Skip"
+                      testID={`nudge-skip-${todaysNudge.id}`}
+                      disabled={nudgeMutation.isPending}
+                      style={({ pressed }) => [
+                        styles.nudgeGhostBtn,
+                        {
+                          borderColor: colors.border,
+                          opacity: pressed || nudgeMutation.isPending ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.nudgeGhostLabel,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        Skip
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Text
+                    style={[styles.nudgeStatusLine, { color: colors.mutedForeground }]}
+                  >
+                    {todaysNudge.status === "done"
+                      ? "Marked done — see you tomorrow."
+                      : todaysNudge.status === "snoozed"
+                        ? "Snoozed — back tomorrow."
+                        : "Skipped — back tomorrow."}
+                  </Text>
+                )}
+              </View>
+            ) : summaryQ.data?.next_action ? (
               <View
                 style={[
                   styles.sectionBlock,
@@ -825,5 +973,42 @@ const styles = StyleSheet.create({
   progressLinkText: {
     fontSize: 14,
     fontFamily: "Inter_700Bold",
+  },
+  nudgeActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  nudgePrimaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  nudgePrimaryLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
+  },
+  nudgeGhostBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  nudgeGhostLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.3,
+  },
+  nudgeStatusLine: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    fontStyle: "italic",
+    marginTop: 10,
   },
 });
