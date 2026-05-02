@@ -24,6 +24,17 @@ const KIND_COLORS: Record<string, string> = {
   rapport: "bg-violet-50 text-violet-800",
 };
 
+const KIND_LABELS: Record<string, string> = {
+  preference: "Preferences",
+  boundary: "Boundaries",
+  fact: "Facts",
+  trigger: "Triggers",
+  goal_progress: "Goal progress",
+  rapport: "Rapport",
+};
+
+const KIND_ORDER = ["boundary", "trigger", "preference", "goal_progress", "rapport", "fact"];
+
 export default function MemoryInspector() {
   const { engagementId } = useParams();
   const navigate = useNavigate();
@@ -90,81 +101,106 @@ export default function MemoryInspector() {
           </div>
         )}
 
-        <div className="space-y-3">
-          {memQ.data?.map((m) => {
-            const isEditing = editId === m.id;
-            return (
-              <div key={m.id} className="bg-white rounded-lg p-4 shadow-sm">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <span className={`text-xs px-2 py-0.5 rounded ${KIND_COLORS[m.kind] || "bg-stone-100 text-stone-700"}`}>{m.kind}</span>
-                      {m.tags?.map((t) => (
-                        <span key={t} className="text-xs px-2 py-0.5 rounded bg-stone-100 text-stone-600">{t}</span>
-                      ))}
-                      <span className="text-xs text-stone-400">importance {m.importance.toFixed(2)}</span>
-                    </div>
-                    {isEditing ? (
-                      <textarea
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        className="w-full border border-stone-300 rounded p-2 text-sm"
-                        rows={3}
-                        data-testid={`edit-textarea-${m.id}`}
-                      />
-                    ) : (
-                      <p className="text-stone-900 whitespace-pre-wrap">{m.content}</p>
-                    )}
-                    <p className="text-xs text-stone-400 mt-1">{new Date(m.createdAt).toLocaleString()}</p>
+        {(() => {
+          const grouped = new Map<string, Memory[]>();
+          for (const m of memQ.data ?? []) {
+            const list = grouped.get(m.kind) ?? [];
+            list.push(m);
+            grouped.set(m.kind, list);
+          }
+          const orderedKinds = [
+            ...KIND_ORDER.filter((k) => grouped.has(k)),
+            ...Array.from(grouped.keys()).filter((k) => !KIND_ORDER.includes(k)),
+          ];
+          return (
+            <div className="space-y-6">
+              {orderedKinds.map((kind) => (
+                <section key={kind} data-testid={`section-${kind}`}>
+                  <h2 className="text-sm font-medium text-stone-700 mb-2 flex items-center gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded ${KIND_COLORS[kind] || "bg-stone-100 text-stone-700"}`}>
+                      {KIND_LABELS[kind] || kind}
+                    </span>
+                    <span className="text-xs text-stone-400">{grouped.get(kind)!.length}</span>
+                  </h2>
+                  <div className="space-y-3">
+                    {grouped.get(kind)!.map((m) => {
+                      const isEditing = editId === m.id;
+                      return (
+                        <div key={m.id} className="bg-white rounded-lg p-4 shadow-sm">
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-2">
+                                {m.tags?.map((t) => (
+                                  <span key={t} className="text-xs px-2 py-0.5 rounded bg-stone-100 text-stone-600">{t}</span>
+                                ))}
+                                <span className="text-xs text-stone-400">importance {m.importance.toFixed(2)}</span>
+                              </div>
+                              {isEditing ? (
+                                <textarea
+                                  value={draft}
+                                  onChange={(e) => setDraft(e.target.value)}
+                                  className="w-full border border-stone-300 rounded p-2 text-sm"
+                                  rows={3}
+                                  data-testid={`edit-textarea-${m.id}`}
+                                />
+                              ) : (
+                                <p className="text-stone-900 whitespace-pre-wrap">{m.content}</p>
+                              )}
+                              <p className="text-xs text-stone-400 mt-1">{new Date(m.createdAt).toLocaleString()}</p>
+                            </div>
+                            <div className="flex flex-col gap-2 shrink-0 items-end">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    onClick={() => editMut.mutate({ id: m.id, content: draft })}
+                                    disabled={editMut.isPending || !draft.trim() || draft === m.content}
+                                    className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                    data-testid={`save-${m.id}`}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditId(null);
+                                      setDraft("");
+                                    }}
+                                    className="text-xs text-stone-600 hover:text-stone-900"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setEditId(m.id);
+                                      setDraft(m.content);
+                                    }}
+                                    className="text-xs text-stone-600 hover:text-stone-900"
+                                    data-testid={`edit-${m.id}`}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => redactMut.mutate(m.id)}
+                                    className="text-xs text-rose-600 hover:text-rose-800"
+                                    data-testid={`redact-${m.id}`}
+                                  >
+                                    Redact
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex flex-col gap-2 shrink-0 items-end">
-                    {isEditing ? (
-                      <>
-                        <button
-                          onClick={() => editMut.mutate({ id: m.id, content: draft })}
-                          disabled={editMut.isPending || !draft.trim() || draft === m.content}
-                          className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                          data-testid={`save-${m.id}`}
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditId(null);
-                            setDraft("");
-                          }}
-                          className="text-xs text-stone-600 hover:text-stone-900"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => {
-                            setEditId(m.id);
-                            setDraft(m.content);
-                          }}
-                          className="text-xs text-stone-600 hover:text-stone-900"
-                          data-testid={`edit-${m.id}`}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => redactMut.mutate(m.id)}
-                          className="text-xs text-rose-600 hover:text-rose-800"
-                          data-testid={`redact-${m.id}`}
-                        >
-                          Redact
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                </section>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
