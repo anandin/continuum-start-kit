@@ -49,4 +49,33 @@ providerAgentConfigs, engagements, sessions, messages, summaries, progressIndica
 goals, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
 user_sessions (created manually for connect-pg-simple).
 
+Therapist Twin tables: safety_events, agent_versions, persona_examples, calibration_sessions,
+client_memory (uses pgvector for optional semantic retrieval; falls back to recency + tag scoring
+when embeddings are absent).
+
+## Therapist Twin Architecture
+
+Three-layer system enforced server-side in `artifacts/api-server/src/services/`:
+- **L1 Constitutional Safety** (`safety.ts`): Hardcoded identity ("not a licensed therapist"), regex
+  pre-screen + LLM classifier, templated crisis responses (CRISIS_TEMPLATE_US, SOFT_REDIRECT_TEMPLATE,
+  HARMFUL_REQUEST_TEMPLATE). Every input AND output passes through `checkInput`/`checkOutput`. Audit
+  fail-closed: persist throws on non-allow audit-write failure; orchestrator returns hardcoded template.
+  `withConstitution()` prepends identity to every system prompt non-overridably.
+- **L2 Persona** (`persona.ts`): Compiles system prompt from providerAgentConfig + providerConfig +
+  top-K persona_examples (vector or tag-overlap retrieval).
+- **L3 Client Memory** (`memory.ts`): Per-engagement structured memory written via `reflectAndWrite`
+  on session finish; therapist can redact via UI; redacted entries excluded from retrieval.
+
+Orchestration in `services/twinChat.ts:runTwinTurn()`. Calibration synthetic-client text also routes
+through L1 output gate (defense-in-depth).
+
+Therapist control tower pages in `artifacts/haven-web/src/pages/twin/`: Calibration.tsx,
+PersonaLibrary.tsx, MemoryInspector.tsx, AuditLog.tsx — linked from ProviderDashboardView.
+
+## Authorization
+
+All engagement/session-scoped routes use `assertEngagementMember` or `assertSessionMember` helpers
+in routes.ts (provider OR seeker.ownerId). Twin endpoints (memory delete, persona-examples delete)
+also enforce object ownership.
+
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.

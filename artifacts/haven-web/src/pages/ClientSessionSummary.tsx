@@ -179,14 +179,23 @@ export default function ClientSessionSummary() {
                   <p className="text-sm text-muted-foreground" data-testid="text-engagement-id">Engagement ID: {engagement.id.slice(0, 8)}</p>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                onClick={handleOpenChat}
-                data-testid="button-open-chat"
-              >
-                <MessageSquare className="mr-2 h-4 w-4" />
-                Open Chat
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/provider/twin/memory/${engagement.id}`)}
+                  data-testid="button-view-memory"
+                >
+                  View Memory
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleOpenChat}
+                  data-testid="button-open-chat"
+                >
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Open Chat
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

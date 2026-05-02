@@ -25,6 +25,10 @@ import Resources from "./pages/Resources";
 import IntakeForms from "./pages/IntakeForms";
 import Analytics from "./pages/Analytics";
 import ProviderProfile from "./pages/ProviderProfile";
+import Calibration from "./pages/twin/Calibration";
+import PersonaLibrary from "./pages/twin/PersonaLibrary";
+import MemoryInspector from "./pages/twin/MemoryInspector";
+import AuditLog from "./pages/twin/AuditLog";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -52,6 +56,10 @@ const App = () => (
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/chat/:sessionId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/session-summary/:sessionId" element={<ProtectedRoute><SessionSummary /></ProtectedRoute>} />
+            <Route path="/provider/twin/calibration" element={<ProtectedRoute><Calibration /></ProtectedRoute>} />
+            <Route path="/provider/twin/persona" element={<ProtectedRoute><PersonaLibrary /></ProtectedRoute>} />
+            <Route path="/provider/twin/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
+            <Route path="/provider/twin/memory/:engagementId" element={<ProtectedRoute><MemoryInspector /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

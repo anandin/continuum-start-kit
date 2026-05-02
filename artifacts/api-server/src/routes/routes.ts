@@ -1,6 +1,26 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { z } from "zod/v4";
+import { runTwinTurn } from "../services/twinChat";
+import { reflectAndWrite } from "../services/memory";
+import { checkOutput } from "../services/safety";
+import {
+  listSafetyEventsByProvider,
+  createPersonaExample,
+  listPersonaExamplesByProvider,
+  deactivatePersonaExample,
+  getPersonaExampleById,
+  getClientMemoryById,
+  createCalibrationSession,
+  getCalibrationSession,
+  listCalibrationSessionsByProvider,
+  updateCalibrationSession,
+  listClientMemoryByEngagement,
+  redactClientMemory,
+  logSafetyEvent,
+} from "../services/twinStorage";
+import { chat } from "../lib/llm";
+import { embed } from "../lib/llm";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated() || !req.user) {
@@ -198,11 +218,9 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/engagements/:id", requireAuth, async (req, res) => {
     try {
-      const engagement = await storage.getEngagementById(req.params.id);
-      if (!engagement) {
-        return res.status(404).json({ error: "Engagement not found" });
-      }
-      res.json(engagement);
+      const m = await assertEngagementMember(req, req.params.id);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+      res.json(m.engagement);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -210,6 +228,8 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/engagements/:id/sessions", requireAuth, async (req, res) => {
     try {
+      const m = await assertEngagementMember(req, req.params.id);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
       const sessions = await storage.getSessionsByEngagementId(req.params.id);
       res.json(sessions);
     } catch (error: any) {
@@ -220,6 +240,9 @@ export function registerRoutes(app: Express) {
   app.post("/api/sessions", requireAuth, async (req, res) => {
     try {
       const { engagementId, initialStage } = req.body;
+      if (!engagementId) return res.status(400).json({ error: "engagementId required" });
+      const m = await assertEngagementMember(req, engagementId);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
       const session = await storage.createSession({
         engagementId,
         initialStage,
@@ -233,11 +256,9 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/sessions/:id", requireAuth, async (req, res) => {
     try {
-      const session = await storage.getSessionById(req.params.id);
-      if (!session) {
-        return res.status(404).json({ error: "Session not found" });
-      }
-      res.json(session);
+      const m = await assertSessionMember(req, req.params.id);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+      res.json(m.session);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -245,6 +266,8 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/sessions/:id/messages", requireAuth, async (req, res) => {
     try {
+      const m = await assertSessionMember(req, req.params.id);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
       const messages = await storage.getMessagesBySessionId(req.params.id);
       res.json(messages);
     } catch (error: any) {
@@ -252,103 +275,70 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // ============================================================
+  // /api/chat — Therapist Twin orchestrated turn
+  //
+  // Flow: L1 input gate → L2/L3 compose → LLM → L1 output gate → persist
+  // ============================================================
   app.post("/api/chat", requireAuth, async (req, res) => {
     try {
       const { sessionId, message } = req.body;
-      
       if (!sessionId || !message) {
         return res.status(400).json({ error: "sessionId and message are required" });
       }
 
-      await storage.createMessage({
-        sessionId,
-        role: "seeker",
-        content: message,
-      });
-
-      const session = await storage.getSessionById(sessionId);
-      if (!session?.engagementId) {
-        return res.status(400).json({ error: "Invalid session" });
-      }
-
-      const engagement = await storage.getEngagementById(session.engagementId);
+      const m = await assertSessionMember(req, sessionId);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+      const session = m.session;
+      const engagement = m.engagement;
       if (!engagement?.providerId) {
         return res.status(400).json({ error: "Invalid engagement" });
       }
 
-      const providerConfig = await storage.getProviderConfigByProviderId(engagement.providerId);
-      const agentConfig = await storage.getProviderAgentConfigByProviderId(engagement.providerId);
+      // Persist the seeker message first so it appears even if the model fails
+      await storage.createMessage({ sessionId, role: "seeker", content: message });
       const recentMessages = await storage.getMessagesBySessionId(sessionId);
 
-      let systemPrompt = "You are a helpful AI coaching assistant.";
-      
-      if (agentConfig) {
-        systemPrompt = "";
-        if (agentConfig.coreIdentity) systemPrompt += `## Core Identity\n${agentConfig.coreIdentity}\n\n`;
-        if (agentConfig.guidingPrinciples) systemPrompt += `## Guiding Principles\n${agentConfig.guidingPrinciples}\n\n`;
-        if (agentConfig.tone || agentConfig.voice) {
-          systemPrompt += `## Communication Style\n`;
-          if (agentConfig.tone) systemPrompt += `Tone: ${agentConfig.tone}\n`;
-          if (agentConfig.voice) systemPrompt += `Voice: ${agentConfig.voice}\n`;
-          systemPrompt += "\n";
-        }
-        if (agentConfig.rules) systemPrompt += `## Rules\n${agentConfig.rules}\n\n`;
-        if (agentConfig.boundaries) systemPrompt += `## Boundaries\n${agentConfig.boundaries}\n\n`;
-      }
-
-      if (providerConfig) {
-        systemPrompt += `## Program Context\n`;
-        if (providerConfig.title) systemPrompt += `Program: ${providerConfig.title}\n`;
-        if (providerConfig.methodology) systemPrompt += `Methodology: ${providerConfig.methodology}\n`;
-        if (session.initialStage) systemPrompt += `Current Stage: ${session.initialStage}\n`;
-      }
-
-      const selectedModel = agentConfig?.selectedModel || "google/gemini-2.5-flash";
-      
-      const aiMessages = [
-        { role: "system", content: systemPrompt },
-        ...recentMessages.slice(-20).map((m) => ({
-          role: m.role === "seeker" ? "user" : "assistant",
-          content: m.content,
-        })),
-      ];
-
-      const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-      if (!OPENROUTER_API_KEY) {
-        const agentResponse = await storage.createMessage({
-          sessionId,
-          role: "agent",
-          content: "AI service is not configured. Please contact your administrator.",
-        });
-        return res.json({ message: agentResponse });
-      }
-
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: aiMessages,
-        }),
+      const result = await runTwinTurn({
+        providerId: engagement.providerId,
+        engagementId: engagement.id,
+        sessionId,
+        userId: req.user!.id,
+        initialStage: session.initialStage,
+        userMessage: message,
+        recentMessages: recentMessages.slice(0, -1), // drop the message we just inserted
       });
-
-      if (!response.ok) {
-        throw new Error(`AI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const aiContent = data.choices?.[0]?.message?.content || "I apologize, I couldn't generate a response.";
 
       const agentMessage = await storage.createMessage({
         sessionId,
         role: "agent",
-        content: aiContent,
+        content: result.reply,
       });
 
-      res.json({ message: agentMessage });
+      // Provider alert on safety escalations / softens that flagged it
+      if (result.alertProvider) {
+        try {
+          await storage.createAlert({
+            providerId: engagement.providerId,
+            engagementId: engagement.id,
+            type: result.severity === "critical" ? "crisis_detected" : "safety_event",
+            message:
+              result.severity === "critical"
+                ? "A client message triggered a crisis-level safety response. Please follow up promptly."
+                : `A client message triggered a safety event (${result.decision}). Review when possible.`,
+            isRead: false,
+          });
+        } catch {}
+      }
+
+      res.json({
+        message: agentMessage,
+        safety: {
+          decision: result.decision,
+          severity: result.severity,
+          templated: result.templated,
+        },
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -357,18 +347,14 @@ export function registerRoutes(app: Express) {
   app.post("/api/sessions/:id/finish", requireAuth, async (req, res) => {
     try {
       const sessionId = req.params.id;
-      const session = await storage.getSessionById(sessionId);
-      
-      if (!session) {
-        return res.status(404).json({ error: "Session not found" });
-      }
-
-      const messages = await storage.getMessagesBySessionId(sessionId);
-      
-      const engagement = await storage.getEngagementById(session.engagementId!);
+      const auth = await assertSessionMember(req, sessionId);
+      if (!auth.ok) return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
+      const session = auth.session;
+      const engagement = auth.engagement;
       if (!engagement?.providerId) {
         return res.status(400).json({ error: "Invalid engagement" });
       }
+      const messages = await storage.getMessagesBySessionId(sessionId);
 
       const providerConfig = await storage.getProviderConfigByProviderId(engagement.providerId);
       if (!providerConfig) {
@@ -455,6 +441,15 @@ Only return JSON. No extra text.`;
 
       await storage.updateSession(sessionId, { status: "ended", endedAt: new Date() });
 
+      // L3 reflection: write durable client memory entries (best-effort)
+      try {
+        await reflectAndWrite({
+          engagementId: engagement.id,
+          sessionId,
+          messages,
+        });
+      } catch {}
+
       const trajectory = (summaryData.trajectory_status || summaryData.trajectoryStatus || "").toLowerCase();
       if (trajectory === "drifting" || trajectory === "stalling") {
         try {
@@ -476,6 +471,8 @@ Only return JSON. No extra text.`;
 
   app.get("/api/sessions/:id/summary", requireAuth, async (req, res) => {
     try {
+      const auth = await assertSessionMember(req, req.params.id);
+      if (!auth.ok) return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
       const summary = await storage.getSummaryBySessionId(req.params.id);
       res.json(summary || null);
     } catch (error: any) {
@@ -548,6 +545,8 @@ If ambiguous, choose the earliest relevant stage.`;
 
   app.get("/api/engagements/:id/indicators", requireAuth, async (req, res) => {
     try {
+      const auth = await assertEngagementMember(req, req.params.id);
+      if (!auth.ok) return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
       const indicators = await storage.getProgressIndicatorsByEngagementId(req.params.id);
       res.json(indicators);
     } catch (error: any) {
@@ -563,6 +562,29 @@ If ambiguous, choose the earliest relevant stage.`;
     if (!engagement) return { ok: false, error: "Engagement not found" };
     if (engagement.providerId !== req.user!.id) return { ok: false, error: "Forbidden" };
     return { ok: true, engagement };
+  }
+
+  // Allow either the provider OR the engagement's seeker (its owner).
+  async function assertEngagementMember(req: Request, engagementId: string): Promise<{ ok: boolean; engagement?: any; error?: string }> {
+    const engagement = await storage.getEngagementById(engagementId);
+    if (!engagement) return { ok: false, error: "Engagement not found" };
+    const userId = req.user!.id;
+    if (engagement.providerId === userId) return { ok: true, engagement };
+    if (engagement.seekerId) {
+      const seeker = await storage.getSeekerById(engagement.seekerId);
+      if (seeker?.ownerId === userId) return { ok: true, engagement };
+    }
+    return { ok: false, error: "Forbidden" };
+  }
+
+  // For session-scoped routes: load session, then check engagement membership.
+  async function assertSessionMember(req: Request, sessionId: string): Promise<{ ok: boolean; session?: any; engagement?: any; error?: string }> {
+    const session = await storage.getSessionById(sessionId);
+    if (!session) return { ok: false, error: "Session not found" };
+    if (!session.engagementId) return { ok: false, error: "Forbidden" };
+    const m = await assertEngagementMember(req, session.engagementId);
+    if (!m.ok) return { ok: false, error: m.error };
+    return { ok: true, session, engagement: m.engagement };
   }
 
   // ============================================================
@@ -1269,5 +1291,251 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         avatarUrl: agent?.avatarUrl || "",
       });
     } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  // ============================================================
+  // THERAPIST TWIN — CONTROL TOWER (provider-only)
+  // ============================================================
+
+  // ---- Persona examples (L2 memory of approved responses) ----
+  app.get("/api/twin/persona-examples", requireProvider, async (req, res) => {
+    try {
+      const rows = await listPersonaExamplesByProvider(req.user!.id);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/twin/persona-examples", requireProvider, async (req, res) => {
+    try {
+      const { scenario, approvedResponse, rejectedResponse, notes, tags, source } = req.body;
+      if (!scenario || !approvedResponse) {
+        return res.status(400).json({ error: "scenario and approvedResponse required" });
+      }
+      const embedding = await embed(`${scenario}\n${approvedResponse}`);
+      const row = await createPersonaExample(
+        {
+          providerId: req.user!.id,
+          source: source || "manual",
+          scenario,
+          approvedResponse,
+          rejectedResponse: rejectedResponse || null,
+          notes: notes || null,
+          tags: Array.isArray(tags) ? tags : [],
+          weight: 1.0,
+          isActive: true,
+        } as any,
+        embedding,
+      );
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/twin/persona-examples/:id", requireProvider, async (req, res) => {
+    try {
+      const ex = await getPersonaExampleById(req.params.id);
+      if (!ex) return res.status(404).json({ error: "Not found" });
+      if (ex.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
+      await deactivatePersonaExample(req.params.id);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ---- Calibration sessions (synthetic-client interview) ----
+  app.post("/api/twin/calibration", requireProvider, async (req, res) => {
+    try {
+      const { scenarioName, syntheticClientProfile } = req.body;
+      const row = await createCalibrationSession({
+        providerId: req.user!.id,
+        scenarioName: scenarioName || "Untitled scenario",
+        syntheticClientProfile: syntheticClientProfile || {
+          presenting: "feeling stuck at work",
+          tone: "anxious but reflective",
+        },
+        transcript: [],
+        status: "in_progress",
+      } as any);
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/twin/calibration", requireProvider, async (req, res) => {
+    try {
+      const rows = await listCalibrationSessionsByProvider(req.user!.id);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/twin/calibration/:id", requireProvider, async (req, res) => {
+    try {
+      const row = await getCalibrationSession(req.params.id);
+      if (!row || row.providerId !== req.user!.id) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Generate the next synthetic-client utterance + the AI's draft response.
+  app.post("/api/twin/calibration/:id/turn", requireProvider, async (req, res) => {
+    try {
+      const calib = await getCalibrationSession(req.params.id);
+      if (!calib || calib.providerId !== req.user!.id) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const transcript = (calib.transcript as any[]) || [];
+
+      // 1. Synthetic client speaks
+      const profile = calib.syntheticClientProfile as any;
+      const clientHistory = transcript
+        .map((t) => `Client: ${t.client}\nTherapist Twin: ${t.draft}${t.approvedEdit ? ` (therapist approved as: ${t.approvedEdit})` : ""}`)
+        .join("\n\n");
+      const clientPrompt = `You are role-playing a synthetic client for a therapist's AI calibration.\n\nClient profile: ${JSON.stringify(profile)}\n\nConversation so far:\n${clientHistory || "(none)"}\n\nSpeak the client's NEXT message in 1-3 sentences. Stay in character. Output only the message text.`;
+      const rawClientUtterance = (await chat({
+        temperature: 0.8,
+        messages: [
+          { role: "system", content: "You are a research-grade client simulator. Be realistic, not theatrical." },
+          { role: "user", content: clientPrompt },
+        ],
+      })).trim();
+      // Defense-in-depth: even calibration text (LLM-generated, shown to therapist) routes through L1 output gate.
+      let clientUtterance = rawClientUtterance;
+      try {
+        const simVerdict = await checkOutput(rawClientUtterance, "calibration_synthetic_client", {
+          providerId: req.user!.id,
+          userId: req.user!.id,
+        });
+        if (simVerdict.decision !== "allow" && simVerdict.templatedResponse) {
+          clientUtterance = simVerdict.templatedResponse;
+        }
+      } catch {
+        // If L1 audit failed, refuse to surface unchecked LLM output.
+        return res.status(503).json({ error: "Safety audit unavailable; please retry" });
+      }
+
+      // 2. The Twin drafts a response (using the same persona path as production)
+      const draftResult = await runTwinTurn({
+        providerId: req.user!.id,
+        engagementId: "00000000-0000-0000-0000-000000000000",
+        sessionId: "00000000-0000-0000-0000-000000000000",
+        userId: req.user!.id,
+        initialStage: null,
+        userMessage: clientUtterance,
+        recentMessages: [],
+      });
+
+      const newTurn = {
+        client: clientUtterance,
+        draft: draftResult.reply,
+        templated: draftResult.templated,
+        decision: draftResult.decision,
+        approvedEdit: null,
+        label: null,
+      };
+      const updated = await updateCalibrationSession(calib.id, {
+        transcript: [...transcript, newTurn],
+      });
+      res.json({ session: updated, turn: newTurn });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Therapist labels / edits a calibration turn — writes a persona_example.
+  app.post("/api/twin/calibration/:id/approve", requireProvider, async (req, res) => {
+    try {
+      const calib = await getCalibrationSession(req.params.id);
+      if (!calib || calib.providerId !== req.user!.id) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const { turnIndex, label, approvedEdit, tags } = req.body;
+      const transcript = (calib.transcript as any[]) || [];
+      if (typeof turnIndex !== "number" || !transcript[turnIndex]) {
+        return res.status(400).json({ error: "Invalid turnIndex" });
+      }
+      transcript[turnIndex] = { ...transcript[turnIndex], label, approvedEdit: approvedEdit || transcript[turnIndex].draft };
+
+      // Promote into persona_examples if it's an approved/edited example
+      if (label === "this_is_me" || label === "needs_edit") {
+        const finalText = approvedEdit || transcript[turnIndex].draft;
+        const embedding = await embed(`${transcript[turnIndex].client}\n${finalText}`);
+        await createPersonaExample(
+          {
+            providerId: req.user!.id,
+            source: "calibration",
+            scenario: transcript[turnIndex].client,
+            approvedResponse: finalText,
+            rejectedResponse: label === "needs_edit" ? transcript[turnIndex].draft : null,
+            notes: null,
+            tags: Array.isArray(tags) ? tags : [],
+            weight: 1.0,
+            isActive: true,
+          } as any,
+          embedding,
+        );
+      }
+
+      // "Never say this" triggers a safety event so it shows in the audit log
+      if (label === "never_say_this") {
+        await logSafetyEvent({
+          providerId: req.user!.id,
+          stage: "review_label",
+          decision: "block_with_template",
+          severity: "high",
+          reason: "calibration_never_say_this",
+          classifierLabels: { source: "calibration", turnIndex },
+          inputSnippet: transcript[turnIndex].client?.slice(0, 500) ?? null,
+          outputSnippet: transcript[turnIndex].draft?.slice(0, 500) ?? null,
+          templateUsed: null,
+          agentVersionId: null,
+          sessionId: null,
+          engagementId: null,
+          userId: req.user!.id,
+        } as any);
+      }
+
+      const updated = await updateCalibrationSession(calib.id, { transcript });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/twin/calibration/:id/complete", requireProvider, async (req, res) => {
+    try {
+      const calib = await getCalibrationSession(req.params.id);
+      if (!calib || calib.providerId !== req.user!.id) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const updated = await updateCalibrationSession(calib.id, {
+        status: "completed",
+        completedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ---- Memory inspector (L3) ----
+  app.get("/api/twin/memory/:engagementId", requireProvider, async (req, res) => {
+    try {
+      const check = await assertProviderOwnsEngagement(req, req.params.engagementId);
+      if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
+      const rows = await listClientMemoryByEngagement(req.params.engagementId);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/twin/memory/:id", requireProvider, async (req, res) => {
+    try {
+      const mem = await getClientMemoryById(req.params.id);
+      if (!mem) return res.status(404).json({ error: "Not found" });
+      const ownerCheck = await assertProviderOwnsEngagement(req, mem.engagementId);
+      if (!ownerCheck.ok) return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
+      await redactClientMemory(req.params.id, req.user!.id);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ---- Safety event audit log (L1) ----
+  app.get("/api/twin/safety-events", requireProvider, async (req, res) => {
+    try {
+      const rows = await listSafetyEventsByProvider(req.user!.id, 200);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 }

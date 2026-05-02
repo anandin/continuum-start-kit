@@ -1,6 +1,19 @@
-import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean, varchar, json, index, integer, customType, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector(1536)";
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: string): number[] {
+    if (Array.isArray(value)) return value as unknown as number[];
+    return JSON.parse(value);
+  },
+});
 
 export const appRoleEnum = pgEnum("app_role", ["provider", "seeker"]);
 export const engagementStatusEnum = pgEnum("engagement_status", ["active", "paused", "completed"]);
@@ -9,6 +22,11 @@ export const sessionStatusEnum = pgEnum("session_status", ["active", "ended"]);
 export const goalStatusEnum = pgEnum("goal_status", ["active", "completed", "paused"]);
 export const resourceTypeEnum = pgEnum("resource_type", ["link", "document", "exercise"]);
 export const onboardingChatStatusEnum = pgEnum("onboarding_chat_status", ["in_progress", "completed"]);
+export const safetyDecisionEnum = pgEnum("safety_decision", ["allow", "soften", "block_with_template", "escalate"]);
+export const safetySeverityEnum = pgEnum("safety_severity", ["info", "low", "medium", "high", "critical"]);
+export const calibrationStatusEnum = pgEnum("calibration_status", ["in_progress", "completed", "abandoned"]);
+export const reviewLabelEnum = pgEnum("review_label", ["this_is_me", "not_me", "never_say_this", "needs_edit"]);
+export const personaExampleSourceEnum = pgEnum("persona_example_source", ["calibration", "review_queue", "manual"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -194,6 +212,98 @@ export const providerOnboardingChats = pgTable("provider_onboarding_chats", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// connect-pg-simple session table
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: json("sess").notNull(),
+    expire: timestamp("expire", { precision: 6, withTimezone: false }).notNull(),
+  },
+  (table) => ({
+    expireIdx: index("IDX_user_sessions_expire").on(table.expire),
+  }),
+);
+
+// ============================================================
+// Therapist Twin tables (L1 / L2 / L3)
+// ============================================================
+
+// L1 — every safety-relevant decision (input check, output check, escalation)
+export const safetyEvents = pgTable("safety_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id").references(() => sessions.id),
+  engagementId: uuid("engagement_id").references(() => engagements.id),
+  userId: uuid("user_id").references(() => users.id),
+  providerId: uuid("provider_id").references(() => users.id),
+  stage: text("stage").notNull(), // "input" | "output" | "review_label"
+  decision: safetyDecisionEnum("decision").notNull(),
+  severity: safetySeverityEnum("severity").notNull(),
+  reason: text("reason"),
+  classifierLabels: jsonb("classifier_labels").default({}),
+  inputSnippet: text("input_snippet"),
+  outputSnippet: text("output_snippet"),
+  templateUsed: text("template_used"),
+  agentVersionId: uuid("agent_version_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// L2 — version-pinned compiled persona for reproducibility
+export const agentVersions = pgTable("agent_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  version: integer("version").notNull(),
+  compiledSystemPrompt: text("compiled_system_prompt").notNull(),
+  agentConfigSnapshot: jsonb("agent_config_snapshot").notNull(),
+  exampleIds: jsonb("example_ids").default([]),
+  isActive: boolean("is_active").default(true),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// L2 — therapist-approved exemplars used for retrieval
+export const personaExamples = pgTable("persona_examples", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  source: personaExampleSourceEnum("source").notNull(),
+  scenario: text("scenario").notNull(),       // synthetic client utterance / context
+  approvedResponse: text("approved_response").notNull(),
+  rejectedResponse: text("rejected_response"), // what AI tried that was wrong
+  notes: text("notes"),
+  tags: jsonb("tags").default([]),
+  weight: real("weight").default(1.0),
+  embedding: vector("embedding"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// L2 — calibration sessions (synthetic client conversation)
+export const calibrationSessions = pgTable("calibration_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  scenarioName: text("scenario_name").notNull(),
+  syntheticClientProfile: jsonb("synthetic_client_profile").notNull(),
+  transcript: jsonb("transcript").notNull().default([]), // [{role, content, draft, approvedEdit, label}]
+  status: calibrationStatusEnum("status").default("in_progress"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// L3 — per-client memory entries with optional embedding
+export const clientMemory = pgTable("client_memory", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  sessionId: uuid("session_id").references(() => sessions.id),
+  kind: text("kind").notNull(), // "preference" | "boundary" | "fact" | "trigger" | "goal_progress" | "rapport"
+  content: text("content").notNull(),
+  tags: jsonb("tags").default([]),
+  importance: real("importance").default(0.5),
+  embedding: vector("embedding"),
+  redactedAt: timestamp("redacted_at"),
+  redactedBy: uuid("redacted_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, createdAt: true });
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
@@ -213,6 +323,11 @@ export const insertResourceSchema = createInsertSchema(resources).omit({ id: tru
 export const insertResourceAssignmentSchema = createInsertSchema(resourceAssignments).omit({ id: true, assignedAt: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertProviderOnboardingChatSchema = createInsertSchema(providerOnboardingChats).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSafetyEventSchema = createInsertSchema(safetyEvents).omit({ id: true, createdAt: true });
+export const insertAgentVersionSchema = createInsertSchema(agentVersions).omit({ id: true, createdAt: true });
+export const insertPersonaExampleSchema = createInsertSchema(personaExamples).omit({ id: true, createdAt: true, embedding: true });
+export const insertCalibrationSessionSchema = createInsertSchema(calibrationSessions).omit({ id: true, createdAt: true, completedAt: true });
+export const insertClientMemorySchema = createInsertSchema(clientMemory).omit({ id: true, createdAt: true, redactedAt: true, redactedBy: true, embedding: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -233,6 +348,11 @@ export type InsertResource = z.infer<typeof insertResourceSchema>;
 export type InsertResourceAssignment = z.infer<typeof insertResourceAssignmentSchema>;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type InsertProviderOnboardingChat = z.infer<typeof insertProviderOnboardingChatSchema>;
+export type InsertSafetyEvent = z.infer<typeof insertSafetyEventSchema>;
+export type InsertAgentVersion = z.infer<typeof insertAgentVersionSchema>;
+export type InsertPersonaExample = z.infer<typeof insertPersonaExampleSchema>;
+export type InsertCalibrationSession = z.infer<typeof insertCalibrationSessionSchema>;
+export type InsertClientMemory = z.infer<typeof insertClientMemorySchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -253,3 +373,9 @@ export type Resource = typeof resources.$inferSelect;
 export type ResourceAssignment = typeof resourceAssignments.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type ProviderOnboardingChat = typeof providerOnboardingChats.$inferSelect;
+export type UserSession = typeof userSessions.$inferSelect;
+export type SafetyEvent = typeof safetyEvents.$inferSelect;
+export type AgentVersion = typeof agentVersions.$inferSelect;
+export type PersonaExample = typeof personaExamples.$inferSelect;
+export type CalibrationSession = typeof calibrationSessions.$inferSelect;
+export type ClientMemory = typeof clientMemory.$inferSelect;

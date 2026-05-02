@@ -19,7 +19,10 @@ import {
   BookOpen,
   ClipboardList,
   BarChart3,
-  Sparkles
+  Sparkles,
+  Brain,
+  Library,
+  Shield,
 } from 'lucide-react';
 import { useEngagements } from '@/hooks/useEngagements';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
@@ -277,6 +280,27 @@ export function ProviderDashboardView({ userId }: ProviderDashboardViewProps) {
               </Button>
               <Button onClick={() => navigate('/provider/setup')} variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" data-testid="button-edit-stages">
                 <Settings className="mr-2 h-4 w-4" /> Settings
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-warm" data-testid="card-twin-tower">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Brain className="h-4 w-4 text-primary" />
+                Therapist Twin
+              </CardTitle>
+              <CardDescription>Train, review, and supervise your AI</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button onClick={() => navigate('/provider/twin/calibration')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-twin-calibration">
+                <Sparkles className="mr-2 h-4 w-4" /> Calibration
+              </Button>
+              <Button onClick={() => navigate('/provider/twin/persona')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-twin-persona">
+                <Library className="mr-2 h-4 w-4" /> Persona library
+              </Button>
+              <Button onClick={() => navigate('/provider/twin/audit')} variant="outline" size="sm" className="w-full justify-start" data-testid="button-twin-audit">
+                <Shield className="mr-2 h-4 w-4" /> Safety audit log
               </Button>
             </CardContent>
           </Card>
