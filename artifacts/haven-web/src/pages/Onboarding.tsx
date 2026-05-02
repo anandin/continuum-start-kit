@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Loader2, ArrowRight, ArrowLeft, Heart, Sun, Compass, Trophy, Users, Leaf } from 'lucide-react';
+import { Loader2, ArrowRight, ArrowLeft, Heart, Sun, Compass, Trophy, Users, Leaf, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Provider {
@@ -18,15 +18,24 @@ interface Provider {
   coreIdentity: string;
 }
 
-const stepIcons = [Heart, Sun, Compass, Trophy, Users, Leaf];
+const stepIcons = [Heart, Sun, Compass, Trophy, Users, Wallet, Leaf];
 const stepLabels = [
   "Where you are",
   "Your vision",
   "Your challenge",
   "Your wins",
   "Your guide",
+  "Your tier",
   "Your journey",
 ];
+
+interface OnboardingTier {
+  id: string;
+  label: string;
+  description: string | null;
+  amountCents: number;
+  billingCadence: "per_session" | "monthly";
+}
 
 export default function Onboarding() {
   const { user, role } = useAuth();
@@ -41,6 +50,22 @@ export default function Onboarding() {
   const [desiredOutcome, setDesiredOutcome] = useState('');
   const [presentChallenge, setPresentChallenge] = useState('');
   const [recentWin, setRecentWin] = useState('');
+
+  // Tier picker (step 6). Fetched lazily once a coach is chosen so we
+  // never block coach selection on the billing endpoint.
+  const [tiers, setTiers] = useState<OnboardingTier[]>([]);
+  const [tiersLoading, setTiersLoading] = useState(false);
+  const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedProvider) { setTiers([]); setSelectedTierId(null); return; }
+    setTiersLoading(true);
+    fetch(`/api/public/provider/${selectedProvider.id}/tiers`)
+      .then((r) => r.ok ? r.json() : { tiers: [] })
+      .then((d) => setTiers(d.tiers ?? []))
+      .catch(() => setTiers([]))
+      .finally(() => setTiersLoading(false));
+  }, [selectedProvider]);
 
   useEffect(() => {
     if (!user) {
@@ -108,8 +133,11 @@ export default function Onboarding() {
       toast.error('Please select a coach');
       return;
     }
+    // Step 6 = optional tier picker. We don't *require* a tier so a
+    // seeker can still move forward if their coach hasn't published
+    // any (Stripe billing is opt-in for v1).
 
-    if (step < 6) {
+    if (step < 7) {
       setStep(step + 1);
     }
   };
@@ -133,6 +161,19 @@ export default function Onboarding() {
         providerId: selectedProvider.id,
       });
       const engagement = await engagementRes.json();
+
+      // Persist the tier selection (if the seeker picked one) BEFORE
+      // creating the first session — that way per-session billing for
+      // session #1 has a tier to charge against.
+      if (selectedTierId) {
+        try {
+          await apiRequest('POST', `/api/engagements/${engagement.id}/billing/select-tier`, {
+            tierId: selectedTierId,
+          });
+        } catch (err) {
+          console.warn('select-tier failed in onboarding', err);
+        }
+      }
 
       const answers = {
         current_pain: currentPain,
@@ -206,13 +247,13 @@ export default function Onboarding() {
             <motion.div
               className="h-full bg-gradient-warm-accent rounded-full"
               initial={{ width: 0 }}
-              animate={{ width: `${(step / 6) * 100}%` }}
+              animate={{ width: `${(step / 7) * 100}%` }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
             />
           </div>
           <div className="flex justify-between mt-1.5">
-            <span className="text-xs text-muted-foreground">Step {step} of 6</span>
-            <span className="text-xs text-muted-foreground">{Math.round((step / 6) * 100)}%</span>
+            <span className="text-xs text-muted-foreground">Step {step} of 7</span>
+            <span className="text-xs text-muted-foreground">{Math.round((step / 7) * 100)}%</span>
           </div>
         </div>
 
@@ -402,6 +443,57 @@ export default function Onboarding() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="p-2 rounded-full bg-primary/10">
+                        <Wallet className="h-5 w-5 text-primary" />
+                      </div>
+                      <h2 className="text-2xl font-bold text-foreground" data-testid="text-step-title">
+                        Pick a tier that works for you
+                      </h2>
+                    </div>
+                    <p className="text-muted-foreground text-lg mb-4">
+                      Sliding-scale pricing — pay what fits your situation.
+                      You can change this any time on your Payment page.
+                    </p>
+                  </div>
+                  {tiersLoading ? (
+                    <div className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" /></div>
+                  ) : tiers.length === 0 ? (
+                    <div className="rounded-md bg-secondary/40 p-4 text-sm text-muted-foreground" data-testid="onboarding-no-tiers">
+                      Your coach hasn't published pricing tiers yet. You can continue and pick a tier later from your Payment page.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {tiers.map((t) => {
+                        const sel = selectedTierId === t.id;
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => setSelectedTierId(sel ? null : t.id)}
+                            data-testid={`onboarding-tier-${t.id}`}
+                            className={`w-full text-left rounded-md border-2 p-4 transition-all ${sel ? 'border-primary bg-primary/5' : 'border-border bg-card hover-elevate'}`}
+                          >
+                            <div className="flex justify-between items-start gap-3">
+                              <div>
+                                <div className="font-medium text-foreground">{t.label}</div>
+                                {t.description && <div className="text-xs text-muted-foreground mt-1">{t.description}</div>}
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="font-semibold">${(t.amountCents / 100).toFixed(0)}</div>
+                                <div className="text-xs text-muted-foreground">{t.billingCadence === 'monthly' ? 'per month' : 'per session'}</div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {step === 7 && selectedProvider && (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-2 rounded-full bg-primary/10">
                         <Leaf className="h-5 w-5 text-primary" />
                       </div>
                       <h2 className="text-2xl font-bold text-foreground" data-testid="text-step-title">
@@ -447,7 +539,7 @@ export default function Onboarding() {
                   Back
                 </Button>
 
-                {step < 6 ? (
+                {step < 7 ? (
                   <Button
                     onClick={handleNext}
                     data-testid="button-continue"

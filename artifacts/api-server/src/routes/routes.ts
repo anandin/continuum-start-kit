@@ -96,6 +96,15 @@ async function requireProvider(req: Request, res: Response, next: NextFunction) 
 }
 
 export function registerRoutes(app: Express) {
+  // Billing: Stripe Connect onboarding, sliding-scale tiers, seeker
+  // tier selection, payment history. Lives in its own module to keep
+  // this file from growing further.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { registerBillingRoutes } = require("./billing") as {
+    registerBillingRoutes: (app: Express) => void;
+  };
+  registerBillingRoutes(app);
+
   app.get("/api/health", (req, res) => {
     res.json({ ok: true, timestamp: new Date().toISOString() });
   });
@@ -3338,6 +3347,24 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           // ignore invalid zones from the client
         }
       }
+      // Block confirm if billing is past_due — failed payment must be
+      // resolved before any new sessions can be locked in. We check
+      // BEFORE the confirm to avoid a confirmed session that can't be
+      // billed; the per-session charge below could also fail, but at
+      // least we catch the obvious "card was declined last time"
+      // case up-front with a clearer error.
+      try {
+        const { billingStorage } = await import("../services/billingStorage");
+        const eb = await billingStorage.getEngagementBilling(row.engagementId);
+        if (eb?.status === "past_due") {
+          return res.status(402).json({
+            error:
+              "Payment is past due. Please update your tier or payment method on the Payment tab before booking new sessions.",
+          });
+        }
+      } catch {
+        // billing optional — never block confirm on internal billing errors
+      }
       const updated = await confirmSlot(row.id, chosen);
       // confirmSlot returns undefined when the atomic update missed
       // because someone else confirmed first.
@@ -3349,7 +3376,47 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
             "Could not confirm — the session may have been rescheduled, cancelled, or just confirmed by someone else. Please refresh.",
         });
       }
-      return res.json({ scheduledSession: updated });
+      // Per-session charge fires after a successful confirm. Failures
+      // are non-fatal here: the session is already booked; the seeker
+      // sees the failure on their Payment tab (engagementBilling.status
+      // → past_due) and the next confirm will be blocked until they
+      // resolve it.
+      // Per-session charge fires after the atomic confirm. If it fails
+      // (no card on file, declined, requires_action, etc.) chargePerSession
+      // already flips engagementBilling.status → past_due so the NEXT
+      // confirm is blocked. We surface the warning to the client so the
+      // UI can prompt the seeker to fix payment on their Payment tab,
+      // but we don't roll back the booked session — the coach has their
+      // confirmed slot and the seeker can resolve billing async.
+      let billingWarning: string | null = null;
+      try {
+        const { chargePerSession } = await import("../services/billing");
+        const out = await chargePerSession({
+          engagementId: row.engagementId,
+          seekerUserId: row.seekerUserId,
+          providerId: row.providerId,
+          scheduledSessionId: row.id,
+        });
+        if (!out.ok) {
+          const k = out.error.kind;
+          if (k !== "not_configured" && k !== "no_tier_selected" && k !== "no_connected_account") {
+            billingWarning =
+              k === "account_incomplete"
+                ? "Coach hasn't finished Stripe onboarding — payment will be retried later."
+                : k === "stripe_error"
+                  ? `Payment failed: ${out.error.message}. Please update your card on the Payment tab.`
+                  : "Payment failed. Please check the Payment tab.";
+            req.log.warn({ kind: k, id: row.id }, "billing: per-session charge unsuccessful");
+          }
+        }
+      } catch (chargeErr: any) {
+        req.log.warn(
+          { err: chargeErr?.message ?? String(chargeErr), id: row.id },
+          "billing: per-session charge errored after confirm",
+        );
+        billingWarning = "Payment couldn't be processed — please check your Payment tab.";
+      }
+      return res.json({ scheduledSession: updated, billingWarning });
     } catch (error: any) {
       req.log.warn({ err: error }, "POST /api/scheduled-sessions/:id/confirm failed");
       return res.status(500).json({ error: error.message });

@@ -276,6 +276,19 @@ export default function ProfileScreen() {
             )
           }
         />
+        <Row
+          icon="credit-card"
+          label="Payment & tier"
+          colors={colors}
+          onPress={() =>
+            Linking.openURL(
+              process.env.EXPO_PUBLIC_DOMAIN
+                ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/payment`
+                : "https://replit.com/",
+            )
+          }
+          testID="profile-open-payment"
+        />
         <ToggleRow
           icon="bell"
           label="Push notifications"

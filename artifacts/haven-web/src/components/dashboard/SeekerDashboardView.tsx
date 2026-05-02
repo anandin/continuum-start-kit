@@ -12,7 +12,8 @@ import {
   ArrowRight,
   Sunrise,
   Heart,
-  BookOpen
+  BookOpen,
+  CreditCard
 } from 'lucide-react';
 import { useEngagements } from '@/hooks/useEngagements';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
@@ -139,6 +140,27 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
             : "Begin your path toward meaningful change"}
         </p>
       </div>
+
+      {hasEngagements && (
+        <Card
+          className="shadow-warm cursor-pointer hover-elevate"
+          onClick={() => navigate('/payment')}
+          data-testid="card-payment"
+        >
+          <CardContent className="py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <CreditCard className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Payment & tier</p>
+                <p className="text-xs text-muted-foreground">Pick your sliding-scale tier or view history</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="shadow-warm" data-testid="card-sessions-completed">

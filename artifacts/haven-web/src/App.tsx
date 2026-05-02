@@ -34,6 +34,8 @@ import Playbooks from "./pages/twin/Playbooks";
 import MemoryInspector from "./pages/twin/MemoryInspector";
 import AuditLog from "./pages/twin/AuditLog";
 import ReviewQueue from "./pages/twin/ReviewQueue";
+import ProviderBilling from "./pages/ProviderBilling";
+import SeekerPayment from "./pages/SeekerPayment";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -71,6 +73,8 @@ const App = () => (
             <Route path="/provider/twin/review" element={<ProtectedRoute><ReviewQueue /></ProtectedRoute>} />
             <Route path="/provider/twin/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
             <Route path="/provider/twin/memory/:engagementId" element={<ProtectedRoute><MemoryInspector /></ProtectedRoute>} />
+            <Route path="/provider/billing" element={<ProtectedRoute><ProviderBilling /></ProtectedRoute>} />
+            <Route path="/payment" element={<ProtectedRoute><SeekerPayment /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

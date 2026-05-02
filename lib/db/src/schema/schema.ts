@@ -588,6 +588,109 @@ export const scheduledSessions = pgTable(
   }),
 );
 
+// ============================================================
+// Billing (Task #19 — Stripe Connect Express + sliding-scale tiers)
+// ============================================================
+// One row per coach who has begun Stripe Connect onboarding.
+// chargesEnabled / payoutsEnabled / detailsSubmitted mirror the Stripe
+// account status fields so the UI can show a clear "needs more info"
+// state without round-tripping to Stripe on every render. Updated by
+// the account.updated webhook.
+export const providerBilling = pgTable(
+  "provider_billing",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    providerId: uuid("provider_id").references(() => users.id).notNull().unique(),
+    stripeAccountId: text("stripe_account_id"),
+    chargesEnabled: boolean("charges_enabled").notNull().default(false),
+    payoutsEnabled: boolean("payouts_enabled").notNull().default(false),
+    detailsSubmitted: boolean("details_submitted").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+);
+
+// Coach-defined sliding-scale tiers. Each tier is a (label, amount,
+// cadence) bundle the seeker picks from. cadence is either
+// "per_session" (charged on each scheduled-session confirm) or
+// "monthly" (Stripe subscription with on_behalf_of + transfer_data
+// to the coach's connected account).
+// stripePriceId is created lazily when the first seeker selects a
+// monthly tier — per_session tiers never need a Price.
+export const priceTiers = pgTable(
+  "price_tiers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    providerId: uuid("provider_id").references(() => users.id).notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    amountCents: integer("amount_cents").notNull(),
+    billingCadence: text("billing_cadence").notNull().default("per_session"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    stripePriceId: text("stripe_price_id"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    providerIdx: index("price_tiers_provider_idx").on(t.providerId),
+  }),
+);
+
+// One row per engagement once a tier has been selected. Tracks the
+// seeker's Stripe customer (lazy-created on first charge), the active
+// subscription id (monthly only), and the last payment status.
+// status lifecycle:
+//   "none"      — no tier selected yet (row may not exist)
+//   "active"    — most recent charge succeeded OR subscription active
+//   "past_due"  — last charge failed; new sessions are blocked until
+//                 the seeker resolves (re-selects tier / updates card)
+//   "canceled"  — subscription cancelled or coach archived the engagement
+export const engagementBilling = pgTable(
+  "engagement_billing",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id").references(() => engagements.id).notNull().unique(),
+    tierId: uuid("tier_id").references(() => priceTiers.id),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    lastPaymentIntentId: text("last_payment_intent_id"),
+    status: text("status").notNull().default("none"),
+    lastChargedAt: timestamp("last_charged_at"),
+    failedAt: timestamp("failed_at"),
+    lastFailureMessage: text("last_failure_message"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    engagementIdx: index("engagement_billing_engagement_idx").on(t.engagementId),
+  }),
+);
+
+// Append-only payment ledger so the seeker UI can show a real history
+// even after Stripe objects are archived. Charges from per-session
+// PaymentIntents AND subscription invoice payments both land here.
+export const billingPayments = pgTable(
+  "billing_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+    tierId: uuid("tier_id").references(() => priceTiers.id),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    stripeInvoiceId: text("stripe_invoice_id"),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("usd"),
+    status: text("status").notNull(), // "succeeded" | "failed" | "pending"
+    failureMessage: text("failure_message"),
+    scheduledSessionId: uuid("scheduled_session_id").references(() => scheduledSessions.id),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    engagementIdx: index("billing_payments_engagement_idx").on(t.engagementId),
+    createdIdx: index("billing_payments_created_idx").on(t.createdAt),
+  }),
+);
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, createdAt: true });
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
@@ -693,3 +796,16 @@ export type Nudge = typeof nudges.$inferSelect;
 export type SessionBrief = typeof sessionBriefs.$inferSelect;
 export type InsertScheduledSession = z.infer<typeof insertScheduledSessionSchema>;
 export type ScheduledSession = typeof scheduledSessions.$inferSelect;
+
+export const insertProviderBillingSchema = createInsertSchema(providerBilling).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPriceTierSchema = createInsertSchema(priceTiers).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEngagementBillingSchema = createInsertSchema(engagementBilling).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBillingPaymentSchema = createInsertSchema(billingPayments).omit({ id: true, createdAt: true });
+export type InsertProviderBilling = z.infer<typeof insertProviderBillingSchema>;
+export type InsertPriceTier = z.infer<typeof insertPriceTierSchema>;
+export type InsertEngagementBilling = z.infer<typeof insertEngagementBillingSchema>;
+export type InsertBillingPayment = z.infer<typeof insertBillingPaymentSchema>;
+export type ProviderBilling = typeof providerBilling.$inferSelect;
+export type PriceTier = typeof priceTiers.$inferSelect;
+export type EngagementBilling = typeof engagementBilling.$inferSelect;
+export type BillingPayment = typeof billingPayments.$inferSelect;
