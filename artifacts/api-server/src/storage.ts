@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, or, desc, asc, sql, isNull, lt, gte } from "drizzle-orm";
+import { eq, and, or, desc, asc, sql, isNull, lt, gte, inArray } from "drizzle-orm";
 import {
   users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs,
   engagements, sessions, messages, summaries, progressIndicators,
@@ -926,7 +926,7 @@ export class DatabaseStorage implements IStorage {
       })
         .from(messages)
         .innerJoin(sessions, eq(sessions.id, messages.sessionId))
-        .where(inArrayRaw(sessions.engagementId, engagementIds))
+        .where(inArray(sessions.engagementId, engagementIds))
         .groupBy(sessions.engagementId),
       // Latest seeker-authored message per engagement
       db.select({
@@ -936,7 +936,7 @@ export class DatabaseStorage implements IStorage {
         .from(messages)
         .innerJoin(sessions, eq(sessions.id, messages.sessionId))
         .where(and(
-          inArrayRaw(sessions.engagementId, engagementIds),
+          inArray(sessions.engagementId, engagementIds),
           eq(messages.role, "seeker"),
         ))
         .groupBy(sessions.engagementId),
@@ -950,7 +950,7 @@ export class DatabaseStorage implements IStorage {
         .from(messages)
         .innerJoin(sessions, eq(sessions.id, messages.sessionId))
         .where(and(
-          inArrayRaw(sessions.engagementId, engagementIds),
+          inArray(sessions.engagementId, engagementIds),
           eq(messages.role, "provider"),
         ))
         .groupBy(sessions.engagementId),
@@ -975,8 +975,8 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(safetyEvents.providerId, providerId),
           gte(safetyEvents.createdAt, sevenDaysAgo),
-          inArrayRaw(safetyEvents.stage, ["input", "output"]),
-          inArrayRaw(safetyEvents.severity, ["high", "critical"]),
+          inArray(safetyEvents.stage, ["input", "output"]),
+          inArray(safetyEvents.severity, ["high", "critical"]),
         ))
         .groupBy(safetyEvents.engagementId),
       // One active session per engagement for the "Open chat" CTA
@@ -986,7 +986,7 @@ export class DatabaseStorage implements IStorage {
       })
         .from(sessions)
         .where(and(
-          inArrayRaw(sessions.engagementId, engagementIds),
+          inArray(sessions.engagementId, engagementIds),
           eq(sessions.status, "active"),
         )),
       // Active dismissals
@@ -1148,7 +1148,7 @@ export class DatabaseStorage implements IStorage {
       quiet: 2,
     };
     // Pick the newest reason timestamp on a row for tiebreaking (don't rely on
-    // reasons[0] ordering — pickest the actually-newest signal).
+    // reasons[0] ordering — pick the actually-newest signal).
     const newestReasonTs = (r: CoachInboxRow): string =>
       r.reasons.reduce<string>((acc, reason) => {
         if (!reason.timestamp) return acc;
@@ -1200,14 +1200,6 @@ export class DatabaseStorage implements IStorage {
 }
 
 // ----- helpers -----
-
-// Drizzle's `inArray` requires a non-empty list; this wrapper returns a
-// guaranteed-false condition when the list is empty so callers don't need to
-// short-circuit themselves.
-function inArrayRaw<T extends string>(column: any, values: T[]): any {
-  if (values.length === 0) return sql`false`;
-  return sql`${column} in ${values}`;
-}
 
 function formatRelative(then: Date, now: Date): string {
   const diffMs = now.getTime() - then.getTime();
