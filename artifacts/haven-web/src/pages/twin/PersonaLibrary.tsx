@@ -94,7 +94,7 @@ export default function PersonaLibrary() {
   const headerTitle = playbookQ.data?.title ?? (playbookId ? "Playbook" : "Persona Library (all examples)");
   const headerSubtitle = playbookId
     ? (playbookQ.data?.description ?? "Add the scenarios you want this playbook to handle.")
-    : "Examples not assigned to any playbook (legacy).";
+    : "All your examples across every playbook. To organize new examples, open a specific playbook.";
 
   return (
     <AppLayout title={headerTitle} subtitle={headerSubtitle}>

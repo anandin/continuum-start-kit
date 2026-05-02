@@ -235,6 +235,22 @@ export async function seedStarterPlaybooksIfEmpty(providerId: string): Promise<P
   const existing = await db.select({ id: playbooks.id }).from(playbooks).where(eq(playbooks.providerId, providerId)).limit(1);
   if (existing.length > 0) return [];
 
+  // Migration safety: providers who built up persona examples BEFORE playbooks
+  // existed have rows with playbookId=null. Once a default playbook gets seeded,
+  // persona compilation will scope to that playbook and silently stop using
+  // their old work. Snapshot those ids so we can attach them to the default
+  // playbook below, preserving prior behavior without losing the rows.
+  const legacyUnscoped = await db
+    .select({ id: personaExamples.id })
+    .from(personaExamples)
+    .where(
+      and(
+        eq(personaExamples.providerId, providerId),
+        eq(personaExamples.isActive, true),
+        isNull(personaExamples.playbookId),
+      ),
+    );
+
   // Pre-compute embeddings BEFORE opening any transaction. Vector search
   // requires `embedding IS NOT NULL`; without these, the seeded examples
   // would never surface in persona compilation.
@@ -283,5 +299,25 @@ export async function seedStarterPlaybooksIfEmpty(providerId: string): Promise<P
     });
     created.push(playbook);
   }
+
+  // Attach legacy unscoped examples to the seeded default playbook (the first
+  // one). They keep their content/embeddings; only the playbookId changes.
+  if (legacyUnscoped.length > 0 && created.length > 0) {
+    const defaultPb = created[0];
+    await db
+      .update(personaExamples)
+      .set({ playbookId: defaultPb.id })
+      .where(
+        and(
+          eq(personaExamples.providerId, providerId),
+          isNull(personaExamples.playbookId),
+        ),
+      );
+    logger.info(
+      { providerId, defaultPlaybookId: defaultPb.id, migratedCount: legacyUnscoped.length },
+      "attached legacy unscoped persona examples to seeded default playbook",
+    );
+  }
+
   return created;
 }
