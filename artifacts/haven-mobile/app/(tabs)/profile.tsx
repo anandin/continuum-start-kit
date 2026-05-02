@@ -36,9 +36,14 @@ export default function ProfileScreen() {
 
   const biometricUnavailable =
     biometric.support.kind !== "supported" && biometric.support.kind !== "unknown";
+  // Always allow turning the lock OFF, even if device support disappeared
+  // (e.g. seeker removed Face ID enrollment) — otherwise an enabled pref
+  // would be stuck on. Only turning ON requires working biometrics.
+  const switchDisabled =
+    biometric.isLoadingPref || (biometricUnavailable && !biometric.enabled);
 
   const handleToggleBiometric = async (next: boolean) => {
-    if (biometricUnavailable && next) {
+    if (next && biometricUnavailable) {
       if (biometric.support.kind === "not-enrolled") {
         openSystemSettingsForBiometrics();
       }
@@ -182,7 +187,7 @@ export default function ProfileScreen() {
             <Switch
               value={biometric.enabled}
               onValueChange={handleToggleBiometric}
-              disabled={biometricUnavailable || biometric.isLoadingPref}
+              disabled={switchDisabled}
               accessibilityLabel="Require biometric to open Haven"
               testID="profile-biometric-toggle"
             />

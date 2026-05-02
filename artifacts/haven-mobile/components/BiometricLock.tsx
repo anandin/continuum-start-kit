@@ -421,10 +421,6 @@ function LockScreen({ support, onUnlock }: LockScreenProps) {
   );
 }
 
-interface BiometricToggleHelperProps {
-  support: BiometricSupport;
-}
-
 export function biometricToggleSubtitle({
   support,
   enabled,
