@@ -1,20 +1,20 @@
 import { db } from "./db";
-import { eq, and, desc, asc, sql, isNull, lt, gte } from "drizzle-orm";
+import { eq, and, or, desc, asc, sql, isNull, lt, gte } from "drizzle-orm";
 import {
   users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs,
   engagements, sessions, messages, summaries, progressIndicators,
   clientNotes, goals, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
-  moodEntries,
+  moodEntries, journalPrompts, journalEntries,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
   InsertSummary, InsertProgressIndicator,
   InsertClientNote, InsertGoal, InsertIntakeForm, InsertIntakeResponse,
   InsertResource, InsertResourceAssignment, InsertAlert, InsertProviderOnboardingChat,
-  InsertMoodEntry,
+  InsertMoodEntry, InsertJournalPrompt, InsertJournalEntry,
   User, Profile, UserRole, Seeker,
   ProviderConfig, ProviderAgentConfig, Engagement, Session, Message, Summary, ProgressIndicator,
   ClientNote, Goal, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat,
-  MoodEntry
+  MoodEntry, JournalPrompt, JournalEntry
 } from "@workspace/db";
 
 export interface IStorage {
@@ -116,6 +116,22 @@ export interface IStorage {
   upsertMoodEntry(data: InsertMoodEntry): Promise<MoodEntry>;
   getMoodEntriesBySeekerId(seekerId: string, sinceDay: string): Promise<MoodEntry[]>;
   getMoodEntriesByEngagementId(engagementId: string, sinceDay: string): Promise<MoodEntry[]>;
+
+  // Journal Prompts
+  createJournalPrompt(data: InsertJournalPrompt): Promise<JournalPrompt>;
+  updateJournalPrompt(id: string, data: Partial<InsertJournalPrompt>): Promise<JournalPrompt | undefined>;
+  getJournalPromptById(id: string): Promise<JournalPrompt | undefined>;
+  listJournalPromptsForCoach(providerId: string, includeArchived?: boolean): Promise<JournalPrompt[]>;
+  listAvailableJournalPromptsForSeeker(providerId: string | null, engagementId: string | null): Promise<JournalPrompt[]>;
+  countGlobalStarterPrompts(): Promise<number>;
+  seedGlobalStarterPrompts(prompts: Array<{ text: string; category: string }>): Promise<void>;
+
+  // Journal Entries
+  createJournalEntry(data: InsertJournalEntry): Promise<JournalEntry>;
+  updateJournalEntry(id: string, data: Partial<InsertJournalEntry> & { sharedAt?: Date | null }): Promise<JournalEntry | undefined>;
+  getJournalEntryById(id: string): Promise<JournalEntry | undefined>;
+  listJournalEntriesBySeekerId(seekerId: string): Promise<JournalEntry[]>;
+  listSharedJournalEntriesByEngagementId(engagementId: string): Promise<JournalEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -495,6 +511,108 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(moodEntries)
       .where(and(eq(moodEntries.engagementId, engagementId), gte(moodEntries.day, sinceDay)))
       .orderBy(asc(moodEntries.day));
+  }
+
+  // ============ Journal Prompts ============
+  async createJournalPrompt(data: InsertJournalPrompt): Promise<JournalPrompt> {
+    const [prompt] = await db.insert(journalPrompts).values(data).returning();
+    return prompt;
+  }
+  async updateJournalPrompt(id: string, data: Partial<InsertJournalPrompt>): Promise<JournalPrompt | undefined> {
+    const [prompt] = await db.update(journalPrompts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(journalPrompts.id, id))
+      .returning();
+    return prompt;
+  }
+  async getJournalPromptById(id: string): Promise<JournalPrompt | undefined> {
+    const [prompt] = await db.select().from(journalPrompts).where(eq(journalPrompts.id, id));
+    return prompt;
+  }
+  async listJournalPromptsForCoach(providerId: string, includeArchived = false): Promise<JournalPrompt[]> {
+    // Coach sees their own prompts + global starters. Archived are hidden by default.
+    const ownership = or(
+      eq(journalPrompts.providerId, providerId),
+      isNull(journalPrompts.providerId),
+    )!;
+    const where = includeArchived
+      ? ownership
+      : and(ownership, eq(journalPrompts.isArchived, false));
+    return db.select().from(journalPrompts)
+      .where(where)
+      .orderBy(desc(journalPrompts.createdAt));
+  }
+  async listAvailableJournalPromptsForSeeker(
+    providerId: string | null,
+    engagementId: string | null,
+  ): Promise<JournalPrompt[]> {
+    // Seeker sees: global starters + provider's library prompts (engagementId IS NULL)
+    // + prompts assigned specifically to their engagement.
+    const conditions = [isNull(journalPrompts.providerId)];
+    if (providerId) {
+      conditions.push(
+        and(
+          eq(journalPrompts.providerId, providerId),
+          isNull(journalPrompts.engagementId),
+        )!,
+      );
+    }
+    if (engagementId) {
+      conditions.push(eq(journalPrompts.engagementId, engagementId));
+    }
+    return db.select().from(journalPrompts)
+      .where(and(eq(journalPrompts.isArchived, false), or(...conditions))!)
+      .orderBy(desc(journalPrompts.createdAt));
+  }
+  async countGlobalStarterPrompts(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)::int` })
+      .from(journalPrompts)
+      .where(isNull(journalPrompts.providerId));
+    return result[0]?.count ?? 0;
+  }
+  async seedGlobalStarterPrompts(prompts: Array<{ text: string; category: string }>): Promise<void> {
+    if (prompts.length === 0) return;
+    await db.insert(journalPrompts).values(
+      prompts.map((p) => ({ text: p.text, category: p.category })),
+    );
+  }
+
+  // ============ Journal Entries ============
+  async createJournalEntry(data: InsertJournalEntry): Promise<JournalEntry> {
+    const [entry] = await db.insert(journalEntries)
+      .values({
+        ...data,
+        sharedAt: data.sharedWithCoach ? new Date() : null,
+      })
+      .returning();
+    return entry;
+  }
+  async updateJournalEntry(
+    id: string,
+    data: Partial<InsertJournalEntry> & { sharedAt?: Date | null },
+  ): Promise<JournalEntry | undefined> {
+    const [entry] = await db.update(journalEntries)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(journalEntries.id, id))
+      .returning();
+    return entry;
+  }
+  async getJournalEntryById(id: string): Promise<JournalEntry | undefined> {
+    const [entry] = await db.select().from(journalEntries).where(eq(journalEntries.id, id));
+    return entry;
+  }
+  async listJournalEntriesBySeekerId(seekerId: string): Promise<JournalEntry[]> {
+    return db.select().from(journalEntries)
+      .where(eq(journalEntries.seekerId, seekerId))
+      .orderBy(desc(journalEntries.createdAt));
+  }
+  async listSharedJournalEntriesByEngagementId(engagementId: string): Promise<JournalEntry[]> {
+    return db.select().from(journalEntries)
+      .where(and(
+        eq(journalEntries.engagementId, engagementId),
+        eq(journalEntries.sharedWithCoach, true),
+      ))
+      .orderBy(desc(journalEntries.createdAt));
   }
 }
 

@@ -2062,4 +2062,262 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       return res.status(500).json({ error: error.message });
     }
   });
+
+  // ============================================================
+  // REFLECTION JOURNAL (seeker entries + coach prompt library)
+  // ============================================================
+
+  const STARTER_PROMPTS: Array<{ text: string; category: string }> = [
+    { text: "What's one thing that surprised you this week?", category: "weekly" },
+    { text: "Describe a moment today when you felt fully present.", category: "daily" },
+    { text: "What is one small step you can take tomorrow toward something that matters to you?", category: "daily" },
+    { text: "What feeling has been hardest to sit with this week, and what does it want you to know?", category: "weekly" },
+    { text: "Who or what are you grateful for right now, and why?", category: "general" },
+    { text: "What's one thing you'd like to bring to your next session?", category: "session-prep" },
+  ];
+
+  let starterSeedAttempted = false;
+  async function ensureStarterPromptsSeeded(): Promise<void> {
+    if (starterSeedAttempted) return;
+    starterSeedAttempted = true;
+    try {
+      const existing = await storage.countGlobalStarterPrompts();
+      if (existing === 0) {
+        await storage.seedGlobalStarterPrompts(STARTER_PROMPTS);
+      }
+    } catch {
+      // Best-effort; let the next request retry by clearing the flag.
+      starterSeedAttempted = false;
+    }
+  }
+
+  // ---- Coach prompt library ----
+
+  // Coach lists their library (own + global starters).
+  app.get("/api/journal/prompts", requireProvider, async (req: Request, res: Response) => {
+    try {
+      await ensureStarterPromptsSeeded();
+      const includeArchived = req.query.includeArchived === "true";
+      const prompts = await storage.listJournalPromptsForCoach(req.user!.id, includeArchived);
+      return res.json(prompts);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Coach creates a prompt (optionally tied to a specific client engagement).
+  app.post("/api/journal/prompts", requireProvider, async (req: Request, res: Response) => {
+    try {
+      const bodySchema = z.object({
+        text: z.string().min(3).max(500),
+        category: z.string().max(40).optional(),
+        engagementId: z.string().uuid().optional().nullable(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid prompt", details: parsed.error.flatten() });
+      }
+      const { text, category, engagementId } = parsed.data;
+
+      // If client-specific, ensure this provider owns the engagement.
+      if (engagementId) {
+        const engagement = await storage.getEngagementById(engagementId);
+        if (!engagement || engagement.providerId !== req.user!.id) {
+          return res.status(403).json({ error: "Forbidden engagement" });
+        }
+      }
+
+      const prompt = await storage.createJournalPrompt({
+        providerId: req.user!.id,
+        engagementId: engagementId ?? null,
+        text,
+        category: category ?? "general",
+        isArchived: false,
+      });
+      return res.json(prompt);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Coach edits or archives one of their own prompts. Global starters are read-only.
+  app.patch("/api/journal/prompts/:id", requireProvider, async (req: Request, res: Response) => {
+    try {
+      const promptId = String(req.params.id);
+      const existing = await storage.getJournalPromptById(promptId);
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      if (!existing.providerId || existing.providerId !== req.user!.id) {
+        return res.status(403).json({ error: "Cannot modify this prompt" });
+      }
+      const bodySchema = z.object({
+        text: z.string().min(3).max(500).optional(),
+        category: z.string().max(40).optional(),
+        engagementId: z.string().uuid().nullable().optional(),
+        isArchived: z.boolean().optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid update", details: parsed.error.flatten() });
+      }
+      // If switching to a client-specific prompt, ensure ownership.
+      if (parsed.data.engagementId) {
+        const engagement = await storage.getEngagementById(parsed.data.engagementId);
+        if (!engagement || engagement.providerId !== req.user!.id) {
+          return res.status(403).json({ error: "Forbidden engagement" });
+        }
+      }
+      const updated = await storage.updateJournalPrompt(promptId, parsed.data);
+      return res.json(updated);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ---- Seeker journal ----
+
+  // Seeker lists prompts available to them (starters + their coach's library + assigned).
+  app.get("/api/journal/prompts/available", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await ensureStarterPromptsSeeded();
+      const seeker = await storage.getSeekerByOwnerId(req.user!.id);
+      if (!seeker) {
+        // Non-seekers (coaches without a seeker profile) just see the global starters.
+        const starters = await storage.listAvailableJournalPromptsForSeeker(null, null);
+        return res.json(starters);
+      }
+      const engagements = await storage.getEngagementsBySeekerId(seeker.id);
+      const active = engagements.find((e) => (e.status ?? "active") === "active") ?? engagements[0];
+      const prompts = await storage.listAvailableJournalPromptsForSeeker(
+        active?.providerId ?? null,
+        active?.id ?? null,
+      );
+      return res.json(prompts);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Seeker reads their own journal entries (private + shared).
+  app.get("/api/journal/entries/me", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const seeker = await storage.getSeekerByOwnerId(req.user!.id);
+      if (!seeker) return res.json([]);
+      const entries = await storage.listJournalEntriesBySeekerId(seeker.id);
+      return res.json(entries);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Seeker creates a new entry. Optionally seeded by a prompt and shared with the coach.
+  app.post("/api/journal/entries", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const seeker = await storage.getSeekerByOwnerId(req.user!.id);
+      if (!seeker) {
+        return res.status(403).json({ error: "Only seekers can write journal entries" });
+      }
+      const bodySchema = z.object({
+        body: z.string().min(1).max(10000),
+        promptId: z.string().uuid().optional().nullable(),
+        engagementId: z.string().uuid().optional().nullable(),
+        sharedWithCoach: z.boolean().optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid entry", details: parsed.error.flatten() });
+      }
+      const { body, promptId, engagementId, sharedWithCoach } = parsed.data;
+
+      // If a prompt is referenced, make sure it exists.
+      if (promptId) {
+        const prompt = await storage.getJournalPromptById(promptId);
+        if (!prompt) return res.status(400).json({ error: "Unknown prompt" });
+      }
+
+      // Resolve engagement: explicit id (must belong to seeker) or auto-attach active.
+      let engagementIdToStore: string | null = null;
+      if (engagementId) {
+        const engagement = await storage.getEngagementById(engagementId);
+        if (!engagement || engagement.seekerId !== seeker.id) {
+          return res.status(403).json({ error: "Forbidden engagement" });
+        }
+        engagementIdToStore = engagement.id;
+      } else {
+        const engagements = await storage.getEngagementsBySeekerId(seeker.id);
+        const active = engagements.find((e) => (e.status ?? "active") === "active") ?? engagements[0];
+        engagementIdToStore = active?.id ?? null;
+      }
+
+      const entry = await storage.createJournalEntry({
+        seekerId: seeker.id,
+        engagementId: engagementIdToStore,
+        promptId: promptId ?? null,
+        body,
+        sharedWithCoach: !!sharedWithCoach,
+      });
+      return res.json(entry);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Seeker updates an entry: edit body or toggle share. Once shared, body is locked.
+  app.patch("/api/journal/entries/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const entryId = String(req.params.id);
+      const seeker = await storage.getSeekerByOwnerId(req.user!.id);
+      if (!seeker) return res.status(403).json({ error: "Forbidden" });
+      const existing = await storage.getJournalEntryById(entryId);
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      if (existing.seekerId !== seeker.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const bodySchema = z.object({
+        body: z.string().min(1).max(10000).optional(),
+        sharedWithCoach: z.boolean().optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid update", details: parsed.error.flatten() });
+      }
+      const { body, sharedWithCoach } = parsed.data;
+
+      // Once shared, body is immutable and sharing cannot be revoked.
+      if (existing.sharedWithCoach) {
+        if (typeof body === "string" && body !== existing.body) {
+          return res.status(409).json({ error: "Entry is already shared and cannot be edited" });
+        }
+        if (sharedWithCoach === false) {
+          return res.status(409).json({ error: "Sharing cannot be revoked" });
+        }
+      }
+
+      const patch: Partial<{ body: string; sharedWithCoach: boolean; sharedAt: Date | null }> = {};
+      if (typeof body === "string") patch.body = body;
+      if (sharedWithCoach === true && !existing.sharedWithCoach) {
+        patch.sharedWithCoach = true;
+        patch.sharedAt = new Date();
+      }
+      const updated = await storage.updateJournalEntry(entryId, patch);
+      return res.json(updated);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Coach (or seeker on their own engagement) reads shared journal entries.
+  app.get("/api/engagements/:id/journal", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const engagementIdParam = String(req.params.id);
+      const m = await assertEngagementMember(req, engagementIdParam);
+      if (!m.ok) {
+        return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+      }
+      const entries = await storage.listSharedJournalEntriesByEngagementId(engagementIdParam);
+      return res.json(entries);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
 }

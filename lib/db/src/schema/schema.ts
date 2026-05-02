@@ -331,6 +331,49 @@ export const moodEntries = pgTable(
   }),
 );
 
+// Reflection journal — coach-curated prompts and seeker-authored entries.
+// A prompt with providerId IS NULL is part of the global starter set.
+// A prompt with engagementId set is assigned only to that client; otherwise
+// it is available to any client of the providerId.
+export const journalPrompts = pgTable(
+  "journal_prompts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    providerId: uuid("provider_id").references(() => users.id),
+    engagementId: uuid("engagement_id").references(() => engagements.id),
+    text: text("text").notNull(),
+    category: text("category").default("general"),
+    isArchived: boolean("is_archived").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    providerIdx: index("journal_prompts_provider_idx").on(t.providerId),
+    engagementIdx: index("journal_prompts_engagement_idx").on(t.engagementId),
+  }),
+);
+
+// Seeker journal entries. `sharedWithCoach=true` exposes the entry to the
+// coach via /api/engagements/:id/journal and locks editing.
+export const journalEntries = pgTable(
+  "journal_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seekerId: uuid("seeker_id").references(() => seekers.id).notNull(),
+    engagementId: uuid("engagement_id").references(() => engagements.id),
+    promptId: uuid("prompt_id").references(() => journalPrompts.id),
+    body: text("body").notNull(),
+    sharedWithCoach: boolean("shared_with_coach").default(false).notNull(),
+    sharedAt: timestamp("shared_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    seekerIdx: index("journal_entries_seeker_idx").on(t.seekerId),
+    engagementIdx: index("journal_entries_engagement_idx").on(t.engagementId),
+  }),
+);
+
 // L3 — per-client memory entries with optional embedding
 export const clientMemory = pgTable("client_memory", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -371,6 +414,8 @@ export const insertPersonaExampleSchema = createInsertSchema(personaExamples).om
 export const insertCalibrationSessionSchema = createInsertSchema(calibrationSessions).omit({ id: true, createdAt: true, completedAt: true });
 export const insertClientMemorySchema = createInsertSchema(clientMemory).omit({ id: true, createdAt: true, redactedAt: true, redactedBy: true, embedding: true });
 export const insertMoodEntrySchema = createInsertSchema(moodEntries).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertJournalPromptSchema = createInsertSchema(journalPrompts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true, updatedAt: true, sharedAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -397,6 +442,8 @@ export type InsertPersonaExample = z.infer<typeof insertPersonaExampleSchema>;
 export type InsertCalibrationSession = z.infer<typeof insertCalibrationSessionSchema>;
 export type InsertClientMemory = z.infer<typeof insertClientMemorySchema>;
 export type InsertMoodEntry = z.infer<typeof insertMoodEntrySchema>;
+export type InsertJournalPrompt = z.infer<typeof insertJournalPromptSchema>;
+export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -424,3 +471,5 @@ export type PersonaExample = typeof personaExamples.$inferSelect;
 export type CalibrationSession = typeof calibrationSessions.$inferSelect;
 export type ClientMemory = typeof clientMemory.$inferSelect;
 export type MoodEntry = typeof moodEntries.$inferSelect;
+export type JournalPrompt = typeof journalPrompts.$inferSelect;
+export type JournalEntry = typeof journalEntries.$inferSelect;
