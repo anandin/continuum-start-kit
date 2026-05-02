@@ -572,11 +572,14 @@ export class DatabaseStorage implements IStorage {
   }
   async seedGlobalStarterPrompts(prompts: Array<{ text: string; category: string }>): Promise<void> {
     if (prompts.length === 0) return;
-    // Idempotent: relies on the partial unique index on (text) where provider_id IS NULL
-    // so re-running fills in any starters missing from a partial state.
+    // Idempotent: the partial unique index on (text) WHERE provider_id IS NULL
+    // de-duplicates starter prompts. We omit the conflict target because Postgres
+    // ON CONFLICT cannot reference a partial index; an untargeted DO NOTHING
+    // swallows conflicts on any unique constraint, which here can only be the
+    // partial index (PK is a generated uuid).
     await db.insert(journalPrompts)
       .values(prompts.map((p) => ({ text: p.text, category: p.category })))
-      .onConflictDoNothing({ target: journalPrompts.text });
+      .onConflictDoNothing();
   }
 
   // ============ Journal Entries ============
