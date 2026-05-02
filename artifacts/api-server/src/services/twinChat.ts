@@ -152,52 +152,77 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     { role: "user" as const, content: input.userMessage },
   ];
 
-  let raw: string;
-  try {
-    raw = await chat({ model: persona.selectedModel, messages: aiMessages });
-  } catch {
-    return {
-      reply:
-        "Something went wrong on my end. Could you try again, or let your therapist know if it keeps happening?",
-      templated: true,
-      decision: "block_with_template",
-      severity: "low",
-      alertProvider: false,
-      exampleIds: persona.exampleIds,
-      memoryIds: memory.entryIds,
-    };
-  }
-  const cleaned = raw.trim() || "Could you tell me a little more about what's on your mind?";
+  // Single guarded LLM invocation — encapsulates {chat call, error handling,
+  // output L1 check} so it is structurally impossible for runTwinTurn to
+  // emit a model reply without going through checkOutput. Any throw, empty
+  // reply, or output-check failure resolves to a templated/safe response.
+  type GuardedOk = { kind: "ok"; cleaned: string };
+  type GuardedSafe = {
+    kind: "safe";
+    result: TwinTurnResult;
+  };
+  const guardedChatTurn = async (): Promise<GuardedOk | GuardedSafe> => {
+    let raw: string;
+    try {
+      raw = await chat({ model: persona.selectedModel, messages: aiMessages });
+    } catch {
+      return {
+        kind: "safe",
+        result: {
+          reply:
+            "Something went wrong on my end. Could you try again, or let your therapist know if it keeps happening?",
+          templated: true,
+          decision: "block_with_template",
+          severity: "low",
+          alertProvider: false,
+          exampleIds: persona.exampleIds,
+          memoryIds: memory.entryIds,
+        },
+      };
+    }
+    const cleaned = raw.trim() || "Could you tell me a little more about what's on your mind?";
 
-  // ---- L1 output gate (fail-closed)
-  let outVerdict;
-  try {
-    outVerdict = await checkOutput(cleaned, input.userMessage, ctx);
-  } catch {
-    return {
-      reply: buildFailClosedTemplate(region),
-      templated: true,
-      decision: "block_with_template",
-      severity: "high",
-      alertProvider: true,
-      exampleIds: persona.exampleIds,
-      memoryIds: memory.entryIds,
-    };
-  }
-  if (outVerdict.decision !== "allow") {
-    return {
-      reply: outVerdict.templatedResponse ?? buildFailClosedTemplate(region),
-      templated: true,
-      decision: outVerdict.decision,
-      severity: outVerdict.severity,
-      alertProvider: Boolean(outVerdict.alertProvider),
-      exampleIds: persona.exampleIds,
-      memoryIds: memory.entryIds,
-    };
-  }
+    // ---- L1 output gate (fail-closed) — runs INSIDE the guarded helper so
+    // the chat() result cannot escape this function without being checked.
+    let outVerdict;
+    try {
+      outVerdict = await checkOutput(cleaned, input.userMessage, ctx);
+    } catch {
+      return {
+        kind: "safe",
+        result: {
+          reply: buildFailClosedTemplate(region),
+          templated: true,
+          decision: "block_with_template",
+          severity: "high",
+          alertProvider: true,
+          exampleIds: persona.exampleIds,
+          memoryIds: memory.entryIds,
+        },
+      };
+    }
+    if (outVerdict.decision !== "allow") {
+      return {
+        kind: "safe",
+        result: {
+          reply: outVerdict.templatedResponse ?? buildFailClosedTemplate(region),
+          templated: true,
+          decision: outVerdict.decision,
+          severity: outVerdict.severity,
+          alertProvider: Boolean(outVerdict.alertProvider),
+          exampleIds: persona.exampleIds,
+          memoryIds: memory.entryIds,
+        },
+      };
+    }
+    return { kind: "ok", cleaned };
+  };
+
+  const guarded = await guardedChatTurn();
+  if (guarded.kind === "safe") return guarded.result;
 
   return {
-    reply: cleaned,
+    reply: guarded.cleaned,
     templated: false,
     decision: "allow",
     severity: "info",
