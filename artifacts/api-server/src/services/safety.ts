@@ -518,6 +518,40 @@ export function withConstitution(systemPrompt: string): string {
   return `${CONSTITUTIONAL_IDENTITY}\n\n---\n\n${systemPrompt}`;
 }
 
+/**
+ * Best-effort safety_event for runtime/infra failures (LLM unavailable,
+ * checkInput/checkOutput threw, etc.). Never throws — the caller has
+ * already chosen its fail-closed template.
+ */
+export async function logSystemFailureEvent(
+  ctx: SafetyContext,
+  reason: string,
+  stage: "input" | "output" | "review_label",
+  inputText?: string,
+  outputText?: string,
+  extraLabels?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await logSafetyEvent({
+      sessionId: ctx.sessionId ?? null,
+      engagementId: ctx.engagementId ?? null,
+      userId: ctx.userId ?? null,
+      providerId: ctx.providerId ?? null,
+      stage,
+      decision: "block_with_template",
+      severity: "high",
+      reason,
+      classifierLabels: { system_failure: true, ...(extraLabels ?? {}) },
+      inputSnippet: inputText?.slice(0, 500) ?? null,
+      outputSnippet: outputText?.slice(0, 500) ?? null,
+      templateUsed: "fail_closed_template",
+      agentVersionId: ctx.agentVersionId ?? null,
+    });
+  } catch (err) {
+    logger.error({ err, reason }, "failed to persist system_failure safety event");
+  }
+}
+
 // runGuardedLLM — the only supported way to call the LLM outside runTwinTurn.
 // Runs L1 input check, identity-injects, calls the model, runs L1 output
 // check, persists audit rows. Fail-closed throws.

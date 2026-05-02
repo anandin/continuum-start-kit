@@ -3,7 +3,14 @@
  */
 
 import { chat, llmConfigured } from "../lib/llm";
-import { checkInput, checkOutput, withConstitution, crisisTemplateFor, type SafetyRegion } from "./safety";
+import {
+  checkInput,
+  checkOutput,
+  withConstitution,
+  crisisTemplateFor,
+  logSystemFailureEvent,
+  type SafetyRegion,
+} from "./safety";
 import { getActiveAgentVersionForProvider } from "./twinStorage";
 import { compilePersonaForTurn } from "./persona";
 import { buildMemoryContext } from "./memory";
@@ -69,7 +76,15 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
   let inVerdict;
   try {
     inVerdict = await checkInput(input.userMessage, ctx);
-  } catch {
+  } catch (err) {
+    await logSystemFailureEvent(
+      ctx,
+      "checkInput_threw_fail_closed",
+      "input",
+      input.userMessage,
+      undefined,
+      { error: String((err as Error)?.message ?? err) },
+    );
     return {
       reply: buildFailClosedTemplate(region),
       templated: true,
@@ -93,6 +108,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
   }
 
   if (!llmConfigured()) {
+    await logSystemFailureEvent(ctx, "llm_not_configured", "input", input.userMessage);
     return {
       reply: NO_LLM_TEMPLATE,
       templated: true,
@@ -139,7 +155,15 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     let raw: string;
     try {
       raw = await chat({ model: persona.selectedModel, messages: aiMessages });
-    } catch {
+    } catch (err) {
+      await logSystemFailureEvent(
+        ctx,
+        "llm_chat_threw",
+        "output",
+        input.userMessage,
+        undefined,
+        { model: persona.selectedModel, error: String((err as Error)?.message ?? err) },
+      );
       return {
         kind: "safe",
         result: {
@@ -160,7 +184,15 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     let outVerdict;
     try {
       outVerdict = await checkOutput(cleaned, input.userMessage, ctx);
-    } catch {
+    } catch (err) {
+      await logSystemFailureEvent(
+        ctx,
+        "checkOutput_threw_fail_closed",
+        "output",
+        input.userMessage,
+        cleaned,
+        { error: String((err as Error)?.message ?? err) },
+      );
       return {
         kind: "safe",
         result: {
