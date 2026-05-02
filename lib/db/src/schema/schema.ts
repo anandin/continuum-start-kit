@@ -694,8 +694,8 @@ export const billingPayments = pgTable(
   }),
 );
 
-// Webhook idempotency: every Stripe event id is recorded here before
-// any state mutation, so retries are no-ops.
+// Webhook idempotency: event ids are recorded here after the handler
+// succeeds so duplicate deliveries from Stripe become no-ops.
 export const billingProcessedEvents = pgTable(
   "billing_processed_events",
   {

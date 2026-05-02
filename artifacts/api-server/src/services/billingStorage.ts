@@ -11,7 +11,7 @@ import {
   type BillingPayment,
   type InsertPriceTier,
 } from "@workspace/db/schema";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 // All billing data access goes through this module. Routes never call
 // drizzle directly for these tables so we have a single place to add
@@ -314,5 +314,3 @@ export const billingStorage = {
       .onConflictDoNothing({ target: billingProcessedEvents.eventId });
   },
 };
-// Silence unused-imports warning when only used inside template strings.
-void sql;

@@ -19,9 +19,7 @@ export function getStripe(): Stripe | null {
     }
     return null;
   }
-  // We deliberately don't pin `apiVersion` — the SDK's bundled default
-  // matches its declared types, and pinning required casts that the
-  // reviewer flagged as type-escape-hatches.
+  // Use the SDK's bundled default API version so types stay aligned.
   cached = new Stripe(key, {
     typescript: true,
     appInfo: { name: "Haven", version: "1.0.0" },
