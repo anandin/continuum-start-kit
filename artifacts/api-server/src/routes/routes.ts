@@ -3144,4 +3144,264 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       return res.status(500).json({ error: error.message });
     }
   });
+
+  // ============================================================
+  // USER TIMEZONE
+  // ============================================================
+  // Clients call this on login / app start with their detected IANA zone
+  // (Intl.DateTimeFormat().resolvedOptions().timeZone) so we can render
+  // calendar invites and 1-hour reminders in the seeker's local time
+  // even when the request that triggers the email comes from the coach.
+  app.patch("/api/user/timezone", requireAuth, async (req, res) => {
+    try {
+      const { timezone } = req.body as { timezone?: unknown };
+      if (typeof timezone !== "string" || timezone.length === 0 || timezone.length > 64) {
+        return res.status(400).json({ error: "timezone (string) is required" });
+      }
+      // Validate against ICU's tz database before persisting so we never
+      // store garbage that would later blow up Intl.DateTimeFormat.
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      } catch {
+        return res.status(400).json({ error: "Invalid IANA time zone" });
+      }
+      const user = await storage.updateUserTimezone(req.user!.id, timezone);
+      return res.json({ timezone: user?.timezone ?? timezone });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================
+  // SCHEDULED SESSIONS — Task #18 (calendar invites)
+  // ============================================================
+  // Coach proposes 1–3 candidate slots; seeker confirms one; either side
+  // may reschedule (replaces the slots) or cancel (with a reason). On
+  // confirm/reschedule/cancel we email a real .ics to both parties so
+  // the event lands in their existing calendar app — no two-way sync.
+
+  function parseSlots(input: unknown): { ok: true; slots: string[] } | { ok: false; error: string } {
+    if (!Array.isArray(input)) return { ok: false, error: "proposedSlots must be an array" };
+    if (input.length < 1 || input.length > 3) {
+      return { ok: false, error: "proposedSlots must contain 1–3 slots" };
+    }
+    const out: string[] = [];
+    for (const raw of input) {
+      if (typeof raw !== "string") return { ok: false, error: "slots must be ISO strings" };
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) {
+        return { ok: false, error: `invalid slot: ${raw}` };
+      }
+      if (d.getTime() < Date.now() - 60_000) {
+        return { ok: false, error: "slots must be in the future" };
+      }
+      out.push(d.toISOString());
+    }
+    return { ok: true, slots: out };
+  }
+
+  app.post("/api/engagements/:id/scheduled-sessions", requireAuth, async (req, res) => {
+    try {
+      const check = await assertProviderOwnsEngagement(req, String(req.params.id));
+      if (!check.ok) {
+        return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
+      }
+      const { engagement } = check;
+      if (!engagement.seekerId) {
+        return res.status(400).json({ error: "Engagement has no seeker" });
+      }
+      const seeker = await storage.getSeekerById(engagement.seekerId);
+      if (!seeker?.ownerId) {
+        return res.status(400).json({ error: "Engagement seeker has no owner" });
+      }
+      const body = req.body as {
+        proposedSlots?: unknown;
+        timezone?: unknown;
+        durationMinutes?: unknown;
+        title?: unknown;
+      };
+      const slots = parseSlots(body.proposedSlots);
+      if (!slots.ok) return res.status(400).json({ error: slots.error });
+      const tz = typeof body.timezone === "string" ? body.timezone : "UTC";
+      const dur =
+        typeof body.durationMinutes === "number" && body.durationMinutes >= 5 && body.durationMinutes <= 480
+          ? Math.round(body.durationMinutes)
+          : 50;
+      const title = typeof body.title === "string" ? body.title.slice(0, 200) : "Therapy session";
+      const { proposeSlots } = await import("../services/scheduling");
+      const row = await proposeSlots({
+        engagementId: engagement.id,
+        providerId: req.user!.id,
+        seekerUserId: seeker.ownerId,
+        proposedSlots: slots.slots,
+        timezone: tz,
+        durationMinutes: dur,
+        title,
+        createdBy: req.user!.id,
+      });
+      return res.json({ scheduledSession: row });
+    } catch (error: any) {
+      req.log.warn({ err: error }, "POST /api/engagements/:id/scheduled-sessions failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/engagements/:id/scheduled-sessions", requireAuth, async (req, res) => {
+    try {
+      const check = await assertEngagementMember(req, String(req.params.id));
+      if (!check.ok) {
+        return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
+      }
+      const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
+      const rows = await scheduledSessionStorage.listForEngagement(check.engagement.id);
+      return res.json({ scheduledSessions: rows });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/me/scheduled-sessions", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
+      const { maybeFireReminderForSeeker } = await import("../services/scheduling");
+      // Fire-and-forget reminder check for seekers (no-op for coaches —
+      // they don't have rows where seekerUserId === their id).
+      void maybeFireReminderForSeeker(userId).catch(() => {});
+      const rows = await scheduledSessionStorage.listUpcomingForUser(userId);
+      return res.json({ scheduledSessions: rows });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/scheduled-sessions/:id/confirm", requireAuth, async (req, res) => {
+    try {
+      const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
+      const { confirmSlot } = await import("../services/scheduling");
+      const row = await scheduledSessionStorage.getById(String(req.params.id));
+      if (!row) return res.status(404).json({ error: "Not found" });
+      // Only the seeker can confirm; coaches use reschedule if they need
+      // to change things post-proposal.
+      if (row.seekerUserId !== req.user!.id) {
+        return res.status(403).json({ error: "Only the seeker can confirm a slot" });
+      }
+      // Strict state-machine guard: confirm only legal from `proposed`.
+      // Re-confirming an already-confirmed row would mutate confirmedAt
+      // without a reschedule transition and silently bump icsSeq, so
+      // we reject it here. Users who need to change time should use
+      // the reschedule endpoint.
+      if (row.status !== "proposed") {
+        return res
+          .status(409)
+          .json({ error: `Cannot confirm — session is ${row.status}` });
+      }
+      const body = req.body as { slot?: unknown; timezone?: unknown };
+      if (typeof body.slot !== "string") {
+        return res.status(400).json({ error: "slot (ISO string) is required" });
+      }
+      const chosen = new Date(body.slot);
+      if (Number.isNaN(chosen.getTime())) {
+        return res.status(400).json({ error: "invalid slot" });
+      }
+      const slotIso = chosen.toISOString();
+      const proposedIso = ((row.proposedSlots ?? []) as unknown[]).map((s) => {
+        try {
+          return new Date(String(s)).toISOString();
+        } catch {
+          return "";
+        }
+      });
+      if (!proposedIso.includes(slotIso)) {
+        return res.status(400).json({ error: "slot is not one of the proposed times" });
+      }
+      // Capture seeker's reported timezone for any future re-render of
+      // this row (coach proposed in their tz; seeker's own tz lives on
+      // the user record — we update it lazily here).
+      if (typeof body.timezone === "string" && body.timezone.length > 0 && body.timezone.length < 64) {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: body.timezone });
+          await storage.updateUserTimezone(req.user!.id, body.timezone);
+        } catch {
+          // ignore invalid zones from the client
+        }
+      }
+      const updated = await confirmSlot(row.id, chosen);
+      // confirmSlot returns undefined when the atomic update missed
+      // because someone else confirmed first.
+      if (!updated) {
+        // Atomic update missed — could be another concurrent confirm,
+        // a reschedule that swapped proposed slots, or a cancel.
+        return res.status(409).json({
+          error:
+            "Could not confirm — the session may have been rescheduled, cancelled, or just confirmed by someone else. Please refresh.",
+        });
+      }
+      return res.json({ scheduledSession: updated });
+    } catch (error: any) {
+      req.log.warn({ err: error }, "POST /api/scheduled-sessions/:id/confirm failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/scheduled-sessions/:id/reschedule", requireAuth, async (req, res) => {
+    try {
+      const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
+      const { rescheduleSession } = await import("../services/scheduling");
+      const row = await scheduledSessionStorage.getById(String(req.params.id));
+      if (!row) return res.status(404).json({ error: "Not found" });
+      const isCoach = row.providerId === req.user!.id;
+      const isSeeker = row.seekerUserId === req.user!.id;
+      if (!isCoach && !isSeeker) return res.status(403).json({ error: "Forbidden" });
+      if (row.status === "cancelled") {
+        return res.status(409).json({ error: "Session is cancelled" });
+      }
+      const body = req.body as {
+        proposedSlots?: unknown;
+        timezone?: unknown;
+        durationMinutes?: unknown;
+        title?: unknown;
+      };
+      const slots = parseSlots(body.proposedSlots);
+      if (!slots.ok) return res.status(400).json({ error: slots.error });
+      const updated = await rescheduleSession(row.id, {
+        proposedSlots: slots.slots,
+        timezone: typeof body.timezone === "string" ? body.timezone : undefined,
+        durationMinutes:
+          typeof body.durationMinutes === "number" && body.durationMinutes >= 5 && body.durationMinutes <= 480
+            ? Math.round(body.durationMinutes)
+            : undefined,
+        title: typeof body.title === "string" ? body.title.slice(0, 200) : undefined,
+      });
+      return res.json({ scheduledSession: updated });
+    } catch (error: any) {
+      req.log.warn({ err: error }, "POST /api/scheduled-sessions/:id/reschedule failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/scheduled-sessions/:id/cancel", requireAuth, async (req, res) => {
+    try {
+      const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
+      const { cancelSession } = await import("../services/scheduling");
+      const row = await scheduledSessionStorage.getById(String(req.params.id));
+      if (!row) return res.status(404).json({ error: "Not found" });
+      const isCoach = row.providerId === req.user!.id;
+      const isSeeker = row.seekerUserId === req.user!.id;
+      if (!isCoach && !isSeeker) return res.status(403).json({ error: "Forbidden" });
+      if (row.status === "cancelled") {
+        return res.json({ scheduledSession: row });
+      }
+      const body = req.body as { reason?: unknown };
+      const reason =
+        typeof body.reason === "string" && body.reason.trim().length > 0
+          ? body.reason.trim().slice(0, 500)
+          : "No reason provided";
+      const updated = await cancelSession(row.id, req.user!.id, reason);
+      return res.json({ scheduledSession: updated });
+    } catch (error: any) {
+      req.log.warn({ err: error }, "POST /api/scheduled-sessions/:id/cancel failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
 }

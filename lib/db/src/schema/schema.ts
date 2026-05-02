@@ -39,6 +39,10 @@ export const users = pgTable("users", {
   // "INTL" -> CRISIS_TEMPLATE_INTL (Samaritans, findahelpline.com, 112)
   // Defaults to US for backward compatibility on existing rows.
   region: text("region").default("US"),
+  // IANA time-zone name (e.g. "America/Los_Angeles") used to render
+  // scheduled sessions and calendar invites. Defaults to "UTC" until the
+  // client reports its detected zone via PATCH /api/user/timezone.
+  timezone: text("timezone").default("UTC"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -532,6 +536,58 @@ export const sessionBriefs = pgTable(
   }),
 );
 
+// ============================================================
+// Scheduled sessions (Task #18 — calendar invites)
+// ============================================================
+// status lifecycle:
+//   "proposed"   — coach has put forward 1–3 candidate slots,
+//                  seeker has not picked one yet
+//   "confirmed"  — seeker picked a slot; confirmedAt is the chosen UTC
+//                  start time; .ics REQUEST sent to both sides
+//   "cancelled"  — either side cancelled (cancelReason / cancelledBy set);
+//                  .ics CANCEL sent
+// Reschedule is in-place: status moves back to "proposed", confirmedAt
+// is cleared, proposedSlots is replaced, icsSeq is bumped.
+export const scheduledSessions = pgTable(
+  "scheduled_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+    providerId: uuid("provider_id").references(() => users.id).notNull(),
+    seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+    status: text("status").notNull().default("proposed"),
+    // Array of ISO-8601 UTC timestamp strings, length 1..3.
+    proposedSlots: jsonb("proposed_slots").notNull().default([]),
+    // Chosen UTC start time once status === "confirmed".
+    confirmedAt: timestamp("confirmed_at"),
+    // IANA time-zone the slots were proposed in (used for .ics rendering
+    // and seeker's home-screen banner). Snapshot at propose-time so a
+    // user changing their default tz later doesn't rewrite history.
+    timezone: text("timezone").notNull().default("UTC"),
+    durationMinutes: integer("duration_minutes").notNull().default(50),
+    title: text("title").notNull().default("Therapy session"),
+    // Stable per-row UID used as the iCalendar UID (METHOD:REQUEST and
+    // CANCEL must reuse the same UID for the calendar client to update
+    // the right event). Defaults to row id but kept separate so it could
+    // be exported/imported across systems.
+    icsUid: text("ics_uid").notNull(),
+    icsSeq: integer("ics_seq").notNull().default(0),
+    cancelReason: text("cancel_reason"),
+    cancelledBy: uuid("cancelled_by").references(() => users.id),
+    // Stamped when the 1-hour-before push reminder has been delivered to
+    // the seeker, so the lazy reminder check only fires once.
+    reminderSentAt: timestamp("reminder_sent_at"),
+    createdBy: uuid("created_by").references(() => users.id).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    engagementIdx: index("scheduled_sessions_engagement_idx").on(t.engagementId),
+    seekerIdx: index("scheduled_sessions_seeker_idx").on(t.seekerUserId),
+    confirmedIdx: index("scheduled_sessions_confirmed_idx").on(t.confirmedAt),
+  }),
+);
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, createdAt: true });
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
@@ -565,6 +621,7 @@ export const insertCoachInboxDismissalSchema = createInsertSchema(coachInboxDism
 export const insertPlaybookSchema = createInsertSchema(playbooks).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertNudgeSchema = createInsertSchema(nudges).omit({ id: true, createdAt: true, sentAt: true, respondedAt: true });
 export const insertSessionBriefSchema = createInsertSchema(sessionBriefs).omit({ id: true, createdAt: true, generatedAt: true, usedAt: true, usedInSessionId: true });
+export const insertScheduledSessionSchema = createInsertSchema(scheduledSessions).omit({ id: true, createdAt: true, updatedAt: true, reminderSentAt: true, icsSeq: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -634,3 +691,5 @@ export type CoachInboxDismissal = typeof coachInboxDismissals.$inferSelect;
 export type Playbook = typeof playbooks.$inferSelect;
 export type Nudge = typeof nudges.$inferSelect;
 export type SessionBrief = typeof sessionBriefs.$inferSelect;
+export type InsertScheduledSession = z.infer<typeof insertScheduledSessionSchema>;
+export type ScheduledSession = typeof scheduledSessions.$inferSelect;

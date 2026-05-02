@@ -28,6 +28,7 @@ import { GoalsTracker } from '@/components/GoalsTracker';
 import { MoodPanel } from '@/components/MoodPanel';
 import { JournalPanel } from '@/components/JournalPanel';
 import { SessionPrepBriefPanel } from '@/components/SessionPrepBriefPanel';
+import { SchedulePanel } from '@/components/SchedulePanel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -306,6 +307,7 @@ export default function ClientSessionSummary() {
         <Tabs defaultValue="sessions" className="w-full">
           <TabsList className="bg-muted/40 p-1">
             <TabsTrigger value="brief" data-testid="tab-brief">Prep brief</TabsTrigger>
+            <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
             <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
             <TabsTrigger value="mood" data-testid="tab-mood">Mood</TabsTrigger>
             <TabsTrigger value="journal" data-testid="tab-journal">Journal</TabsTrigger>
@@ -317,6 +319,10 @@ export default function ClientSessionSummary() {
 
           <TabsContent value="brief" className="mt-6">
             <SessionPrepBriefPanel engagementId={engagement.id} />
+          </TabsContent>
+
+          <TabsContent value="schedule" className="mt-6">
+            <SchedulePanel engagementId={engagement.id} />
           </TabsContent>
 
           <TabsContent value="sessions" className="mt-6">

@@ -51,6 +51,7 @@ export interface IStorage {
   createUser(data: InsertUser): Promise<User>;
   getUserById(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  updateUserTimezone(userId: string, timezone: string): Promise<User | undefined>;
   
   createProfile(data: InsertProfile): Promise<Profile>;
   getProfileByUserId(userId: string): Promise<Profile | undefined>;
@@ -197,6 +198,15 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async updateUserTimezone(userId: string, timezone: string): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ timezone })
+      .where(eq(users.id, userId))
+      .returning();
     return user;
   }
 

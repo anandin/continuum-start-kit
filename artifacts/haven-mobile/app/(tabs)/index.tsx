@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HavenLogo } from "@/components/HavenLogo";
 import { MoodSummaryRow } from "@/components/MoodSummaryRow";
+import { ScheduledSessionsCard } from "@/components/ScheduledSessionsCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
@@ -364,6 +365,8 @@ export default function HomeScreen() {
         <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
           {greetingLine}
         </Text>
+
+        <ScheduledSessionsCard />
 
         {engagementsQ.isLoading ? (
           <View style={styles.loadingBlock}>

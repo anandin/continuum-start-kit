@@ -1,17 +1,33 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Leaf, LogOut, Menu, X } from "lucide-react";
 import { ProviderSidebar } from "@/components/Sidebar";
 import { AlertsBell } from "@/components/AlertsBell";
+import { SessionReminderBanner } from "@/components/SessionReminderBanner";
 import { cn } from "@/lib/utils";
 
 export function AppLayout({ children, title, subtitle }: { children: ReactNode; title?: string; subtitle?: string }) {
-  const { role, signOut } = useAuth();
+  const { user, role, signOut } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isProvider = role === "provider";
+
+  // Report the browser's detected IANA time zone once per session so the
+  // server can render scheduled-session emails / .ics in the user's
+  // local zone (no-op if tz hasn't actually changed since last sync).
+  useEffect(() => {
+    if (!user) return;
+    let tz = "UTC";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch {}
+    fetch("/api/user/timezone", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ timezone: tz }),
+    }).catch(() => {});
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-gradient-warm-hero">
@@ -60,6 +76,8 @@ export function AppLayout({ children, title, subtitle }: { children: ReactNode; 
           </div>
         </div>
       </header>
+
+      <SessionReminderBanner />
 
       <div className="flex">
         {/* Sidebar (provider only) */}
