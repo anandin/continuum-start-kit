@@ -1,10 +1,12 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import React, { useMemo } from "react";
+import * as Haptics from "expo-haptics";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +19,7 @@ import { HavenLogo } from "@/components/HavenLogo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
+import { loadSeekerDone, persistSeekerDone } from "@/lib/seekerGoals";
 
 interface Engagement {
   id: string;
@@ -38,6 +41,13 @@ interface SessionRow {
 interface Summary {
   key_insights?: Array<string | { insight: string }>;
   next_action?: string;
+}
+
+interface Goal {
+  id: string;
+  title: string;
+  description?: string | null;
+  status?: string;
 }
 
 function getStarted(s: SessionRow): number {
@@ -96,6 +106,44 @@ export default function HomeScreen() {
     queryFn: () => api<Summary | null>(`/api/sessions/${lastEnded!.id}/summary`),
     enabled: !!lastEnded?.id,
   });
+
+  const goalsQ = useQuery({
+    queryKey: ["goals", activeEngagement?.id],
+    queryFn: () =>
+      api<Goal[]>(`/api/engagements/${activeEngagement!.id}/goals`),
+    enabled: !!activeEngagement?.id,
+  });
+
+  const [seekerDone, setSeekerDone] = useState<Record<string, boolean>>({});
+  // Re-read on every focus so toggles made in the Goals tab show up here
+  // immediately when this tab regains focus (and vice versa).
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadSeekerDone().then((s) => {
+        if (active) setSeekerDone(s);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  const toggleGoal = useCallback((goalId: string) => {
+    setSeekerDone((prev) => {
+      const next = { ...prev, [goalId]: !prev[goalId] };
+      persistSeekerDone(next);
+      return next;
+    });
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  }, []);
+
+  const activeGoals = useMemo(
+    () => (goalsQ.data ?? []).filter((g) => g.status !== "completed"),
+    [goalsQ.data],
+  );
 
   const lastSessionLabel = useMemo(() => {
     const sessions = activeEngagement?.sessions ?? [];
@@ -286,6 +334,101 @@ export default function HomeScreen() {
                     </View>
                   );
                 })}
+              </View>
+            ) : null}
+
+            {activeGoals.length > 0 ? (
+              <View
+                style={[
+                  styles.goalsBlock,
+                  { borderTopColor: colors.border },
+                ]}
+              >
+                <View style={styles.insightsHeader}>
+                  <Feather name="check-square" size={14} color={colors.primary} />
+                  <Text
+                    style={[styles.insightsTitle, { color: colors.foreground }]}
+                  >
+                    Today's Goals
+                  </Text>
+                  <Text
+                    style={[
+                      styles.goalsCount,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {activeGoals.filter((g) => seekerDone[g.id]).length}/
+                    {activeGoals.length}
+                  </Text>
+                </View>
+                {activeGoals.slice(0, 3).map((g) => {
+                  const checked = !!seekerDone[g.id];
+                  return (
+                    <Pressable
+                      key={g.id}
+                      onPress={() => toggleGoal(g.id)}
+                      accessibilityLabel={`${
+                        checked ? "Uncheck" : "Check off"
+                      } goal: ${g.title}`}
+                      testID={`home-goal-${g.id}`}
+                      style={({ pressed }) => [
+                        styles.goalRow,
+                        { opacity: pressed ? 0.85 : 1 },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.goalCheckbox,
+                          {
+                            backgroundColor: checked
+                              ? colors.primary
+                              : "transparent",
+                            borderColor: checked
+                              ? colors.primary
+                              : colors.border,
+                          },
+                        ]}
+                      >
+                        {checked ? (
+                          <Feather
+                            name="check"
+                            size={12}
+                            color={colors.primaryForeground}
+                          />
+                        ) : null}
+                      </View>
+                      <Text
+                        style={[
+                          styles.goalText,
+                          {
+                            color: colors.foreground,
+                            textDecorationLine: checked
+                              ? "line-through"
+                              : "none",
+                          },
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {g.title}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                {activeGoals.length > 3 ? (
+                  <Pressable
+                    onPress={() => router.push("/(tabs)/goals")}
+                    accessibilityLabel="See all goals"
+                  >
+                    <Text
+                      style={[
+                        styles.seeAll,
+                        { color: colors.primary },
+                      ]}
+                    >
+                      See all {activeGoals.length} goals →
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
 
@@ -540,6 +683,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
     gap: 6,
+  },
+  goalsBlock: {
+    borderTopWidth: 1,
+    paddingTop: 14,
+    gap: 10,
+  },
+  goalsCount: {
+    marginLeft: "auto",
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  goalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  goalCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  goalText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    lineHeight: 18,
+  },
+  seeAll: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 2,
   },
   emptyCard: {
     borderWidth: 1,

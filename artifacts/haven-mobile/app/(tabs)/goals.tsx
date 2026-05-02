@@ -1,8 +1,8 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
+import { loadSeekerDone, persistSeekerDone } from "@/lib/seekerGoals";
 
 interface Engagement {
   id: string;
@@ -32,36 +33,24 @@ interface Goal {
   due_date?: string | null;
 }
 
-const SEEKER_DONE_KEY = "haven.seekerCheckedGoals";
-
-async function loadSeekerDone(): Promise<Record<string, boolean>> {
-  try {
-    const raw = await AsyncStorage.getItem(SEEKER_DONE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
-async function persistSeekerDone(
-  state: Record<string, boolean>,
-): Promise<void> {
-  try {
-    await AsyncStorage.setItem(SEEKER_DONE_KEY, JSON.stringify(state));
-  } catch {
-    // ignore
-  }
-}
-
 export default function GoalsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [seekerDone, setSeekerDone] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    loadSeekerDone().then(setSeekerDone);
-  }, []);
+  // Re-read on focus so toggles made on the Home tab show up here.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadSeekerDone().then((s) => {
+        if (active) setSeekerDone(s);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const engagementsQ = useQuery({
     queryKey: ["engagements"],

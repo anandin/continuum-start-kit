@@ -39,101 +39,61 @@ interface Engagement {
   id: string;
   status?: string;
   providerId?: string;
-}
-
-interface SessionRow {
-  id: string;
-  status?: string;
-  initialStage?: string;
-  initial_stage?: string;
-  startedAt?: string;
-  started_at?: string;
+  provider?: { email?: string };
 }
 
 const CRISIS_TEMPLATE =
-  "I'm reaching out from the Haven crisis sheet. I need urgent support right now. Please follow up as soon as you can.";
+  "I'm reaching out from Haven. I need to talk as soon as you can. (Sent from the Haven crisis sheet.)";
 
-async function notifyCoach(): Promise<{
-  ok: boolean;
-  message: string;
-}> {
+// Look up the active coach's email so we can hand off to the device's
+// native mail composer. NOTE: this is a plain GET — no LLM, no chat
+// pipeline, no /api/chat. The crisis sheet content itself is fully
+// client-side templated.
+async function lookupCoachEmail(): Promise<string | null> {
   try {
     const engagements = await api<Engagement[]>("/api/engagements");
     const active =
       engagements.find((e) => (e.status ?? "active") === "active") ??
       engagements[0];
-    if (!active) {
+    return active?.provider?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function emailCoach(): Promise<{ ok: boolean; message: string }> {
+  const email = await lookupCoachEmail();
+  if (!email) {
+    return {
+      ok: false,
+      message:
+        "No coach email on file yet. Please use a hotline above for immediate help.",
+    };
+  }
+  const subject = encodeURIComponent("Urgent — reaching out from Haven");
+  const body = encodeURIComponent(CRISIS_TEMPLATE);
+  const url = `mailto:${email}?subject=${subject}&body=${body}`;
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) {
       return {
         ok: false,
         message:
-          "No active coach connection yet. Please call or text a hotline above.",
+          "Couldn't open your mail app. Please use a hotline above for immediate help.",
       };
     }
-
-    const sessions = await api<SessionRow[]>(
-      `/api/engagements/${active.id}/sessions`,
-    );
-    let session = sessions.find((s) => s.status === "active");
-    if (!session) {
-      const latest = [...sessions].sort((a, b) => {
-        const ta = new Date(a.startedAt ?? a.started_at ?? 0).getTime();
-        const tb = new Date(b.startedAt ?? b.started_at ?? 0).getTime();
-        return tb - ta;
-      })[0];
-      session = await api<SessionRow>("/api/sessions", {
-        method: "POST",
-        body: JSON.stringify({
-          engagementId: active.id,
-          initialStage:
-            latest?.initialStage ?? latest?.initial_stage ?? "check-in",
-        }),
-      });
-    }
-
-    // BACKEND CONSTRAINT: The api-server has no seeker-callable
-    // POST /api/alerts endpoint — alerts are only emitted server-side
-    // when the L1 safety gate flags a message as critical / escalate.
-    // Modifying the API contract is explicitly out of scope for this task.
-    //
-    // The L1 safety gate intercepts crisis-flagged messages BEFORE the
-    // LLM is called, returns a templated reply, and creates a
-    // high-priority alert for the supervising coach. The crisis sheet
-    // itself never touches the LLM — this just routes a templated
-    // message through the existing safety pipeline. We only claim
-    // "alert sent" when the safety layer actually reports a critical /
-    // templated / escalate decision, which is what creates the alert
-    // server-side.
-    const response = await api<{
-      safety?: { decision?: string; severity?: string; templated?: boolean };
-    }>(`/api/chat`, {
-      method: "POST",
-      body: JSON.stringify({
-        sessionId: session.id,
-        message: CRISIS_TEMPLATE,
-      }),
-    });
-
-    const escalated =
-      response.safety?.severity === "critical" ||
-      response.safety?.templated === true ||
-      response.safety?.decision === "escalate";
-
-    if (escalated) {
-      return {
-        ok: true,
-        message:
-          "Your coach has been alerted. They'll follow up as soon as they can.",
-      };
-    }
-
+    await Linking.openURL(url);
     return {
       ok: true,
       message:
-        "Message sent to your session. If this is an emergency, please use a hotline above right now.",
+        "Opening your mail app — your coach will see your note when they next check in.",
     };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unable to reach the server.";
-    return { ok: false, message: msg };
+  } catch {
+    return {
+      ok: false,
+      message:
+        "Couldn't open your mail app. Please use a hotline above for immediate help.",
+    };
   }
 }
 
@@ -244,7 +204,7 @@ function CrisisSheet({
 
   const messageCoach = async () => {
     setStatus({ kind: "sending" });
-    const result = await notifyCoach();
+    const result = await emailCoach();
     setStatus({ kind: result.ok ? "sent" : "error", message: result.message });
   };
 
@@ -389,13 +349,13 @@ function CrisisSheet({
           >
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={[styles.lineName, { color: colors.foreground }]}>
-                Message my coach
+                Email my coach
               </Text>
               <Text
                 style={[styles.lineDesc, { color: colors.mutedForeground }]}
               >
-                Send an urgent message through your session safety channel.
-                Your coach is notified when our safety system flags it.
+                Open your mail app with a pre-written note to your coach.
+                For an emergency, please use a hotline above first.
               </Text>
               {status.kind === "sent" ? (
                 <Text style={[styles.statusText, { color: colors.success }]}>
