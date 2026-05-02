@@ -282,10 +282,11 @@ export default function HomeScreen() {
 
   const lastSessionLabel = useMemo(() => {
     if (!lastSessionDate) return "No sessions yet";
-    return lastSessionDate.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
+    const weekday = lastSessionDate.toLocaleDateString(undefined, {
+      weekday: "short",
     });
+    const md = `${lastSessionDate.getMonth() + 1}/${lastSessionDate.getDate()}`;
+    return `${weekday} ${md}`;
   }, [lastSessionDate]);
 
   const lastSessionWeekday = useMemo(
@@ -774,7 +775,7 @@ export default function HomeScreen() {
             { opacity: pressed ? 0.7 : 1 },
           ]}
         >
-          <Feather name="trending-up" size={16} color={colors.primary} />
+          <Feather name="target" size={16} color={colors.primary} />
           <Text style={[styles.progressLinkText, { color: colors.foreground }]}>
             View full progress
           </Text>
