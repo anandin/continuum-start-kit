@@ -1,18 +1,8 @@
 /**
- * L1 — Constitutional Safety Layer
- *
- * Non-negotiable, server-enforced. Every LLM call must route through
- * checkInput(...) before composition AND checkOutput(...) before persisting
- * the model response.
- *
- * Rules:
- *   - The constitutional identity ("I am not a licensed therapist...") is
- *     hardcoded here and prepended to every system prompt by composeWithSafety().
- *     L2/L3 cannot remove or override it.
- *   - Crisis responses are TEMPLATED. The LLM never generates the words a
- *     user in acute crisis sees.
- *   - Every decision (allow / soften / block_with_template / escalate) is
- *     written to safety_events for audit.
+ * L1 — Constitutional Safety Layer.
+ * Every LLM call routes through checkInput then checkOutput.
+ * Identity is hardcoded and non-overridable; crisis responses are templated;
+ * every decision is logged to safety_events.
  */
 
 import { eq } from "drizzle-orm";
@@ -22,11 +12,7 @@ import { logSafetyEvent } from "./twinStorage";
 import { db } from "../db";
 import { users } from "@workspace/db";
 
-/**
- * Look up a user's region for crisis-template localization. Defaults to "US"
- * on any error (DB outage, missing row, missing column on legacy DBs) so
- * safety paths are never blocked by region resolution failures.
- */
+/** Look up a user's region for crisis-template localization; defaults to US on error. */
 async function resolveRegionForUser(userId: string): Promise<SafetyRegion> {
   try {
     const [row] = await db
@@ -172,12 +158,8 @@ function regexPrescreen(text: string): { crisis: boolean; harmfulRequest: boolea
 }
 
 // ---------------------------------------------------------------- moderation
-//
-// OpenAI moderation runs as a *separate* defense-in-depth check next to the
-// LLM crisis classifier. It catches harm categories the regex prescreen
-// misses (violence, hate, sexual content) using OpenAI's purpose-built
-// classifier. Returns a verdict when the moderator flagged anything
-// actionable, or null when nothing actionable was found.
+// OpenAI moderation as defense-in-depth next to the LLM classifier; returns
+// hints when flagged, null otherwise.
 
 interface ModerationVerdictHints {
   decision: SafetyDecision;
@@ -195,9 +177,7 @@ function interpretModeration(
   if (!result.flagged) return null;
   const cat = result.categories;
 
-  // Crisis-tier: self-harm signals → escalate with crisis template (input
-  // side) or soften with crisis template (output side; we never let the
-  // model improvise crisis content).
+  // Self-harm: escalate (input) or soften with crisis template (output).
   if (cat["self-harm"] || cat["self-harm/intent"] || cat["self-harm/instructions"]) {
     return {
       decision: side === "input" ? "escalate" : "soften",
@@ -208,8 +188,7 @@ function interpretModeration(
     };
   }
 
-  // Hard refusals: minors-related sexual content, threat-tier hate or
-  // harassment, graphic violence, explicit threats.
+  // Hard refusals.
   if (cat["sexual/minors"]) {
     return {
       decision: "block_with_template",
@@ -229,17 +208,14 @@ function interpretModeration(
     };
   }
 
-  // Lower-tier flags (general violence, hate, harassment, sexual). On the
-  // input side we let the conversation continue but soften so the therapist
-  // is alerted; on the output side we replace with a soft redirect so the
-  // model's response never relays harmful content.
+  // Lower-tier: soften input, block output.
   if (cat.violence || cat.hate || cat.harassment || cat.sexual) {
     return {
       decision: side === "output" ? "block_with_template" : "soften",
       severity: "medium",
       reason: `moderation_general:${side}`,
       template: side === "output" ? HARMFUL_REQUEST_TEMPLATE : SOFT_REDIRECT_TEMPLATE,
-      alertProvider: side === "output", // surface model misbehaviour explicitly
+      alertProvider: side === "output",
     };
   }
 
@@ -272,19 +248,14 @@ async function classifyMessage(text: string): Promise<ClassifierOutput | null> {
   }
 }
 
-// Choose the locale-appropriate crisis template. Region defaults to US (Haven's
-// initial market) when not specified by the caller.
+// Locale-appropriate crisis template; defaults to US.
 export function crisisTemplateFor(ctx: SafetyContext): string {
   return ctx.region === "INTL" ? CRISIS_TEMPLATE_INTL : CRISIS_TEMPLATE_US;
 }
 
 // ---------------------------------------------------------------- public API
 
-/**
- * Check incoming user message before composing the LLM prompt.
- * Returns a verdict; for any non-allow decision, the caller MUST short-circuit
- * and respond with verdict.templatedResponse (do not call the LLM).
- */
+/** L1 input gate. Caller MUST short-circuit on any non-allow verdict. */
 export async function checkInput(text: string, ctx: SafetyContext): Promise<SafetyVerdict> {
   const pre = regexPrescreen(text);
 
@@ -314,10 +285,6 @@ export async function checkInput(text: string, ctx: SafetyContext): Promise<Safe
     return verdict;
   }
 
-  // OpenAI moderation — purpose-built harm-category classifier. Runs in
-  // addition to the LLM crisis classifier below for defense in depth.
-  // Returns null when the API key is absent or the call fails; we treat
-  // that as "moderation unavailable" and continue to the LLM classifier.
   const mod = await moderate(text);
   if (mod) {
     const hint = interpretModeration(mod, ctx, "input");
@@ -341,9 +308,7 @@ export async function checkInput(text: string, ctx: SafetyContext): Promise<Safe
     }
   }
 
-  // LLM-based classifier. If it fails we fail SAFE: soften with a redirect
-  // template (rather than letting an unscreened message reach the model) and
-  // alert the supervising therapist so they can review.
+  // LLM classifier; fail SAFE on error.
   const labels = await classifyMessage(text);
   if (!labels) {
     const verdict: SafetyVerdict = {
@@ -432,11 +397,7 @@ export async function checkInput(text: string, ctx: SafetyContext): Promise<Safe
   return verdict;
 }
 
-/**
- * Check the model's response before persisting / returning to the user.
- * If the response leaks the system prompt, claims to be human, or echoes
- * harmful content we missed on the input, we replace it with the template.
- */
+/** L1 output gate. Replaces unsafe model output with templates. */
 export async function checkOutput(
   outputText: string,
   inputText: string,
@@ -475,12 +436,8 @@ export async function checkOutput(
     return verdict;
   }
 
-  // Crisis-style language coming back from the model when we didn't escalate
-  // (defense-in-depth: the model improvising crisis advice is exactly what
-  // we don't want)
+  // Model improvising crisis resources — replace with controlled template.
   if (/\b988\b|\bsuicide\s+hotline\b|\bcrisis\s+line\b/i.test(outputText)) {
-    // The model is referring users to crisis resources; route through the
-    // canonical template instead so the wording is controlled.
     const verdict: SafetyVerdict = {
       decision: "soften",
       severity: "high",
@@ -493,10 +450,6 @@ export async function checkOutput(
     return verdict;
   }
 
-  // OpenAI moderation on the model's reply (defense-in-depth — catches
-  // categories our identity/leak/improvised-crisis regexes don't cover, e.g.
-  // hate, harassment, sexual, violence). Null = moderation unavailable; we
-  // fall through to "allow" rather than blocking on infra failure.
   const mod = await moderate(outputText);
   if (mod) {
     const hint = interpretModeration(mod, ctx, "output");
@@ -555,11 +508,7 @@ async function persist(
     });
   } catch (err) {
     logger.error({ err, decision: verdict.decision, stage }, "failed to persist safety event");
-    // Fail closed for ALL decisions, including allow. Every L1 decision
-    // must reach safety_events; silently dropping allow rows would leave
-    // audit gaps that defeat the supervisor control surface. The
-    // orchestrator catches this throw and renders the fail-closed
-    // template.
+    // Fail closed for all decisions; orchestrator renders the fail-closed template.
     throw new Error(`safety_audit_persist_failed:${stage}:${verdict.decision}`);
   }
 }
@@ -569,18 +518,9 @@ export function withConstitution(systemPrompt: string): string {
   return `${CONSTITUTIONAL_IDENTITY}\n\n---\n\n${systemPrompt}`;
 }
 
-// ---------------------------------------------------------------------------
-// runGuardedLLM — the ONLY supported way to invoke the LLM outside of
-// runTwinTurn. Every call performs the full L1 input check on the
-// representative user/assistant content, then the model call, then the L1
-// output check, all with audit persistence. Failures fail closed (throw).
-//
-// purpose: tags the safety_events for observability.
-//   - "seeker_facing" → use runTwinTurn instead; this fn refuses.
-//   - "internal_provider" → provider-only flows (config synthesis, summaries).
-//   - "internal_calibration" → calibration-driven synthetic content.
-//   - "internal_classifier" → reserved for non-conversational classifier calls.
-// ---------------------------------------------------------------------------
+// runGuardedLLM — the only supported way to call the LLM outside runTwinTurn.
+// Runs L1 input check, identity-injects, calls the model, runs L1 output
+// check, persists audit rows. Fail-closed throws.
 
 export type GuardedPurpose =
   | "internal_provider"
@@ -590,7 +530,6 @@ export type GuardedPurpose =
 export interface RunGuardedLLMOpts {
   purpose: GuardedPurpose;
   ctx: SafetyContext;
-  // Optional label written into classifierLabels for traceability.
   kind: string;
   model?: string;
   temperature?: number;
@@ -605,12 +544,6 @@ export interface GuardedLLMResult {
   templated: boolean;
 }
 
-/**
- * Extract the text we treat as "user input" for the L1 input gate. For
- * single-prompt internal calls this is the last user message; if there is
- * none, we use the concatenated message stream so the safety classifier sees
- * the actual content being sent to the model.
- */
 function representativeInput(messages: ChatMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "user") return messages[i].content;
@@ -621,15 +554,11 @@ function representativeInput(messages: ChatMessage[]): string {
 export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLMResult> {
   const inputText = representativeInput(opts.messages);
 
-  // Auto-resolve region from the user record if the caller did not supply
-  // one. Localizes any crisis template that might fire on internal calls
-  // without forcing every call site to look the user up.
   const ctx: SafetyContext = { ...opts.ctx };
   if (!ctx.region && ctx.userId) {
     ctx.region = await resolveRegionForUser(ctx.userId);
   }
 
-  // L1 input gate — fail closed.
   const inVerdict = await checkInput(inputText, ctx);
   if (inVerdict.decision !== "allow") {
     return {
@@ -640,35 +569,17 @@ export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLM
     };
   }
 
-  // L1 identity injection — non-overridable. Every LLM call routed through
-  // runGuardedLLM gets the constitutional preamble whether or not the
-  // caller supplied a system prompt. We MERGE rather than just prepend so
-  // that:
-  //   - if the caller already starts with system message(s), we wrap their
-  //     existing system prompt with withConstitution() so the identity sits
-  //     at the top and cannot be overridden by a later system message;
-  //   - if there is no system message, we synthesize one carrying the
-  //     constitution alone.
-  // This guarantees that internal flows (calibration synthetic client,
-  // session reflection, onboarding generation, summaries, etc.) never
-  // reach the model without the "I am not a licensed therapist" identity.
+  // Non-overridable identity injection: wrap the caller's leading system
+  // message (or synthesize one) with withConstitution so the preamble sits
+  // at the top of every internal call.
   const guardedMessages: ChatMessage[] = (() => {
     const msgs = [...opts.messages];
     if (msgs.length > 0 && msgs[0].role === "system") {
-      const merged: ChatMessage = {
-        role: "system",
-        content: withConstitution(msgs[0].content),
-      };
-      return [merged, ...msgs.slice(1)];
+      return [{ role: "system" as const, content: withConstitution(msgs[0].content) }, ...msgs.slice(1)];
     }
-    const constitutionOnly: ChatMessage = {
-      role: "system",
-      content: withConstitution(""),
-    };
-    return [constitutionOnly, ...msgs];
+    return [{ role: "system" as const, content: withConstitution("") }, ...msgs];
   })();
 
-  // Model call — failures bubble up; caller's error handler renders 5xx.
   const raw = await rawChat({
     model: opts.model,
     temperature: opts.temperature,
@@ -676,18 +587,10 @@ export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLM
     messages: guardedMessages,
   });
 
-  // Tag the audit row with purpose/kind so internal calls are queryable.
-  // Reuses the region-resolved ctx so output-side crisis templates are
-  // also localized.
   const outVerdict = await checkOutput(raw, inputText, ctx);
 
-  // Audit policy: checkInput / checkOutput already persist the canonical
-  // gate decision rows. To keep the audit log high signal, we ONLY write
-  // an additional aggregate row for guarded internal calls when the output
-  // gate did not allow the reply — that's the case operators actually need
-  // to query by (purpose, kind). Allow-path internal calls leave only the
-  // two canonical gate rows. Stage "guarded_summary" distinguishes this
-  // aggregate row from the gate rows in supervisor queries.
+  // checkInput/checkOutput already persist canonical rows. Only write an
+  // aggregate row when output is non-allow (queryable by purpose+kind).
   if (outVerdict.decision !== "allow") {
     await logSafetyEvent({
       sessionId: opts.ctx.sessionId ?? null,

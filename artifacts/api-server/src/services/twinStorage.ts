@@ -66,9 +66,7 @@ export async function getActiveAgentVersionForProvider(providerId: string): Prom
   return row;
 }
 
-// Mark all current active versions for a provider as inactive. Called by
-// bumpAgentVersion before inserting the new active row so there is always
-// exactly one active version per provider.
+// Ensure exactly one active version per provider; called before inserting a new active row.
 async function deactivateAllAgentVersionsForProvider(providerId: string): Promise<void> {
   await db
     .update(agentVersions)
@@ -76,10 +74,8 @@ async function deactivateAllAgentVersionsForProvider(providerId: string): Promis
     .where(and(eq(agentVersions.providerId, providerId), eq(agentVersions.isActive, true)));
 }
 
-// L2 reproducibility: snapshot the current persona config + active example IDs
-// whenever the persona materially changes (onboarding apply, calibration
-// approve/correct, review-queue label). Avoids running retrieval — the
-// snapshot is the deterministic compiled prompt minus the per-turn top-K.
+// Snapshot current persona config + active example IDs on material change
+// (onboarding apply, calibration approve/correct, review-queue label).
 export async function bumpAgentVersion(opts: {
   providerId: string;
   reason: string;
@@ -262,8 +258,7 @@ export async function topClientMemory(
   return scored.slice(0, k).map((s) => s.m);
 }
 
-// Edit a memory entry's content/tags/importance/kind. Used by the Memory
-// Inspector. Embedding is recomputed by the caller when content changes.
+// Edit a memory entry; embedding is recomputed by the caller when content changes.
 export async function updateClientMemory(
   id: string,
   patch: Partial<{
@@ -284,8 +279,8 @@ export async function updateClientMemory(
 }
 
 // ============ Review queue ============
-// Sample recent assistant messages from this provider's engagements that the
-// therapist hasn't already labelled (no persona_example with the same scenario).
+// Sample recent agent messages this provider hasn't labeled, scored by
+// uncertainty (L1 flags) + client feedback proxy + topic coverage + recency.
 export interface ReviewItem {
   messageId: string;
   sessionId: string;
@@ -299,7 +294,7 @@ export async function listReviewQueueForProvider(
   providerId: string,
   limit = 20,
 ): Promise<ReviewItem[]> {
-  // 1. Find this provider's engagements
+  // 1. Provider engagements → sessions → agent messages (overfetch for scoring).
   const engs = await db
     .select({ id: engagements.id })
     .from(engagements)
@@ -307,7 +302,6 @@ export async function listReviewQueueForProvider(
   if (engs.length === 0) return [];
   const engIds = engs.map((e) => e.id);
 
-  // 2. Find sessions for those engagements
   const sess = await db
     .select({ id: sessions.id, engagementId: sessions.engagementId })
     .from(sessions)
@@ -316,8 +310,6 @@ export async function listReviewQueueForProvider(
   const sessionIdToEng = new Map(sess.map((s) => [s.id, s.engagementId ?? ""]));
   const sessIds = sess.map((s) => s.id);
 
-  // 3. Pull recent agent messages (overfetch so we can prioritize after
-  //    scoring rather than slicing by recency alone).
   const overfetch = Math.max(limit * 5, 60);
   const agentMsgs = await db
     .select()
@@ -328,9 +320,7 @@ export async function listReviewQueueForProvider(
 
   if (agentMsgs.length === 0) return [];
 
-  // 4. Pull every message in the touched sessions so we can find the prior
-  //    seeker turn AND detect immediate negative feedback (the next seeker
-  //    message after the agent reply).
+  // 2. All messages in touched sessions (for prior seeker + next-seeker feedback).
   const touchedSessIds = agentMsgs
     .map((m) => m.sessionId)
     .filter((s): s is string => !!s);
@@ -348,9 +338,7 @@ export async function listReviewQueueForProvider(
     bySession.set(m.sessionId, arr);
   }
 
-  // 5. Already-labeled drafts → skip. The therapist has already taught the
-  //    agent on this exact response (positive or negative); reshowing wastes
-  //    their attention and biases the queue toward repeat topics.
+  // 3. Skip already-labeled drafts.
   const labeled = await db
     .select({
       approvedResponse: personaExamples.approvedResponse,
@@ -364,10 +352,7 @@ export async function listReviewQueueForProvider(
     if (row.rejectedResponse) labeledDrafts.add(row.rejectedResponse.trim());
   }
 
-  // 6. Pull output-stage safety events for these sessions — used as the
-  //    uncertainty signal. Any non-allow decision or non-info severity
-  //    means the L1 gate flagged something on this turn; therapist review
-  //    is highest leverage there.
+  // 4. L1 output-stage events as uncertainty signal.
   const safetyRows = await db
     .select({
       sessionId: safetyEvents.sessionId,
@@ -383,8 +368,6 @@ export async function listReviewQueueForProvider(
       eq(safetyEvents.stage, "output"),
     ))
     .orderBy(desc(safetyEvents.createdAt));
-  // Bucket by session; we approximate per-message uncertainty by matching
-  // the safety event closest in time to the agent message.
   const safetyBySession = new Map<string, typeof safetyRows>();
   for (const ev of safetyRows) {
     if (!ev.sessionId) continue;
@@ -393,15 +376,10 @@ export async function listReviewQueueForProvider(
     safetyBySession.set(ev.sessionId, arr);
   }
 
-  // 7. Score each candidate.
+  // 5. Score: uncertainty + client-feedback proxy + topic-coverage penalty + recency.
   type Scored = { item: ReviewItem; score: number };
   const scored: Scored[] = [];
   const seenTopicHashes = new Set<string>();
-  // Coverage of "topics already represented" — we use the prior seeker
-  // message's first 6 normalised words as a cheap topic key. Once we've
-  // chosen a candidate from a topic, later candidates from the same topic
-  // get a coverage penalty so the queue spans the conversation rather than
-  // hammering one thread.
   function topicKey(scenario: string): string {
     return scenario
       .toLowerCase()
@@ -421,24 +399,19 @@ export async function listReviewQueueForProvider(
     const idx = session.findIndex((m) => m.id === am.id);
     const prior = idx > 0 ? session.slice(0, idx).reverse().find((m) => m.role === "seeker") : undefined;
 
-    // Client-feedback signal: the seeker's NEXT message after this agent
-    // reply. Short replies, repeated complaints, or "no/that's not what i
-    // mean" patterns count as implicit dissatisfaction. We don't track
-    // explicit ratings, so this is a proxy.
+    // Client-feedback proxy: terse / "no/that's not" / "I already said" follow-ups.
     const nextSeeker = idx >= 0 ? session.slice(idx + 1).find((m) => m.role === "seeker") : undefined;
     let clientFeedbackScore = 0;
     if (nextSeeker) {
       const t = nextSeeker.content.toLowerCase();
-      if (t.length < 20) clientFeedbackScore += 1; // terse follow-up = often disappointed
+      if (t.length < 20) clientFeedbackScore += 1;
       if (/\b(no|not|wrong|that'?s not|don'?t|doesn'?t|didn'?t)\b/.test(t)) clientFeedbackScore += 2;
       if (/\bi (already|just) said\b/.test(t)) clientFeedbackScore += 2;
     }
 
-    // Uncertainty signal from the L1 safety gate.
+    // Uncertainty: closest output safety event within 60s.
     let uncertaintyScore = 0;
     const evs = safetyBySession.get(am.sessionId) ?? [];
-    // Pick the output event temporally closest to (and at or before) this
-    // agent message — within 60s window.
     const amTime = am.createdAt ? new Date(am.createdAt).getTime() : 0;
     let bestEv: (typeof safetyRows)[number] | undefined;
     let bestDelta = Number.POSITIVE_INFINITY;
@@ -453,7 +426,6 @@ export async function listReviewQueueForProvider(
     if (bestEv) {
       if (bestEv.decision && bestEv.decision !== "allow") uncertaintyScore += 3;
       if (bestEv.severity && bestEv.severity !== "info") uncertaintyScore += 2;
-      // Specific tags we especially want a human eye on.
       const r = bestEv.reason || "";
       if (r.startsWith("moderation_")) uncertaintyScore += 2;
       if (r === "model_improvised_crisis_response" || r === "output_claims_to_be_human_or_licensed") {
@@ -461,14 +433,12 @@ export async function listReviewQueueForProvider(
       }
     }
 
-    // Coverage: penalise messages whose topic is already represented in our
-    // selection so unlabeled topics surface.
+    // Coverage: penalise repeat topics so the queue spans the conversation.
     const tk = topicKey(prior?.content ?? "");
     const coveragePenalty = tk && seenTopicHashes.has(tk) ? -1 : 0;
     if (tk) seenTopicHashes.add(tk);
 
-    // Recency tiebreaker — newer messages slightly favoured.
-    const recencyRank = agentMsgs.indexOf(am); // 0 = newest
+    const recencyRank = agentMsgs.indexOf(am);
     const recencyScore = Math.max(0, 1 - recencyRank / overfetch);
 
     const score =
@@ -494,10 +464,8 @@ export async function listReviewQueueForProvider(
   return scored.slice(0, limit).map((s) => s.item);
 }
 
-// Server-side lookup for the review-queue label endpoint. Loads a single
-// agent message + its prior user message + the engagement so the route can
-// derive draft/scenario/sessionId/engagementId WITHOUT trusting client input.
-// Returns null if the message doesn't exist or isn't an agent message.
+// Server-side review-queue lookup; derives draft/scenario/session/engagement
+// from messageId without trusting client input. Returns null if not an agent message.
 export async function getReviewItemForMessage(
   messageId: string,
 ): Promise<ReviewItem | null> {
@@ -515,7 +483,6 @@ export async function getReviewItemForMessage(
     .limit(1);
   if (!sess?.engagementId) return null;
 
-  // Find the immediately-prior seeker message in this session for context.
   const sessionMsgs = await db
     .select()
     .from(messages)

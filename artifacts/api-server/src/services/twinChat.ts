@@ -1,13 +1,5 @@
 /**
- * Therapist Twin orchestration.
- *
- * Flow for every seeker turn:
- *   1. L1.checkInput  →  may short-circuit with a templated response
- *   2. L2.compilePersona  +  L3.buildMemoryContext  →  composed system prompt
- *   3. L1.withConstitution  wraps the prompt (non-overridable identity)
- *   4. LLM call
- *   5. L1.checkOutput  →  may replace the model output with a template
- *   6. Return to caller, who persists messages and (optionally) flags an alert
+ * Therapist Twin orchestration: L1 input → L2/L3 compose → LLM → L1 output.
  */
 
 import { chat, llmConfigured } from "../lib/llm";
@@ -18,12 +10,7 @@ import { buildMemoryContext } from "./memory";
 import { storage } from "../storage";
 import type { Message } from "@workspace/db";
 
-/**
- * Resolve a user's L1 region for crisis-template localization.
- * Falls back to "US" when the user record can't be loaded or has no region —
- * never throws, so safety paths stay loud-fail-closed only on the actual
- * safety checks, not on a region lookup.
- */
+/** Resolve user region for crisis-template localization; defaults to US. */
 async function resolveRegion(userId: string): Promise<SafetyRegion> {
   try {
     const user = await storage.getUserById(userId);
@@ -36,9 +23,7 @@ async function resolveRegion(userId: string): Promise<SafetyRegion> {
 
 export interface TwinTurnInput {
   providerId: string;
-  // Nullable for non-persisted contexts (e.g. calibration, dry runs).
-  // When null, no memory is loaded and safety events are written without
-  // engagement/session FK references (those columns are nullable in the schema).
+  // Null for non-persisted contexts (calibration, dry runs).
   engagementId: string | null;
   sessionId: string | null;
   userId: string;
@@ -61,21 +46,15 @@ const NO_LLM_TEMPLATE =
   "I'm here to listen, but my AI service isn't configured right now. Could you save what you'd like to share — I'll let your therapist know.";
 
 function buildFailClosedTemplate(region: SafetyRegion): string {
-  // Uses the same regional crisis lines as crisisTemplateFor so a hard
-  // fail-closed verdict still surfaces locally relevant resources.
   const intro =
     "I want to pause for a moment. I'm having trouble safely processing that. Please reach out to your therapist directly.";
   return `${intro}\n\n${crisisTemplateFor({ region })}`;
 }
 
 export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult> {
-  // Resolve region from the seeker's user profile so crisis templates are
-  // localized (US: 988/741741/911, INTL: Samaritans/findahelpline.com/112).
   const region = await resolveRegion(input.userId);
-  // Resolve the active L2 agent_version once so every safety_event written
-  // for this turn (input gate, output gate, internal events) carries the
-  // exact persona version the model was prompted with — required for
-  // reproducibility/audit when the persona evolves.
+  // Pin agent_version once so every safety_event for this turn references
+  // the exact persona version the model was prompted with.
   const activeVersion = await getActiveAgentVersionForProvider(input.providerId).catch(() => undefined);
   const ctx = {
     sessionId: input.sessionId ?? undefined,
@@ -86,7 +65,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     agentVersionId: activeVersion?.id,
   };
 
-  // ---- L1 input gate (fail-closed: if it throws, refuse the turn)
+  // L1 input gate (fail-closed)
   let inVerdict;
   try {
     inVerdict = await checkInput(input.userMessage, ctx);
@@ -102,9 +81,6 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     };
   }
   if (inVerdict.decision !== "allow") {
-    // Any non-allow verdict MUST short-circuit. If the verdict didn't carry a
-    // template (shouldn't happen, but defense-in-depth), use the fail-closed
-    // template — never proceed to the LLM.
     return {
       reply: inVerdict.templatedResponse ?? buildFailClosedTemplate(region),
       templated: true,
@@ -128,7 +104,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     };
   }
 
-  // ---- L2 + L3 composition
+  // L2 + L3 composition
   const [persona, memory] = await Promise.all([
     compilePersonaForTurn({
       providerId: input.providerId,
@@ -152,10 +128,8 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     { role: "user" as const, content: input.userMessage },
   ];
 
-  // Single guarded LLM invocation — encapsulates {chat call, error handling,
-  // output L1 check} so it is structurally impossible for runTwinTurn to
-  // emit a model reply without going through checkOutput. Any throw, empty
-  // reply, or output-check failure resolves to a templated/safe response.
+  // Guarded LLM invocation — chat + L1 output check inside one helper so
+  // no model reply can escape without checkOutput.
   type GuardedOk = { kind: "ok"; cleaned: string };
   type GuardedSafe = {
     kind: "safe";
@@ -182,8 +156,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     }
     const cleaned = raw.trim() || "Could you tell me a little more about what's on your mind?";
 
-    // ---- L1 output gate (fail-closed) — runs INSIDE the guarded helper so
-    // the chat() result cannot escape this function without being checked.
+    // L1 output gate (fail-closed)
     let outVerdict;
     try {
       outVerdict = await checkOutput(cleaned, input.userMessage, ctx);

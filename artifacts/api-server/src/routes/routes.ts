@@ -309,11 +309,7 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // ============================================================
-  // /api/chat — Therapist Twin orchestrated turn
-  //
-  // Flow: L1 input gate → L2/L3 compose → LLM → L1 output gate → persist
-  // ============================================================
+  // /api/chat — Therapist Twin orchestrated turn (L1 in → L2/L3 → LLM → L1 out → persist)
   app.post("/api/chat", requireAuth, async (req, res) => {
     try {
       const { sessionId, message } = req.body;
@@ -329,13 +325,8 @@ export function registerRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid engagement" });
       }
 
-      // /api/chat is the SEEKER-facing Twin turn endpoint. The Twin is
-      // designed to respond to client messages — provider-authored turns
-      // must NOT be persisted as `role: "seeker"` (that would corrupt
-      // audit attribution, review-queue scenario extraction, reflection
-      // inputs, and L1 client-message semantics). Providers who want to
-      // post supervisory messages should use a dedicated provider-send
-      // endpoint, not this one.
+      // Seeker-only endpoint; provider-authored turns must use a dedicated
+      // provider-send endpoint to keep audit/review semantics intact.
       let seekerUserId = req.user!.id;
       if (engagement.seekerId) {
         const seeker = await storage.getSeekerById(engagement.seekerId);
@@ -444,9 +435,7 @@ Available stages: ${stagesList}
 
 Only return JSON. No extra text.`;
 
-      // Internal (non-seeker-facing) summarization. Routed through the
-      // safety-wrapped LLM executor: L1 input + output gates run, fail closed,
-      // and an audit event is written. If gates block, we do not summarize.
+      // Internal summarization via safety-wrapped LLM (fail-closed; skip on block).
       const guarded = await runGuardedLLM({
         purpose: "internal_provider",
         kind: "session_summary",
@@ -464,7 +453,6 @@ Only return JSON. No extra text.`;
       });
       const content = guarded.content;
       if (guarded.templated) {
-        // Safety gate replaced the model output; do not persist a summary.
         await storage.updateSession(sessionId, { status: "ended", endedAt: new Date() });
         return res.json({ success: true, summary: null, blockedBySafety: true });
       }
@@ -575,8 +563,7 @@ Inputs:
 
 If ambiguous, choose the earliest relevant stage.`;
 
-      // Internal stage-assignment. Safety-wrapped: L1 in/out gates run on the
-      // prompt, fail-closed if they fire (we fall back to the default stage).
+      // Internal stage-assignment via safety-wrapped LLM; fall back to default on block.
       let content = "";
       let guardedDecision: SafetyDecision = "allow";
       try {
@@ -1117,8 +1104,7 @@ Until [READY_TO_GENERATE], just keep the conversation going naturally. Do NOT ge
         aiMessages.push({ role: "user", content: "Hi! I'm a new coach setting up my practice. Let's get started." });
       }
 
-      // Provider-only setup conversation. Safety-wrapped — the provider's own
-      // text goes through L1 input check, the model's reply through output check.
+      // Provider-only setup conversation; safety-wrapped.
       const guardedChat = await runGuardedLLM({
         purpose: "internal_provider",
         kind: "provider_onboarding_chat",
@@ -1199,7 +1185,7 @@ Output STRICT JSON ONLY (no markdown, no commentary):
 
 Aim for 4-6 stages that reflect their actual journey. Use the coach's own language wherever possible.`;
 
-      // Provider-only config synthesis. Safety-wrapped.
+      // Provider-only config synthesis; safety-wrapped.
       const guardedGen = await runGuardedLLM({
         purpose: "internal_provider",
         kind: "provider_onboarding_generate",
@@ -1493,13 +1479,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     const qIdx = req.url.indexOf("?");
     const qs = qIdx >= 0 ? req.url.slice(qIdx) : "";
 
-    // /api/calibration/* aliases for the spec contract.
+    // /api/calibration/* aliases. /correct has its own handler (always
+    // persists "this_is_me") so do NOT rewrite to /approve here.
     if (req.path === "/api/calibration/start" && req.method === "POST") {
       req.url = `/api/twin/calibration${qs}`;
     } else if (req.path.startsWith("/api/calibration/")) {
-      // /turn keeps simple alias; /correct has dedicated semantics (always
-      // persists "this_is_me") so it gets its own handler below — do NOT
-      // rewrite to /approve here.
       const m = req.path.match(/^\/api\/calibration\/([^/]+)\/(turn)$/);
       if (m) {
         req.url = `/api/twin/calibration/${m[1]}/${m[2]}${qs}`;
@@ -1516,10 +1500,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       }
     }
 
-    // /api/clients/:engagementId/memory[/:entryId] aliases for the spec contract.
-    // Provider ownership is still enforced by the underlying handler (which
-    // validates against the entry's engagementId, not the URL param), so the
-    // alias is safe regardless of what engagementId the caller passes.
+    // /api/clients/:engagementId/memory[/:entryId] aliases.
+    // Provider ownership is enforced by the underlying handler.
     const memList = req.path.match(/^\/api\/clients\/([^/]+)\/memory$/);
     if (memList && req.method === "GET") {
       req.url = `/api/twin/memory/${memList[1]}${qs}`;
@@ -1576,11 +1558,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       }
       const transcript: CalibrationTurn[] = (calib.transcript as CalibrationTurn[] | null) ?? [];
 
-      // 1. Determine the client utterance for this turn.
-      // The therapist may author the next client message directly by posting
-      // { clientMessage: "..." } — useful for probing specific scenarios.
-      // If omitted, we fall back to the synthetic client simulator so the
-      // "Next turn" UI button still produces a self-driving conversation.
+      // 1. Client utterance: therapist-authored (if posted) else synthetic.
       const profile = calib.syntheticClientProfile as SyntheticClientProfile;
       const therapistAuthored = typeof req.body?.clientMessage === "string"
         ? req.body.clientMessage.trim()
@@ -1610,10 +1588,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         }
       }
 
-      // 2. The Twin drafts a response (using the same persona path as production).
-      // Calibration runs without an engagement/session, so we pass null IDs and
-      // tag the safety event downstream — safety_events.session_id / engagement_id
-      // are nullable in the schema, so the audit trail still persists.
+      // 2. Twin draft using the production persona path; calibration uses null FK ids.
       const draftResult = await runTwinTurn({
         providerId: req.user!.id,
         engagementId: null,
@@ -1663,10 +1638,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         approvedEdit: approvedEdit || turn.draft,
       };
 
-      // Persist EVERY label as a persona_examples row so calibration always
-      // produces L2 training artifacts (positives indexed for retrieval,
-      // negatives stored inactive for audit + future contrastive use).
-      // Mirrors the review-queue label endpoint's semantics.
+      // Persist every label as persona_examples (positives active+indexed, negatives inactive).
       if (label) {
         const isPositive = label === "this_is_me" || label === "needs_edit";
         const finalApproved = isPositive ? (approvedEdit || turn.draft) : null;
@@ -1724,16 +1696,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   });
 
   /**
-   * Spec contract: POST /api/calibration/:id/correct
-   * Body: { turnIndex: number, approvedEdit?: string, tags?: string[] }
-   *
-   * Saves the therapist's edit (or, if no edit supplied, the AI's draft) as
-   * a "this_is_me" persona_example so the corrected response becomes L2
-   * training data. Returns the updated calibration record.
-   *
-   * Distinct from /approve: /approve accepts arbitrary labels (including
-   * negatives); /correct is the dedicated "yes, save this as me" entry
-   * point and ALWAYS writes a persona_example.
+   * POST /api/calibration/:id/correct — body: { turnIndex, approvedEdit?, tags? }
+   * Always writes the corrected text as a "this_is_me" persona_example.
    */
   app.post("/api/calibration/:id/correct", requireProvider, async (req, res) => {
     try {
@@ -1756,15 +1720,12 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         ? approvedEdit
         : turn.draft;
 
-      // Mark the turn in the transcript so the UI shows it as corrected.
       transcript[turnIndex] = {
         ...turn,
         label: "this_is_me",
         approvedEdit: finalText,
       };
 
-      // Always persist as a persona_example labeled "this_is_me" — this is
-      // the contract this endpoint exists to fulfill.
       const userTags = Array.isArray(tags) ? tags : [];
       const labelTag = "label:this_is_me";
       const embedding = await embed(`${turn.client}\n${finalText}`);
@@ -1831,8 +1792,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // Therapist edits a memory entry (content, tags, importance, kind).
-  // Recomputes the embedding when content changes so retrieval reflects edits.
+  // Edit a memory entry; recomputes embedding when content changes.
   app.patch("/api/twin/memory/:id", requireProvider, async (req, res) => {
     try {
       const mem = await getClientMemoryById(req.params.id);
@@ -1891,10 +1851,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   app.post("/api/twin/review-queue/:messageId/label", requireProvider, async (req, res) => {
     try {
       const { messageId } = req.params;
-      // Only `label`, `approvedEdit`, and `tags` are accepted from the client.
-      // Everything else (draft, scenario, engagementId, sessionId) is loaded
-      // server-side from the message record so a forged payload cannot
-      // attribute persona examples or safety events to the wrong engagement.
+      // Only label/approvedEdit/tags are trusted from the client; the rest
+      // (draft, scenario, engagementId, sessionId) is loaded server-side.
       const VALID_LABELS = ["this_is_me", "not_me", "never_say_this", "needs_edit"] as const;
       type ReviewLabel = (typeof VALID_LABELS)[number];
       const { label, approvedEdit, tags } = req.body as {
@@ -1930,19 +1888,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       const draft = item.draft;
       const scenario = item.scenario;
 
-      // Persist EVERY label as a persona_examples row so all four signals
-      // become L2 training artifacts and the queue de-dup naturally hides
-      // already-reviewed drafts (de-dup checks both approvedResponse and
-      // rejectedResponse content).
-      //
-      //   this_is_me / needs_edit -> positive: approvedResponse set, active,
-      //     full retrieval weight; embedding indexed for similarity recall.
-      //   not_me                  -> negative: rejectedResponse set, inactive
-      //     (excluded from retrieval), zero weight, captured for future
-      //     contrastive training and queue de-dup.
-      //   never_say_this          -> hard negative: same as not_me, plus a
-      //     review_never_say_this safety event so the audit log surfaces the
-      //     therapist's hard "do not generate this kind of reply" signal.
+      // Persist every label as persona_examples (positives active+indexed,
+      // negatives inactive). never_say_this also writes a safety_event.
       const isPositive = safeLabel === "this_is_me" || safeLabel === "needs_edit";
       const finalApproved = isPositive ? (approvedEdit || draft) : null;
       const embedding = isPositive && finalApproved

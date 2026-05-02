@@ -149,29 +149,14 @@ export default function AuditLog() {
   );
 }
 
-/**
- * Render the classifier signals the L1 gate captured for this event.
- *
- * The backend stores three flavors of payload in classifierLabels:
- *   - LLM crisis classifier: { categories: string[], confidence?: number, ... }
- *   - OpenAI moderation:     { moderation: { categories: {sexual:bool,...},
- *                              category_scores: {sexual:0.01,...} } }
- *   - Internal/labeling:     arbitrary tags (purpose, kind, source, etc.)
- *
- * We surface the highest-signal slices first (categories + top scores) so
- * therapists / supervisors see "what flagged this" without expanding raw JSON,
- * and keep the full payload available behind a details toggle for compliance.
- */
+/** Render classifier signals: crisis categories, moderation flags, raw payload toggle. */
 function ClassifierLabels({ labels }: { labels: ClassifierPayload | null }) {
   if (!labels || typeof labels !== "object") return null;
   if (Array.isArray(labels) && labels.length === 0) return null;
   if (!Array.isArray(labels) && Object.keys(labels).length === 0) return null;
 
-  // Crisis-classifier categories. The backend classifier emits flat boolean
-  // fields ({crisis:true, self_harm:true, ...}) rather than a categories[]
-  // array, so we derive categories from any boolean-true keys (excluding
-  // shape/metadata keys like "moderation"/"flagged"/"model"). We also
-  // accept a categories[] array if present (forward compatibility).
+  // Derive crisis categories from boolean-true keys (excluding meta) and
+  // also accept categories[] for forward compatibility.
   const META_KEYS = new Set([
     "moderation", "flagged", "model", "categories", "category_scores",
     "confidence", "reason", "purpose", "kind", "source", "messageId",
@@ -185,13 +170,10 @@ function ClassifierLabels({ labels }: { labels: ClassifierPayload | null }) {
     .map(([k]) => k);
   const cats: string[] = Array.from(new Set([...arrayCats, ...flatCats]));
 
-  // Crisis-classifier numeric confidence
   const conf =
     typeof labels.confidence === "number" ? labels.confidence : null;
 
-  // OpenAI moderation. Backend stores it FLAT on classifierLabels:
-  //   { moderation: true, flagged, categories: {...}, category_scores: {...}, model }
-  // Some older rows nested it under `labels.moderation`; handle both shapes.
+  // Moderation payload — accept both flat (current) and nested (legacy) shapes.
   const modSrc: Record<string, unknown> | null =
     labels.moderation === true
       ? labels

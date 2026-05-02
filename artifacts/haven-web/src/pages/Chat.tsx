@@ -99,11 +99,7 @@ export default function Chat() {
         if (engRes.ok) {
           const engagement = await engRes.json();
           if (engagement.providerId) {
-            // Provider attribution: if the current viewer is the engagement
-            // provider, this is the supervisor reviewing the seeker's
-            // conversation. Sending is disabled — the AI twin replies on
-            // the provider's behalf, and the API rejects provider-authored
-            // /api/chat sends to keep attribution honest.
+            // Provider supervisor view: sending disabled (Twin replies on their behalf).
             if (user && user.id === engagement.providerId) {
               setIsProviderViewing(true);
             }
