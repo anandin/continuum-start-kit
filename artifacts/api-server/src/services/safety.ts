@@ -15,9 +15,31 @@
  *     written to safety_events for audit.
  */
 
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { classify, chat as rawChat, moderate, type ChatMessage, type ModerationResult } from "../lib/llm";
 import { logSafetyEvent } from "./twinStorage";
+import { db } from "../db";
+import { users } from "@workspace/db";
+
+/**
+ * Look up a user's region for crisis-template localization. Defaults to "US"
+ * on any error (DB outage, missing row, missing column on legacy DBs) so
+ * safety paths are never blocked by region resolution failures.
+ */
+async function resolveRegionForUser(userId: string): Promise<SafetyRegion> {
+  try {
+    const [row] = await db
+      .select({ region: users.region })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return row?.region === "INTL" ? "INTL" : "US";
+  } catch (err) {
+    logger.warn({ err, userId }, "resolveRegionForUser failed; defaulting to US");
+    return "US";
+  }
+}
 
 // ---------------------------------------------------------------- constitution
 
@@ -598,8 +620,16 @@ function representativeInput(messages: ChatMessage[]): string {
 export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLMResult> {
   const inputText = representativeInput(opts.messages);
 
+  // Auto-resolve region from the user record if the caller did not supply
+  // one. Localizes any crisis template that might fire on internal calls
+  // without forcing every call site to look the user up.
+  const ctx: SafetyContext = { ...opts.ctx };
+  if (!ctx.region && ctx.userId) {
+    ctx.region = await resolveRegionForUser(ctx.userId);
+  }
+
   // L1 input gate — fail closed.
-  const inVerdict = await checkInput(inputText, opts.ctx);
+  const inVerdict = await checkInput(inputText, ctx);
   if (inVerdict.decision !== "allow") {
     return {
       content: inVerdict.templatedResponse ?? "",
@@ -618,10 +648,9 @@ export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLM
   });
 
   // Tag the audit row with purpose/kind so internal calls are queryable.
-  const ctxForOutput: SafetyContext = {
-    ...opts.ctx,
-  };
-  const outVerdict = await checkOutput(raw, inputText, ctxForOutput);
+  // Reuses the region-resolved ctx so output-side crisis templates are
+  // also localized.
+  const outVerdict = await checkOutput(raw, inputText, ctx);
 
   // Always write a tagged audit event so EVERY guarded call is recorded
   // (in addition to the input/output gate events persist() already wrote).

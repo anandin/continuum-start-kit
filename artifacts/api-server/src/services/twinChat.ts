@@ -11,10 +11,27 @@
  */
 
 import { chat, llmConfigured } from "../lib/llm";
-import { checkInput, checkOutput, withConstitution } from "./safety";
+import { checkInput, checkOutput, withConstitution, crisisTemplateFor, type SafetyRegion } from "./safety";
 import { compilePersonaForTurn } from "./persona";
 import { buildMemoryContext } from "./memory";
+import { storage } from "../storage";
 import type { Message } from "@workspace/db";
+
+/**
+ * Resolve a user's L1 region for crisis-template localization.
+ * Falls back to "US" when the user record can't be loaded or has no region —
+ * never throws, so safety paths stay loud-fail-closed only on the actual
+ * safety checks, not on a region lookup.
+ */
+async function resolveRegion(userId: string): Promise<SafetyRegion> {
+  try {
+    const user = await storage.getUserById(userId);
+    const raw = (user as unknown as { region?: string } | undefined)?.region;
+    return raw === "INTL" ? "INTL" : "US";
+  } catch {
+    return "US";
+  }
+}
 
 export interface TwinTurnInput {
   providerId: string;
@@ -42,15 +59,24 @@ export interface TwinTurnResult {
 const NO_LLM_TEMPLATE =
   "I'm here to listen, but my AI service isn't configured right now. Could you save what you'd like to share — I'll let your therapist know.";
 
-const SAFETY_FAIL_CLOSED_TEMPLATE =
-  "I want to pause for a moment. I'm having trouble safely processing that. Please reach out to your therapist directly, and if you're in crisis, call or text 988 (US) or your local emergency number.";
+function buildFailClosedTemplate(region: SafetyRegion): string {
+  // Uses the same regional crisis lines as crisisTemplateFor so a hard
+  // fail-closed verdict still surfaces locally relevant resources.
+  const intro =
+    "I want to pause for a moment. I'm having trouble safely processing that. Please reach out to your therapist directly.";
+  return `${intro}\n\n${crisisTemplateFor({ region })}`;
+}
 
 export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult> {
+  // Resolve region from the seeker's user profile so crisis templates are
+  // localized (US: 988/741741/911, INTL: Samaritans/findahelpline.com/112).
+  const region = await resolveRegion(input.userId);
   const ctx = {
     sessionId: input.sessionId ?? undefined,
     engagementId: input.engagementId ?? undefined,
     userId: input.userId,
     providerId: input.providerId,
+    region,
   };
 
   // ---- L1 input gate (fail-closed: if it throws, refuse the turn)
@@ -59,7 +85,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     inVerdict = await checkInput(input.userMessage, ctx);
   } catch {
     return {
-      reply: SAFETY_FAIL_CLOSED_TEMPLATE,
+      reply: buildFailClosedTemplate(region),
       templated: true,
       decision: "block_with_template",
       severity: "high",
@@ -73,7 +99,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     // template (shouldn't happen, but defense-in-depth), use the fail-closed
     // template — never proceed to the LLM.
     return {
-      reply: inVerdict.templatedResponse ?? SAFETY_FAIL_CLOSED_TEMPLATE,
+      reply: inVerdict.templatedResponse ?? buildFailClosedTemplate(region),
       templated: true,
       decision: inVerdict.decision,
       severity: inVerdict.severity,
@@ -142,7 +168,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
     outVerdict = await checkOutput(cleaned, input.userMessage, ctx);
   } catch {
     return {
-      reply: SAFETY_FAIL_CLOSED_TEMPLATE,
+      reply: buildFailClosedTemplate(region),
       templated: true,
       decision: "block_with_template",
       severity: "high",
@@ -153,7 +179,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
   }
   if (outVerdict.decision !== "allow") {
     return {
-      reply: outVerdict.templatedResponse ?? SAFETY_FAIL_CLOSED_TEMPLATE,
+      reply: outVerdict.templatedResponse ?? buildFailClosedTemplate(region),
       templated: true,
       decision: outVerdict.decision,
       severity: outVerdict.severity,

@@ -32,6 +32,11 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
+  // Region drives crisis-template localization in the L1 safety gate.
+  // "US"   -> CRISIS_TEMPLATE_US (988, 741741, 911)
+  // "INTL" -> CRISIS_TEMPLATE_INTL (Samaritans, findahelpline.com, 112)
+  // Defaults to US for backward compatibility on existing rows.
+  region: text("region").default("US"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
