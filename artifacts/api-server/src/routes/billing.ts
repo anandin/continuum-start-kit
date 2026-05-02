@@ -85,6 +85,12 @@ const selectTierSchema = z.object({
   tierId: z.string().uuid(),
 });
 
+async function isProviderChargeReady(providerId: string): Promise<boolean> {
+  if (!stripeConfigured() || !stripePublishableKey()) return false;
+  const row = await billingStorage.getProviderBilling(providerId);
+  return !!row?.chargesEnabled;
+}
+
 export function registerBillingRoutes(app: Express): void {
   // Public — used by the seeker onboarding flow to show pricing
   // BEFORE the engagement is created. Returns only active tiers.
@@ -166,6 +172,16 @@ export function registerBillingRoutes(app: Express): void {
   app.post("/api/billing/tiers", requireProvider, async (req, res) => {
     try {
       const parsed = createTierSchema.parse(req.body);
+      const wantActive = parsed.isActive ?? true;
+      if (wantActive) {
+        const ready = await isProviderChargeReady(req.user!.id);
+        if (!ready) {
+          return res.status(409).json({
+            error:
+              "Finish Stripe Connect onboarding before publishing an active tier. Save it as inactive (draft) instead.",
+          });
+        }
+      }
       const tier = await billingStorage.createTier({
         providerId: req.user!.id,
         label: parsed.label,
@@ -173,7 +189,7 @@ export function registerBillingRoutes(app: Express): void {
         amountCents: parsed.amountCents,
         billingCadence: parsed.billingCadence,
         sortOrder: parsed.sortOrder ?? 0,
-        isActive: parsed.isActive ?? true,
+        isActive: wantActive,
       });
       return res.json({ tier });
     } catch (e: any) {
@@ -195,7 +211,18 @@ export function registerBillingRoutes(app: Express): void {
       if (parsed.amountCents !== undefined) patch.amountCents = parsed.amountCents;
       if (parsed.billingCadence !== undefined) patch.billingCadence = parsed.billingCadence;
       if (parsed.sortOrder !== undefined) patch.sortOrder = parsed.sortOrder;
-      if (parsed.isActive !== undefined) patch.isActive = parsed.isActive;
+      if (parsed.isActive !== undefined) {
+        if (parsed.isActive === true) {
+          const ready = await isProviderChargeReady(req.user!.id);
+          if (!ready) {
+            return res.status(409).json({
+              error:
+                "Finish Stripe Connect onboarding before activating a tier.",
+            });
+          }
+        }
+        patch.isActive = parsed.isActive;
+      }
       const updated = await billingStorage.updateTier(tier.id, patch);
       return res.json({ tier: updated });
     } catch (e: any) {

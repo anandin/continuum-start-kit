@@ -13,10 +13,16 @@ import { billingStorage } from "./billingStorage";
 // even though the API still returns it.
 type InvoiceWithSub = Stripe.Invoice & {
   subscription?: string | Stripe.Subscription | null;
+  payment_intent?: string | Stripe.PaymentIntent | null;
 };
 
 function invoiceSubId(inv: Stripe.Invoice): string | null {
   const raw = (inv as InvoiceWithSub).subscription ?? null;
+  return typeof raw === "string" ? raw : raw?.id ?? null;
+}
+
+function invoicePaymentIntentId(inv: Stripe.Invoice): string | null {
+  const raw = (inv as InvoiceWithSub).payment_intent ?? null;
   return typeof raw === "string" ? raw : raw?.id ?? null;
 }
 
@@ -127,16 +133,13 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         if (subId) {
           const eb = await billingStorage.getEngagementBillingBySubscriptionId(subId);
           if (eb) {
-            // Persist the payment method that successfully paid this
-            // invoice so the per-confirm gate doesn't block bookings on
-            // an active monthly subscription. Stripe may report the PM
-            // on the invoice's PaymentIntent (charge automatically) or
-            // on the parent subscription's default_payment_method.
+            // Persist the PM that paid this invoice so the per-confirm
+            // PM gate doesn't block bookings on an active subscription.
             let pmId: string | null = null;
-            const piRef = (inv as any).payment_intent;
-            if (typeof piRef === "string" && piRef && stripe) {
+            const piId = invoicePaymentIntentId(inv);
+            if (piId && stripe) {
               try {
-                const pi = await stripe.paymentIntents.retrieve(piRef);
+                const pi = await stripe.paymentIntents.retrieve(piId);
                 if (typeof pi.payment_method === "string") pmId = pi.payment_method;
               } catch {}
             }
