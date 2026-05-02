@@ -1273,6 +1273,34 @@ If ambiguous, choose the earliest relevant stage.`;
   });
 
   // ============================================================
+  // COACH INBOX (triage queue)
+  // ============================================================
+  app.get("/api/coach/inbox", requireProvider, async (req, res) => {
+    try {
+      const rows = await storage.getCoachInboxRows(req.user!.id);
+      res.json(rows);
+    } catch (error: any) {
+      req.log.error({ err: error }, "coach inbox load failed");
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/coach/inbox/:engagementId/handle", requireProvider, async (req, res) => {
+    try {
+      // Verify the engagement actually belongs to this coach before mutating.
+      const engagement = await storage.getEngagementById(req.params.engagementId);
+      if (!engagement || engagement.providerId !== req.user!.id) {
+        return res.status(404).json({ error: "Engagement not found" });
+      }
+      await storage.dismissCoachInboxRow(req.user!.id, req.params.engagementId);
+      res.json({ success: true });
+    } catch (error: any) {
+      req.log.error({ err: error, engagementId: req.params.engagementId }, "coach inbox dismiss failed");
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================
   // PROVIDER AI CONVERSATIONAL ONBOARDING
   // ============================================================
   app.get("/api/provider-onboarding/status", requireProvider, async (req, res) => {

@@ -16,6 +16,10 @@ export default function Dashboard() {
         navigate('/auth');
       } else if (!role) {
         navigate('/auth/role');
+      } else if (role === 'provider') {
+        // Coaches land in the triage Inbox by default; the legacy dashboard
+        // (client list, twin tower, stats) still lives at /provider/dashboard.
+        navigate('/provider/inbox', { replace: true });
       }
     }
   }, [user, role, loading, navigate]);

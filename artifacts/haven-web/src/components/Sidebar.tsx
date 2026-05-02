@@ -1,8 +1,9 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Calendar, Users, BookOpen, ClipboardList, BarChart3, Settings, Sparkles, BookText } from "lucide-react";
+import { LayoutDashboard, Calendar, Users, BookOpen, ClipboardList, BarChart3, Settings, Sparkles, BookText, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
+  { to: "/provider/inbox", label: "Inbox", icon: Inbox },
   { to: "/provider/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/provider/schedule", label: "Schedule", icon: Calendar },
   { to: "/provider/resources", label: "Resources", icon: BookOpen },

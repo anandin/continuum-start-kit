@@ -17,6 +17,7 @@ import Chat from "./pages/Chat";
 import SessionSummary from "./pages/SessionSummary";
 import NotFound from "./pages/NotFound";
 import ProviderDashboard from "./pages/ProviderDashboard";
+import Inbox from "./pages/Inbox";
 import ProviderEngagement from "./pages/ProviderEngagement";
 import ClientSessionSummary from "./pages/ClientSessionSummary";
 import AgentSetup from "./pages/AgentSetup";
@@ -49,6 +50,7 @@ const App = () => (
             <Route path="/provider/onboarding" element={<ProtectedRoute><ProviderOnboarding /></ProtectedRoute>} />
             <Route path="/provider/setup" element={<ProtectedRoute><ProviderSetup /></ProtectedRoute>} />
             <Route path="/provider/agent-setup" element={<ProtectedRoute><AgentSetup /></ProtectedRoute>} />
+            <Route path="/provider/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/provider/dashboard" element={<ProtectedRoute><ProviderDashboard /></ProtectedRoute>} />
             <Route path="/provider/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
             <Route path="/provider/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />

@@ -231,6 +231,25 @@ export const providerOnboardingChats = pgTable("provider_onboarding_chats", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Coach "Inbox triage" — when a coach hits "handled" on an inbox row, write a
+// short-lived dismissal so non-alert reasons (no-contact, etc.) get suppressed
+// for 24h. Alerts use their own is_read state, so this table only carries the
+// transient suppression for everything else.
+export const coachInboxDismissals = pgTable(
+  "coach_inbox_dismissals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    providerId: uuid("provider_id").references(() => users.id).notNull(),
+    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+    dismissedAt: timestamp("dismissed_at").defaultNow(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    byProviderExpires: index("idx_coach_inbox_dismissals_provider_expires")
+      .on(table.providerId, table.expiresAt),
+  }),
+);
+
 // connect-pg-simple session table
 export const userSessions = pgTable(
   "user_sessions",
@@ -436,6 +455,7 @@ export const insertClientMemorySchema = createInsertSchema(clientMemory).omit({ 
 export const insertMoodEntrySchema = createInsertSchema(moodEntries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertJournalPromptSchema = createInsertSchema(journalPrompts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true, updatedAt: true, sharedAt: true });
+export const insertCoachInboxDismissalSchema = createInsertSchema(coachInboxDismissals).omit({ id: true, dismissedAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -465,6 +485,7 @@ export type InsertClientMemory = z.infer<typeof insertClientMemorySchema>;
 export type InsertMoodEntry = z.infer<typeof insertMoodEntrySchema>;
 export type InsertJournalPrompt = z.infer<typeof insertJournalPromptSchema>;
 export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
+export type InsertCoachInboxDismissal = z.infer<typeof insertCoachInboxDismissalSchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -495,3 +516,4 @@ export type ClientMemory = typeof clientMemory.$inferSelect;
 export type MoodEntry = typeof moodEntries.$inferSelect;
 export type JournalPrompt = typeof journalPrompts.$inferSelect;
 export type JournalEntry = typeof journalEntries.$inferSelect;
+export type CoachInboxDismissal = typeof coachInboxDismissals.$inferSelect;

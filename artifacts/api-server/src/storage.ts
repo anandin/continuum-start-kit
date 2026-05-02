@@ -5,6 +5,7 @@ import {
   engagements, sessions, messages, summaries, progressIndicators,
   clientNotes, goals, goalProgress, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
   moodEntries, journalPrompts, journalEntries,
+  safetyEvents, coachInboxDismissals,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
   InsertSummary, InsertProgressIndicator,
@@ -16,6 +17,32 @@ import {
   ClientNote, Goal, GoalProgress, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat,
   MoodEntry, JournalPrompt, JournalEntry
 } from "@workspace/db";
+
+// Coach inbox row — one per active engagement, composed from alerts +
+// safety_events + last-message-per-engagement, with severity and reason.
+export type CoachInboxSeverity = "critical" | "elevated" | "quiet";
+export type CoachInboxReasonKind =
+  | "safety"
+  | "alerts"
+  | "no_contact"
+  | "unread_messages";
+export interface CoachInboxReason {
+  kind: CoachInboxReasonKind;
+  label: string;
+  timestamp: string | null;
+}
+export interface CoachInboxRow {
+  engagementId: string;
+  seekerUserId: string | null;
+  seekerAlias: string;
+  severity: CoachInboxSeverity;
+  reasons: CoachInboxReason[];
+  lastMessageAt: string | null;
+  unreadAlertCount: number;
+  latestSafetyEventAt: string | null;
+  activeSessionId: string | null;
+  dismissedUntil: string | null;
+}
 
 export interface IStorage {
   createUser(data: InsertUser): Promise<User>;
@@ -142,6 +169,10 @@ export interface IStorage {
   getJournalEntryById(id: string): Promise<JournalEntry | undefined>;
   listJournalEntriesBySeekerId(seekerId: string): Promise<JournalEntry[]>;
   listSharedJournalEntriesByEngagementId(engagementId: string): Promise<JournalEntry[]>;
+
+  // Coach Inbox triage
+  getCoachInboxRows(providerId: string, opts?: { now?: Date }): Promise<CoachInboxRow[]>;
+  dismissCoachInboxRow(providerId: string, engagementId: string, opts?: { hours?: number; now?: Date }): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -850,6 +881,343 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(journalEntries.createdAt));
   }
+
+  // ============ Coach Inbox triage ============
+  async getCoachInboxRows(
+    providerId: string,
+    opts: { now?: Date } = {},
+  ): Promise<CoachInboxRow[]> {
+    const now = opts.now ?? new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // 1. Active engagements for this coach with seeker linkage.
+    const engagementRows = await db
+      .select({
+        engagementId: engagements.id,
+        seekerId: engagements.seekerId,
+        seekerOwnerId: seekers.ownerId,
+      })
+      .from(engagements)
+      .innerJoin(seekers, eq(seekers.id, engagements.seekerId))
+      .where(and(
+        eq(engagements.providerId, providerId),
+        eq(engagements.status, "active"),
+      ));
+
+    if (engagementRows.length === 0) return [];
+
+    const engagementIds = engagementRows.map((r) => r.engagementId);
+
+    // 2. Per-engagement aggregates run in parallel.
+    const [
+      lastMessageRows,
+      lastSeekerMessageRows,
+      lastProviderMessageRows,
+      unreadAlertRows,
+      criticalSafetyRows,
+      activeSessionRows,
+      dismissalRows,
+    ] = await Promise.all([
+      // Latest message overall (any role) per engagement — used for the
+      // "no contact in N days" reason.
+      db.select({
+        engagementId: sessions.engagementId,
+        lastAt: sql<Date>`max(${messages.createdAt})`.as("last_at"),
+      })
+        .from(messages)
+        .innerJoin(sessions, eq(sessions.id, messages.sessionId))
+        .where(inArrayRaw(sessions.engagementId, engagementIds))
+        .groupBy(sessions.engagementId),
+      // Latest seeker-authored message per engagement
+      db.select({
+        engagementId: sessions.engagementId,
+        lastAt: sql<Date>`max(${messages.createdAt})`.as("last_seeker_at"),
+      })
+        .from(messages)
+        .innerJoin(sessions, eq(sessions.id, messages.sessionId))
+        .where(and(
+          inArrayRaw(sessions.engagementId, engagementIds),
+          eq(messages.role, "seeker"),
+        ))
+        .groupBy(sessions.engagementId),
+      // Latest provider-authored message per engagement — used to detect
+      // "seeker awaiting reply" (we deliberately ignore agent/twin replies
+      // because they don't count as a coach having replied).
+      db.select({
+        engagementId: sessions.engagementId,
+        lastAt: sql<Date>`max(${messages.createdAt})`.as("last_provider_at"),
+      })
+        .from(messages)
+        .innerJoin(sessions, eq(sessions.id, messages.sessionId))
+        .where(and(
+          inArrayRaw(sessions.engagementId, engagementIds),
+          eq(messages.role, "provider"),
+        ))
+        .groupBy(sessions.engagementId),
+      // Unread alert count + latest unread alert per engagement
+      db.select({
+        engagementId: alerts.engagementId,
+        count: sql<number>`count(*)::int`.as("count"),
+        latestAt: sql<Date>`max(${alerts.createdAt})`.as("latest_at"),
+      })
+        .from(alerts)
+        .where(and(
+          eq(alerts.providerId, providerId),
+          eq(alerts.isRead, false),
+        ))
+        .groupBy(alerts.engagementId),
+      // Critical safety events (input/output gate, severity high/critical) in last 7 days
+      db.select({
+        engagementId: safetyEvents.engagementId,
+        latestAt: sql<Date>`max(${safetyEvents.createdAt})`.as("latest_at"),
+      })
+        .from(safetyEvents)
+        .where(and(
+          eq(safetyEvents.providerId, providerId),
+          gte(safetyEvents.createdAt, sevenDaysAgo),
+          inArrayRaw(safetyEvents.stage, ["input", "output"]),
+          inArrayRaw(safetyEvents.severity, ["high", "critical"]),
+        ))
+        .groupBy(safetyEvents.engagementId),
+      // One active session per engagement for the "Open chat" CTA
+      db.select({
+        engagementId: sessions.engagementId,
+        sessionId: sessions.id,
+      })
+        .from(sessions)
+        .where(and(
+          inArrayRaw(sessions.engagementId, engagementIds),
+          eq(sessions.status, "active"),
+        )),
+      // Active dismissals
+      db.select({
+        engagementId: coachInboxDismissals.engagementId,
+        expiresAt: coachInboxDismissals.expiresAt,
+      })
+        .from(coachInboxDismissals)
+        .where(and(
+          eq(coachInboxDismissals.providerId, providerId),
+          gte(coachInboxDismissals.expiresAt, now),
+        )),
+    ]);
+
+    // Drizzle returns aggregate timestamps (max(...)) as raw strings, so
+    // normalize everything to Date here once.
+    const toDate = (v: unknown): Date | null => {
+      if (!v) return null;
+      if (v instanceof Date) return v;
+      const d = new Date(v as string);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+
+    const lastMessageMap = new Map<string, Date>();
+    for (const r of lastMessageRows) {
+      const d = toDate(r.lastAt);
+      if (r.engagementId && d) lastMessageMap.set(r.engagementId, d);
+    }
+    const lastSeekerMessageMap = new Map<string, Date>();
+    for (const r of lastSeekerMessageRows) {
+      const d = toDate(r.lastAt);
+      if (r.engagementId && d) lastSeekerMessageMap.set(r.engagementId, d);
+    }
+    const lastProviderMessageMap = new Map<string, Date>();
+    for (const r of lastProviderMessageRows) {
+      const d = toDate(r.lastAt);
+      if (r.engagementId && d) lastProviderMessageMap.set(r.engagementId, d);
+    }
+    const alertMap = new Map<string, { count: number; latestAt: Date }>();
+    for (const r of unreadAlertRows) {
+      const d = toDate(r.latestAt);
+      if (r.engagementId && d) alertMap.set(r.engagementId, { count: r.count, latestAt: d });
+    }
+    const safetyMap = new Map<string, Date>();
+    for (const r of criticalSafetyRows) {
+      const d = toDate(r.latestAt);
+      if (r.engagementId && d) safetyMap.set(r.engagementId, d);
+    }
+    const activeSessionMap = new Map<string, string>();
+    // Multiple active sessions per engagement is unusual, but if it happens we
+    // just keep one — any active session works for the "Open chat" CTA.
+    for (const r of activeSessionRows) if (r.engagementId) activeSessionMap.set(r.engagementId, r.sessionId);
+    const dismissalMap = new Map<string, Date>();
+    for (const r of dismissalRows) {
+      const expires = toDate(r.expiresAt);
+      if (!expires) continue;
+      const existing = dismissalMap.get(r.engagementId);
+      if (!existing || expires > existing) dismissalMap.set(r.engagementId, expires);
+    }
+
+    const rows: CoachInboxRow[] = engagementRows.map((eng) => {
+      const lastMessageAt = lastMessageMap.get(eng.engagementId) ?? null;
+      const lastSeekerMessageAt = lastSeekerMessageMap.get(eng.engagementId) ?? null;
+      const lastProviderMessageAt = lastProviderMessageMap.get(eng.engagementId) ?? null;
+      const alert = alertMap.get(eng.engagementId);
+      const safetyAt = safetyMap.get(eng.engagementId) ?? null;
+      const dismissedUntil = dismissalMap.get(eng.engagementId) ?? null;
+
+      const reasons: CoachInboxReason[] = [];
+
+      // Critical: recent safety event
+      if (safetyAt) {
+        reasons.push({
+          kind: "safety",
+          label: `Safety event ${formatRelative(safetyAt, now)}`,
+          timestamp: safetyAt.toISOString(),
+        });
+      }
+
+      // Elevated: unread alerts
+      if (alert && alert.count > 0) {
+        reasons.push({
+          kind: "alerts",
+          label: alert.count === 1
+            ? "1 unread alert"
+            : `${alert.count} unread alerts`,
+          timestamp: alert.latestAt.toISOString(),
+        });
+      }
+
+      // Elevated: seeker waiting for a coach reply >=24h. We compare against
+      // the last *provider*-authored message — agent/twin auto-replies do NOT
+      // count as a coach having replied.
+      if (lastSeekerMessageAt) {
+        const lastSeekerMs = lastSeekerMessageAt.getTime();
+        const lastProviderMs = lastProviderMessageAt?.getTime() ?? 0;
+        if (lastSeekerMs > lastProviderMs) {
+          const ageH = Math.floor((now.getTime() - lastSeekerMs) / (60 * 60 * 1000));
+          if (ageH >= 24) {
+            reasons.push({
+              kind: "unread_messages",
+              label: ageH < 48
+                ? `Awaiting reply for ${ageH}h`
+                : `Awaiting reply for ${Math.floor(ageH / 24)}d`,
+              timestamp: lastSeekerMessageAt.toISOString(),
+            });
+          }
+        }
+      }
+
+      // Quiet: no contact in 7+ days (use last message; fall back to "never").
+      const lastContact = lastMessageAt;
+      const daysSinceContact = lastContact
+        ? Math.floor((now.getTime() - lastContact.getTime()) / (24 * 60 * 60 * 1000))
+        : null;
+      if (!safetyAt && (!alert || alert.count === 0)) {
+        if (daysSinceContact === null) {
+          reasons.push({
+            kind: "no_contact",
+            label: "No contact yet",
+            timestamp: null,
+          });
+        } else if (daysSinceContact >= 7) {
+          reasons.push({
+            kind: "no_contact",
+            label: `No contact in ${daysSinceContact} days`,
+            timestamp: lastContact!.toISOString(),
+          });
+        }
+      }
+
+      let severity: CoachInboxSeverity;
+      if (safetyAt) severity = "critical";
+      else if ((alert && alert.count > 0) || reasons.some((r) => r.kind === "unread_messages")) severity = "elevated";
+      else severity = "quiet";
+
+      return {
+        engagementId: eng.engagementId,
+        seekerUserId: eng.seekerOwnerId ?? null,
+        seekerAlias: `Seeker-${(eng.seekerId ?? "unknown").slice(0, 8)}`,
+        severity,
+        reasons,
+        lastMessageAt: lastMessageAt?.toISOString() ?? null,
+        unreadAlertCount: alert?.count ?? 0,
+        latestSafetyEventAt: safetyAt?.toISOString() ?? null,
+        activeSessionId: activeSessionMap.get(eng.engagementId) ?? null,
+        dismissedUntil: dismissedUntil?.toISOString() ?? null,
+      };
+    });
+
+    // Filter: keep rows with at least one reason. Suppress dismissed rows
+    // entirely until the 24h window expires — that's what "handled" promises.
+    const visible = rows.filter((r) => r.reasons.length > 0 && !r.dismissedUntil);
+
+    // Sort: critical first, then elevated, then quiet (oldest contact first).
+    const severityRank: Record<CoachInboxSeverity, number> = {
+      critical: 0,
+      elevated: 1,
+      quiet: 2,
+    };
+    // Pick the newest reason timestamp on a row for tiebreaking (don't rely on
+    // reasons[0] ordering — pickest the actually-newest signal).
+    const newestReasonTs = (r: CoachInboxRow): string =>
+      r.reasons.reduce<string>((acc, reason) => {
+        if (!reason.timestamp) return acc;
+        return reason.timestamp > acc ? reason.timestamp : acc;
+      }, "");
+    visible.sort((a, b) => {
+      const sd = severityRank[a.severity] - severityRank[b.severity];
+      if (sd !== 0) return sd;
+      // Within critical/elevated: newest trigger first
+      if (a.severity !== "quiet") {
+        const aAt = newestReasonTs(a) || a.lastMessageAt || "";
+        const bAt = newestReasonTs(b) || b.lastMessageAt || "";
+        return bAt.localeCompare(aAt);
+      }
+      // Quiet: oldest contact first ("most overdue at top")
+      const aAt = a.lastMessageAt ?? "";
+      const bAt = b.lastMessageAt ?? "";
+      return aAt.localeCompare(bAt);
+    });
+
+    return visible;
+  }
+
+  async dismissCoachInboxRow(
+    providerId: string,
+    engagementId: string,
+    opts: { hours?: number; now?: Date } = {},
+  ): Promise<void> {
+    const hours = opts.hours ?? 24;
+    const now = opts.now ?? new Date();
+    const expiresAt = new Date(now.getTime() + hours * 60 * 60 * 1000);
+
+    await db.transaction(async (tx) => {
+      // Mark all unread alerts for this engagement+provider as read.
+      await tx
+        .update(alerts)
+        .set({ isRead: true })
+        .where(and(
+          eq(alerts.providerId, providerId),
+          eq(alerts.engagementId, engagementId),
+          eq(alerts.isRead, false),
+        ));
+      // Insert a fresh dismissal so non-alert reasons are suppressed for 24h.
+      await tx
+        .insert(coachInboxDismissals)
+        .values({ providerId, engagementId, expiresAt });
+    });
+  }
+}
+
+// ----- helpers -----
+
+// Drizzle's `inArray` requires a non-empty list; this wrapper returns a
+// guaranteed-false condition when the list is empty so callers don't need to
+// short-circuit themselves.
+function inArrayRaw<T extends string>(column: any, values: T[]): any {
+  if (values.length === 0) return sql`false`;
+  return sql`${column} in ${values}`;
+}
+
+function formatRelative(then: Date, now: Date): string {
+  const diffMs = now.getTime() - then.getTime();
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hours = Math.floor(min / 60);
+  if (hours < 48) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 export const storage = new DatabaseStorage();
