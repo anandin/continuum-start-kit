@@ -12,6 +12,7 @@
 
 import { chat, llmConfigured } from "../lib/llm";
 import { checkInput, checkOutput, withConstitution, crisisTemplateFor, type SafetyRegion } from "./safety";
+import { getActiveAgentVersionForProvider } from "./twinStorage";
 import { compilePersonaForTurn } from "./persona";
 import { buildMemoryContext } from "./memory";
 import { storage } from "../storage";
@@ -71,12 +72,18 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
   // Resolve region from the seeker's user profile so crisis templates are
   // localized (US: 988/741741/911, INTL: Samaritans/findahelpline.com/112).
   const region = await resolveRegion(input.userId);
+  // Resolve the active L2 agent_version once so every safety_event written
+  // for this turn (input gate, output gate, internal events) carries the
+  // exact persona version the model was prompted with — required for
+  // reproducibility/audit when the persona evolves.
+  const activeVersion = await getActiveAgentVersionForProvider(input.providerId).catch(() => undefined);
   const ctx = {
     sessionId: input.sessionId ?? undefined,
     engagementId: input.engagementId ?? undefined,
     userId: input.userId,
     providerId: input.providerId,
     region,
+    agentVersionId: activeVersion?.id,
   };
 
   // ---- L1 input gate (fail-closed: if it throws, refuse the turn)

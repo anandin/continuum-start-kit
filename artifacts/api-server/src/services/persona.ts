@@ -9,7 +9,7 @@
  */
 
 import { storage } from "../storage";
-import { topPersonaExamples } from "./twinStorage";
+import { topPersonaExamples, listPersonaExamplesByProvider, bumpAgentVersion } from "./twinStorage";
 import { embed } from "../lib/llm";
 import type { PersonaExample, ProviderConfig, ProviderAgentConfig } from "@workspace/db";
 
@@ -95,4 +95,46 @@ export async function compilePersonaForTurn(opts: {
     providerConfig,
     selectedModel,
   };
+}
+
+/**
+ * L2 reproducibility snapshot. Compiles the persona without per-turn retrieval
+ * (uses the full set of active persona examples) and writes a new active row
+ * to agent_versions, deactivating the previous one. Call this whenever the
+ * persona materially changes — onboarding apply, calibration approve/correct,
+ * or review-queue label — so each L2 input produces an auditable version.
+ */
+export async function snapshotAgentVersion(opts: {
+  providerId: string;
+  reason: string;
+  createdBy?: string | null;
+}): Promise<void> {
+  try {
+    const [agentConfig, providerConfig, examples] = await Promise.all([
+      storage.getProviderAgentConfigByProviderId(opts.providerId),
+      storage.getProviderConfigByProviderId(opts.providerId),
+      listPersonaExamplesByProvider(opts.providerId),
+    ]);
+    const sections = [
+      renderAgentConfig(agentConfig),
+      renderProviderProgram(providerConfig, null),
+      renderExamples(examples),
+    ].filter(Boolean);
+    const compiledSystemPrompt =
+      sections.length > 0
+        ? sections.join("\n\n")
+        : "You are a warm, attentive AI companion supporting a human therapist's practice.";
+    await bumpAgentVersion({
+      providerId: opts.providerId,
+      reason: opts.reason,
+      createdBy: opts.createdBy ?? null,
+      agentConfig: (agentConfig as unknown as Record<string, unknown>) ?? null,
+      providerConfig: (providerConfig as unknown as Record<string, unknown>) ?? null,
+      compiledSystemPrompt,
+      exampleIds: examples.map((e) => e.id),
+    });
+  } catch {
+    // Non-fatal: never block the caller's user-visible action on an
+    // audit-only snapshot. The next material change will retry.
+  }
 }

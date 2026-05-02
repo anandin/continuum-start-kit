@@ -66,6 +66,52 @@ export async function getActiveAgentVersionForProvider(providerId: string): Prom
   return row;
 }
 
+// Mark all current active versions for a provider as inactive. Called by
+// bumpAgentVersion before inserting the new active row so there is always
+// exactly one active version per provider.
+async function deactivateAllAgentVersionsForProvider(providerId: string): Promise<void> {
+  await db
+    .update(agentVersions)
+    .set({ isActive: false })
+    .where(and(eq(agentVersions.providerId, providerId), eq(agentVersions.isActive, true)));
+}
+
+// L2 reproducibility: snapshot the current persona config + active example IDs
+// whenever the persona materially changes (onboarding apply, calibration
+// approve/correct, review-queue label). Avoids running retrieval — the
+// snapshot is the deterministic compiled prompt minus the per-turn top-K.
+export async function bumpAgentVersion(opts: {
+  providerId: string;
+  reason: string;
+  createdBy?: string | null;
+  agentConfig: Record<string, unknown> | null;
+  providerConfig: Record<string, unknown> | null;
+  compiledSystemPrompt: string;
+  exampleIds: string[];
+}): Promise<AgentVersion> {
+  const prev = await getActiveAgentVersionForProvider(opts.providerId);
+  const nextVersion = (prev?.version ?? 0) + 1;
+  await deactivateAllAgentVersionsForProvider(opts.providerId);
+  const snapshot = {
+    reason: opts.reason,
+    agentConfig: opts.agentConfig,
+    providerConfig: opts.providerConfig,
+  };
+  const [row] = await db
+    .insert(agentVersions)
+    .values({
+      providerId: opts.providerId,
+      version: nextVersion,
+      compiledSystemPrompt: opts.compiledSystemPrompt,
+      agentConfigSnapshot: snapshot,
+      exampleIds: opts.exampleIds,
+      isActive: true,
+      createdBy: opts.createdBy ?? null,
+    })
+    .returning();
+  return row;
+}
+
 // ============ Persona examples (L2) ============
 export async function createPersonaExample(
   data: InsertPersonaExample,

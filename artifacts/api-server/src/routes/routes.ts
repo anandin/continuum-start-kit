@@ -38,6 +38,7 @@ import {
 } from "../services/twinStorage";
 import { embed, llmConfigured, type ChatMessage } from "../lib/llm";
 import { runGuardedLLM } from "../services/safety";
+import { snapshotAgentVersion } from "../services/persona";
 import type {
   SyntheticClientProfile,
   CalibrationTurn,
@@ -182,15 +183,25 @@ export function registerRoutes(app: Express) {
       const data = req.body;
 
       const existingConfig = await storage.getProviderAgentConfigByProviderId(userId);
-      
+
       if (existingConfig) {
         const updated = await storage.updateProviderAgentConfig(existingConfig.id, data);
+        await snapshotAgentVersion({
+          providerId: userId,
+          reason: "agent_config_updated",
+          createdBy: userId,
+        });
         return res.json(updated);
       }
 
       const config = await storage.createProviderAgentConfig({
         providerId: userId,
         ...data,
+      });
+      await snapshotAgentVersion({
+        providerId: userId,
+        reason: "agent_config_created",
+        createdBy: userId,
       });
       res.json(config);
     } catch (error: any) {
@@ -1279,6 +1290,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       } else {
         await storage.createProviderAgentConfig(agentData);
       }
+      await snapshotAgentVersion({
+        providerId: userId,
+        reason: "onboarding_apply",
+        createdBy: userId,
+      });
 
       if (chat) {
         await storage.updateProviderOnboardingChat(chat.id, { status: "completed" });
@@ -1442,6 +1458,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         },
         embedding,
       );
+      await snapshotAgentVersion({
+        providerId: req.user!.id,
+        reason: "persona_example_manual",
+        createdBy: req.user!.id,
+      });
       res.json(row);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -1452,6 +1473,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (!ex) return res.status(404).json({ error: "Not found" });
       if (ex.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
       await deactivatePersonaExample(req.params.id);
+      await snapshotAgentVersion({
+        providerId: req.user!.id,
+        reason: "persona_example_deactivated",
+        createdBy: req.user!.id,
+      });
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -1654,6 +1680,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           },
           embedding,
         );
+        await snapshotAgentVersion({
+          providerId: req.user!.id,
+          reason: `calibration_approve:${label}`,
+          createdBy: req.user!.id,
+        });
       }
 
       // "Never say this" triggers a safety event so it shows in the audit log
@@ -1740,6 +1771,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         },
         embedding,
       );
+      await snapshotAgentVersion({
+        providerId: req.user!.id,
+        reason: "calibration_correct",
+        createdBy: req.user!.id,
+      });
 
       const updated = await updateCalibrationSession(calib.id, { transcript });
       res.json(updated);
@@ -1919,6 +1955,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         },
         embedding,
       );
+      await snapshotAgentVersion({
+        providerId: req.user!.id,
+        reason: `review_queue_label:${safeLabel}`,
+        createdBy: req.user!.id,
+      });
 
       if (safeLabel === "never_say_this") {
         await logSafetyEvent({
