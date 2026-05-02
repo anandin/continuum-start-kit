@@ -640,12 +640,40 @@ export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLM
     };
   }
 
+  // L1 identity injection — non-overridable. Every LLM call routed through
+  // runGuardedLLM gets the constitutional preamble whether or not the
+  // caller supplied a system prompt. We MERGE rather than just prepend so
+  // that:
+  //   - if the caller already starts with system message(s), we wrap their
+  //     existing system prompt with withConstitution() so the identity sits
+  //     at the top and cannot be overridden by a later system message;
+  //   - if there is no system message, we synthesize one carrying the
+  //     constitution alone.
+  // This guarantees that internal flows (calibration synthetic client,
+  // session reflection, onboarding generation, summaries, etc.) never
+  // reach the model without the "I am not a licensed therapist" identity.
+  const guardedMessages: ChatMessage[] = (() => {
+    const msgs = [...opts.messages];
+    if (msgs.length > 0 && msgs[0].role === "system") {
+      const merged: ChatMessage = {
+        role: "system",
+        content: withConstitution(msgs[0].content),
+      };
+      return [merged, ...msgs.slice(1)];
+    }
+    const constitutionOnly: ChatMessage = {
+      role: "system",
+      content: withConstitution(""),
+    };
+    return [constitutionOnly, ...msgs];
+  })();
+
   // Model call — failures bubble up; caller's error handler renders 5xx.
   const raw = await rawChat({
     model: opts.model,
     temperature: opts.temperature,
     jsonMode: opts.jsonMode,
-    messages: opts.messages,
+    messages: guardedMessages,
   });
 
   // Tag the audit row with purpose/kind so internal calls are queryable.
