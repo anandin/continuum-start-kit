@@ -177,9 +177,19 @@ export default function Onboarding() {
           );
           const body = await r.json().catch(() => ({}));
           if (body?.subscription?.clientSecret) {
+            // Monthly tier produced an incomplete subscription — the
+            // seeker still needs to attach a card before the first
+            // invoice is paid. We surface this and route them straight
+            // to the Payment page after onboarding lands.
             toast.message(
-              'Add a card on the Payment page to finish your subscription.',
+              'Add a card on the Payment page to start your subscription.',
             );
+            try {
+              sessionStorage.setItem(
+                'haven:pendingPayment',
+                JSON.stringify({ engagementId: engagement.id }),
+              );
+            } catch {}
           }
         } catch (err) {
           console.warn('select-tier failed in onboarding', err);

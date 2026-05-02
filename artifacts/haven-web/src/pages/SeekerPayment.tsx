@@ -351,6 +351,8 @@ export default function SeekerPayment() {
                         ? "Active"
                         : summary.status === "past_due"
                         ? "Past due"
+                        : summary.status === "incomplete"
+                        ? "Awaiting payment"
                         : summary.status}
                     </Badge>
                   </div>

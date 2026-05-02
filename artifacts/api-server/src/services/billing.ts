@@ -310,6 +310,21 @@ export async function setEngagementDefaultPaymentMethod(opts: {
     await stripe.customers.update(eb.stripeCustomerId, {
       invoice_settings: { default_payment_method: opts.paymentMethodId },
     });
+    // If there's an active subscription, also pin the default PM at
+    // the subscription level so future invoices charge this card
+    // automatically without falling back to customer defaults.
+    if (eb.stripeSubscriptionId) {
+      try {
+        await stripe.subscriptions.update(eb.stripeSubscriptionId, {
+          default_payment_method: opts.paymentMethodId,
+        });
+      } catch (err: any) {
+        logger.warn(
+          { err: err?.message },
+          "billing: failed setting subscription default_payment_method",
+        );
+      }
+    }
     return { ok: true };
   } catch (err: any) {
     return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
@@ -330,7 +345,12 @@ export async function retryPendingChargeForEngagement(
   if (!stripe) return { attempted: false, reason: "not_configured" };
   const eb = await billingStorage.getEngagementBilling(engagementId);
   if (!eb?.lastPaymentIntentId) return { attempted: false, reason: "no_pending_pi" };
-  if (eb.status !== "past_due") return { attempted: false, reason: "not_past_due" };
+  // Both `past_due` (per-session decline or subscription invoice failure)
+  // and `incomplete` (subscription created but first invoice never paid)
+  // unlock retry once the seeker has attached a working card.
+  if (eb.status !== "past_due" && eb.status !== "incomplete") {
+    return { attempted: false, reason: "not_retryable" };
+  }
   try {
     const pi = await stripe.paymentIntents.retrieve(eb.lastPaymentIntentId);
     if (pi.status === "succeeded") {
@@ -466,11 +486,21 @@ export async function subscribeMonthly(opts: {
           ? null
           : (latestInvoice.payment_intent ?? null)
         : null;
+    // If Stripe returned an `incomplete` subscription (the default for
+    // default_incomplete behaviour) the first invoice has a PI that
+    // requires a card. We persist the PI id so the seeker's Payment
+    // page can finish it after attaching a payment method, and we mark
+    // the engagement `incomplete` so new sessions are blocked until
+    // the first invoice actually pays.
+    const isActive = sub.status === "active" || sub.status === "trialing";
     await billingStorage.upsertEngagementBilling({
       engagementId: opts.engagementId,
       tierId: tier.id,
       stripeSubscriptionId: sub.id,
-      status: sub.status === "active" || sub.status === "trialing" ? "active" : "none",
+      lastPaymentIntentId: pi?.id ?? null,
+      status: isActive ? "active" : "incomplete",
+      failedAt: null,
+      lastFailureMessage: null,
     });
     return {
       ok: true,
@@ -504,7 +534,10 @@ export async function buildBillingSummary(
     configured: !!process.env.STRIPE_SECRET_KEY,
     tier,
     status: eb?.status ?? "none",
-    pastDue: eb?.status === "past_due",
+    // pastDue is the gating flag the UI uses to nag the seeker for a
+    // working card; an incomplete subscription is the same situation
+    // (open invoice waiting on payment) so we lump them together.
+    pastDue: eb?.status === "past_due" || eb?.status === "incomplete",
     subscription: { id: eb?.stripeSubscriptionId ?? null },
     lastFailureMessage: eb?.lastFailureMessage ?? null,
   };

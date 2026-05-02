@@ -3356,10 +3356,10 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       try {
         const { billingStorage } = await import("../services/billingStorage");
         const eb = await billingStorage.getEngagementBilling(row.engagementId);
-        if (eb?.status === "past_due") {
+        if (eb?.status === "past_due" || eb?.status === "incomplete") {
           return res.status(402).json({
             error:
-              "Payment is past due. Please update your tier or payment method on the Payment tab before booking new sessions.",
+              "Payment needs attention. Please add or update your payment method on the Payment tab before booking new sessions.",
           });
         }
       } catch {
