@@ -8,6 +8,10 @@ import React, {
 } from "react";
 
 import { api, clearSession } from "@/lib/api";
+import {
+  registerForPushNotifications,
+  unregisterPushNotifications,
+} from "@/lib/notifications";
 
 export interface HavenUser {
   id: string;
@@ -38,6 +42,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Whenever we have an authenticated user, opportunistically register the
+  // Expo push token with the server. Permission prompts only fire once;
+  // subsequent calls short-circuit inside the helper.
+  useEffect(() => {
+    if (!user) return;
+    void registerForPushNotifications().catch(() => null);
+  }, [user]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -66,6 +78,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Drop the device's push token first so a shared device doesn't keep
+    // delivering this user's notifications after they sign out.
+    try {
+      await unregisterPushNotifications();
+    } catch {
+      // ignore — best effort
+    }
     try {
       await api("/api/auth/logout", { method: "POST" });
     } catch {

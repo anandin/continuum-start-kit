@@ -6,16 +6,19 @@ import {
   clientNotes, goals, goalProgress, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
   moodEntries, journalPrompts, journalEntries,
   safetyEvents, coachInboxDismissals,
+  pushTokens,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
   InsertSummary, InsertProgressIndicator,
   InsertClientNote, InsertGoal, InsertGoalProgress, InsertIntakeForm, InsertIntakeResponse,
   InsertResource, InsertResourceAssignment, InsertAlert, InsertProviderOnboardingChat,
   InsertMoodEntry, InsertJournalPrompt, InsertJournalEntry,
+  InsertPushToken,
   User, Profile, UserRole, Seeker,
   ProviderConfig, ProviderAgentConfig, Engagement, Session, Message, Summary, ProgressIndicator,
   ClientNote, Goal, GoalProgress, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat,
-  MoodEntry, JournalPrompt, JournalEntry
+  MoodEntry, JournalPrompt, JournalEntry,
+  PushToken,
 } from "@workspace/db";
 
 // Coach inbox row — one per active engagement, composed from alerts +
@@ -173,6 +176,12 @@ export interface IStorage {
   // Coach Inbox triage
   getCoachInboxRows(providerId: string, opts?: { now?: Date }): Promise<CoachInboxRow[]>;
   dismissCoachInboxRow(providerId: string, engagementId: string, opts?: { hours?: number; now?: Date }): Promise<void>;
+
+  // Push Tokens
+  upsertPushToken(data: InsertPushToken): Promise<PushToken>;
+  getPushTokensByUserId(userId: string, opts?: { onlyEnabled?: boolean }): Promise<PushToken[]>;
+  setPushTokensEnabledForUser(userId: string, enabled: boolean): Promise<void>;
+  deletePushToken(token: string, userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1235,6 +1244,46 @@ export class DatabaseStorage implements IStorage {
         .insert(coachInboxDismissals)
         .values({ providerId, engagementId, expiresAt });
     });
+  }
+
+  // ============ Push Tokens ============
+  async upsertPushToken(data: InsertPushToken): Promise<PushToken> {
+    // On conflict we deliberately do NOT touch `enabled` — that is owned
+    // by the user's explicit preference (toggle on Profile / PATCH route).
+    // Re-registering an existing token must not silently re-enable a
+    // token the user has previously turned off.
+    const now = new Date();
+    const [row] = await db.insert(pushTokens)
+      .values(data)
+      .onConflictDoUpdate({
+        target: pushTokens.token,
+        set: {
+          userId: data.userId,
+          platform: data.platform ?? null,
+          updatedAt: now,
+          lastSeenAt: now,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async getPushTokensByUserId(userId: string, opts?: { onlyEnabled?: boolean }): Promise<PushToken[]> {
+    const where = opts?.onlyEnabled
+      ? and(eq(pushTokens.userId, userId), eq(pushTokens.enabled, true))
+      : eq(pushTokens.userId, userId);
+    return db.select().from(pushTokens).where(where).orderBy(desc(pushTokens.updatedAt));
+  }
+
+  async setPushTokensEnabledForUser(userId: string, enabled: boolean): Promise<void> {
+    await db.update(pushTokens)
+      .set({ enabled, updatedAt: new Date() })
+      .where(eq(pushTokens.userId, userId));
+  }
+
+  async deletePushToken(token: string, userId: string): Promise<void> {
+    await db.delete(pushTokens)
+      .where(and(eq(pushTokens.token, token), eq(pushTokens.userId, userId)));
   }
 }
 

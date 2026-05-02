@@ -6,9 +6,11 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+
+import { Notifications } from "@/lib/notifications";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -25,6 +27,43 @@ const queryClient = new QueryClient({
     queries: { retry: 1, refetchOnWindowFocus: false },
   },
 });
+
+function NotificationDeepLinkHandler() {
+  // Route the seeker to chat when they tap a coach reply / check-in
+  // notification. We honor explicit `data.path` overrides if the server
+  // ever sends them, otherwise default to the chat tab.
+  useEffect(() => {
+    const handle = (data: Record<string, unknown> | undefined) => {
+      if (!data) return;
+      const explicit = typeof data.path === "string" ? (data.path as string) : null;
+      const type = typeof data.type === "string" ? (data.type as string) : null;
+      try {
+        if (explicit) {
+          router.push(explicit as never);
+          return;
+        }
+        if (type === "coach_message" || type === "coach_check_in") {
+          router.push("/(tabs)/chat" as never);
+        }
+      } catch {
+        // Router may not be ready yet; failure is acceptable.
+      }
+    };
+
+    // Cold-start: the user tapped the notification while the app was killed.
+    Notifications.getLastNotificationResponseAsync().then((res) => {
+      handle(res?.notification.request.content.data as Record<string, unknown> | undefined);
+    });
+
+    // Warm-start: the app was already running.
+    const sub = Notifications.addNotificationResponseReceivedListener((res) => {
+      handle(res.notification.request.content.data as Record<string, unknown> | undefined);
+    });
+    return () => sub.remove();
+  }, []);
+
+  return null;
+}
 
 function RootLayoutNav() {
   return (
@@ -67,6 +106,7 @@ export default function RootLayout() {
               <AuthProvider>
                 <CrisisProvider>
                   <BiometricLockProvider>
+                    <NotificationDeepLinkHandler />
                     <RootLayoutNav />
                   </BiometricLockProvider>
                 </CrisisProvider>

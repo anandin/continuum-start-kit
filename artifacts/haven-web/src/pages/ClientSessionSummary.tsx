@@ -16,7 +16,8 @@ import {
   Calendar,
   AlertCircle,
   CheckCircle2,
-  Users
+  Users,
+  Bell
 } from 'lucide-react';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
 import { toast } from 'sonner';
@@ -45,6 +46,34 @@ export default function ClientSessionSummary() {
   const [engagement, setEngagement] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
   const [latestSummary, setLatestSummary] = useState<any>(null);
+  const [sendingCheckIn, setSendingCheckIn] = useState(false);
+
+  const handleSendCheckIn = async () => {
+    if (!engagement || sendingCheckIn) return;
+    setSendingCheckIn(true);
+    try {
+      const res = await fetch(`/api/engagements/${engagement.id}/check-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to send check-in');
+      }
+      const data = await res.json();
+      toast.success(
+        data?.notified
+          ? 'Check-in sent — your client will get a push notification.'
+          : 'Check-in saved (client has not enabled push notifications).'
+      );
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to send check-in');
+    } finally {
+      setSendingCheckIn(false);
+    }
+  };
 
   // Playbook picker — list active playbooks so the coach can pin one for this engagement.
   const playbooksQ = useQuery<PlaybookOption[]>({
@@ -250,6 +279,15 @@ export default function ClientSessionSummary() {
                   data-testid="button-view-memory"
                 >
                   View Memory
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleSendCheckIn}
+                  disabled={sendingCheckIn}
+                  data-testid="button-send-checkin"
+                >
+                  <Bell className="mr-2 h-4 w-4" />
+                  {sendingCheckIn ? 'Sending…' : 'Send Check-in'}
                 </Button>
                 <Button
                   variant="outline"

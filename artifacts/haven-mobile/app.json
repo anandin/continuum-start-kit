@@ -48,8 +48,17 @@
         {
           "faceIDPermission": "Haven uses Face ID to keep your private reflections and conversations locked unless it's really you."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#FBF9F4"
+        }
       ]
     ],
+    "notification": {
+      "iosDisplayInForeground": true
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

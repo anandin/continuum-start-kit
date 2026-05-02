@@ -256,6 +256,26 @@ export const coachInboxDismissals = pgTable(
   }),
 );
 
+// Expo push tokens registered by the mobile app for a user.
+// One row per (userId, token); tokens may rotate per device install.
+// `enabled` lets the seeker disable push without deleting registration.
+export const pushTokens = pgTable(
+  "push_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id).notNull(),
+    token: text("token").notNull().unique(),
+    platform: text("platform"),
+    enabled: boolean("enabled").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("IDX_push_tokens_user").on(table.userId),
+  }),
+);
+
 // connect-pg-simple session table
 export const userSessions = pgTable(
   "user_sessions",
@@ -476,6 +496,7 @@ export const insertResourceSchema = createInsertSchema(resources).omit({ id: tru
 export const insertResourceAssignmentSchema = createInsertSchema(resourceAssignments).omit({ id: true, assignedAt: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertProviderOnboardingChatSchema = createInsertSchema(providerOnboardingChats).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPushTokenSchema = createInsertSchema(pushTokens).omit({ id: true, createdAt: true, updatedAt: true, lastSeenAt: true });
 export const insertSafetyEventSchema = createInsertSchema(safetyEvents).omit({ id: true, createdAt: true });
 export const insertAgentVersionSchema = createInsertSchema(agentVersions).omit({ id: true, createdAt: true });
 export const insertPersonaExampleSchema = createInsertSchema(personaExamples).omit({ id: true, createdAt: true, embedding: true });
@@ -507,6 +528,7 @@ export type InsertResource = z.infer<typeof insertResourceSchema>;
 export type InsertResourceAssignment = z.infer<typeof insertResourceAssignmentSchema>;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type InsertProviderOnboardingChat = z.infer<typeof insertProviderOnboardingChatSchema>;
+export type InsertPushToken = z.infer<typeof insertPushTokenSchema>;
 export type InsertSafetyEvent = z.infer<typeof insertSafetyEventSchema>;
 export type InsertAgentVersion = z.infer<typeof insertAgentVersionSchema>;
 export type InsertPersonaExample = z.infer<typeof insertPersonaExampleSchema>;
@@ -538,6 +560,7 @@ export type Resource = typeof resources.$inferSelect;
 export type ResourceAssignment = typeof resourceAssignments.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type ProviderOnboardingChat = typeof providerOnboardingChats.$inferSelect;
+export type PushToken = typeof pushTokens.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
 export type SafetyEvent = typeof safetyEvents.$inferSelect;
 export type AgentVersion = typeof agentVersions.$inferSelect;

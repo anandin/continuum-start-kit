@@ -58,6 +58,7 @@ import {
 } from "../lib/llm";
 import { runGuardedLLM, type SafetyDecision } from "../services/safety";
 import { snapshotAgentVersion } from "../services/persona";
+import { sendPushToUser } from "../lib/push";
 import type {
   SyntheticClientProfile,
   CalibrationTurn,
@@ -376,6 +377,29 @@ export function registerRoutes(app: Express) {
         role: "agent",
         content: result.reply,
       });
+
+      // Best-effort push to the seeker so they see the reply if the app
+      // was backgrounded while the model was reflecting. Never blocks the
+      // response and never throws.
+      void (async () => {
+        try {
+          const preview = result.reply.length > 140
+            ? `${result.reply.slice(0, 137)}…`
+            : result.reply;
+          await sendPushToUser(seekerUserId, {
+            title: "Your coach replied",
+            body: preview,
+            data: {
+              type: "coach_message",
+              engagementId: engagement.id,
+              sessionId,
+              messageId: agentMessage.id,
+            },
+          });
+        } catch (err) {
+          req.log.warn({ err, sessionId }, "push: agent reply notify failed");
+        }
+      })();
 
       // Provider alert on safety escalations / softens that flagged it
       if (result.alertProvider) {
@@ -1309,6 +1333,188 @@ If ambiguous, choose the earliest relevant stage.`;
       req.log.error({ err: error, engagementId: req.params.engagementId }, "coach inbox dismiss failed");
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // ============================================================
+  // PUSH NOTIFICATIONS
+  // Mobile clients register their Expo push token here, can list/disable
+  // their tokens, and the server uses these for coach-reply / check-in
+  // delivery. Tokens are scoped to req.user — we never let clients touch
+  // tokens that belong to a different user.
+  // ============================================================
+  app.post("/api/push-tokens", requireAuth, async (req, res) => {
+    try {
+      const { token, platform } = req.body as { token?: unknown; platform?: unknown };
+      if (typeof token !== "string" || token.length < 8 || token.length > 256) {
+        return res.status(400).json({ error: "token (string) is required" });
+      }
+      const allowed = new Set(["ios", "android", "web"]);
+      const plat =
+        typeof platform === "string" && allowed.has(platform) ? platform : null;
+      // Don't pass `enabled` — storage uses the schema default for new
+      // rows (enabled=true) and preserves the existing value on update,
+      // so a user's prior opt-out is respected across logins/relaunches.
+      const row = await storage.upsertPushToken({
+        userId: req.user!.id,
+        token,
+        platform: plat,
+      });
+      res.json({ token: row });
+    } catch (error: any) {
+      req.log.warn({ err: error }, "push: upsert token failed");
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/push-tokens", requireAuth, async (req, res) => {
+    try {
+      const tokens = await storage.getPushTokensByUserId(req.user!.id);
+      const anyEnabled = tokens.some((t) => t.enabled);
+      res.json({
+        enabled: anyEnabled,
+        tokens: tokens.map((t) => ({
+          id: t.id,
+          platform: t.platform,
+          enabled: t.enabled,
+          updatedAt: t.updatedAt,
+        })),
+      });
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.patch("/api/push-tokens", requireAuth, async (req, res) => {
+    try {
+      const { enabled } = req.body as { enabled?: unknown };
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled (boolean) is required" });
+      }
+      await storage.setPushTokensEnabledForUser(req.user!.id, enabled);
+      res.json({ enabled });
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.delete("/api/push-tokens", requireAuth, async (req, res) => {
+    try {
+      const { token } = req.body as { token?: unknown };
+      if (typeof token !== "string" || !token) {
+        return res.status(400).json({ error: "token (string) is required" });
+      }
+      await storage.deletePushToken(token, req.user!.id);
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  // ============================================================
+  // COACH → SEEKER DIRECT MESSAGES
+  // The provider can send a text message OR a "check-in" nudge to a
+  // seeker. We append it as a `provider`-role message in the latest
+  // active session (creating one if needed) so it shows up in chat,
+  // then push-notify the seeker so they see it on their phone.
+  // ============================================================
+  async function getOrCreateActiveSession(engagement: Engagement): Promise<DbSession> {
+    const existing = await storage.getSessionsByEngagementId(engagement.id);
+    const active = existing.find((s) => s.status === "active");
+    if (active) return active;
+    const providerConfig = engagement.providerId
+      ? await storage.getProviderConfigByProviderId(engagement.providerId)
+      : null;
+    const stages = (providerConfig?.stages as ProviderConfigStage[] | null) ?? [];
+    const initialStage = stages[0]?.name ?? "Initial";
+    return storage.createSession({
+      engagementId: engagement.id,
+      initialStage,
+      status: "active",
+    });
+  }
+
+  async function deliverCoachMessage(
+    req: Request,
+    engagementId: string,
+    rawContent: string,
+    notif: { title: string; type: "coach_message" | "coach_check_in" },
+  ) {
+    const check = await assertProviderOwnsEngagement(req, engagementId);
+    if (!check.ok) return { status: check.error === "Forbidden" ? 403 : 404, body: { error: check.error } };
+    const engagement = check.engagement;
+    const content = rawContent.trim();
+    if (!content) return { status: 400, body: { error: "message is required" } };
+    if (content.length > 4000) return { status: 400, body: { error: "message is too long" } };
+
+    const session = await getOrCreateActiveSession(engagement);
+    const message = await storage.createMessage({
+      sessionId: session.id,
+      role: "provider",
+      content,
+    });
+
+    // Resolve seeker user id (owner of the seeker linked to this engagement).
+    let seekerUserId: string | null = null;
+    if (engagement.seekerId) {
+      const seeker = await storage.getSeekerById(engagement.seekerId);
+      seekerUserId = seeker?.ownerId ?? null;
+    }
+
+    let pushSent = 0;
+    if (seekerUserId) {
+      const preview = content.length > 140 ? `${content.slice(0, 137)}…` : content;
+      try {
+        const result = await sendPushToUser(seekerUserId, {
+          title: notif.title,
+          body: preview,
+          data: {
+            type: notif.type,
+            engagementId: engagement.id,
+            sessionId: session.id,
+            messageId: message.id,
+          },
+        });
+        pushSent = result.sent;
+      } catch (err) {
+        req.log.warn({ err, engagementId }, "push: coach message notify failed");
+      }
+    }
+
+    return {
+      status: 200,
+      body: {
+        message,
+        sessionId: session.id,
+        // notified reflects whether at least one device actually got the
+        // push — provider UX should not claim delivery when no enabled
+        // token exists or Expo rejected every recipient.
+        notified: pushSent > 0,
+        pushSent,
+      },
+    };
+  }
+
+  app.post("/api/engagements/:id/coach-message", requireProvider, async (req, res) => {
+    try {
+      const { message } = req.body as { message?: unknown };
+      if (typeof message !== "string") {
+        return res.status(400).json({ error: "message (string) is required" });
+      }
+      const r = await deliverCoachMessage(req, req.params.id, message, {
+        title: "New message from your coach",
+        type: "coach_message",
+      });
+      res.status(r.status).json(r.body);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.post("/api/engagements/:id/check-in", requireProvider, async (req, res) => {
+    try {
+      const { message } = req.body as { message?: unknown };
+      const text =
+        typeof message === "string" && message.trim().length > 0
+          ? message
+          : "Just checking in — how are you doing today?";
+      const r = await deliverCoachMessage(req, req.params.id, text, {
+        title: "Check-in from your coach",
+        type: "coach_check_in",
+      });
+      res.status(r.status).json(r.body);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================

@@ -23,6 +23,10 @@ import { HavenLogo } from "@/components/HavenLogo";
 import { useCrisis } from "@/components/Crisis";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import {
+  getPushPreference,
+  setPushPreference,
+} from "@/lib/notifications";
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -56,6 +60,47 @@ export default function ProfileScreen() {
       setTogglingBiometric(false);
     }
   };
+
+  const [notifEnabled, setNotifEnabled] = React.useState(false);
+  const [notifLoading, setNotifLoading] = React.useState(true);
+  const [notifSaving, setNotifSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!user) {
+      setNotifLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setNotifLoading(true);
+    getPushPreference()
+      .then((p) => {
+        if (!cancelled) setNotifEnabled(p.enabled);
+      })
+      .finally(() => {
+        if (!cancelled) setNotifLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleNotifToggle = React.useCallback(
+    async (next: boolean) => {
+      if (notifSaving) return;
+      const prev = notifEnabled;
+      setNotifEnabled(next);
+      setNotifSaving(true);
+      try {
+        const result = await setPushPreference(next);
+        setNotifEnabled(result.enabled);
+      } catch {
+        setNotifEnabled(prev);
+      } finally {
+        setNotifSaving(false);
+      }
+    },
+    [notifEnabled, notifSaving],
+  );
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -231,12 +276,23 @@ export default function ProfileScreen() {
             )
           }
         />
-        <Row
+        <ToggleRow
           icon="bell"
-          label="Notifications"
+          label="Push notifications"
+          subtitle={
+            notifLoading
+              ? "Loading…"
+              : notifEnabled
+                ? "On — coach replies & check-ins"
+                : Platform.OS === "web"
+                  ? "Push not supported on web preview"
+                  : "Off — turn on to get coach updates"
+          }
           colors={colors}
-          subtitle="Coming soon"
-          disabled
+          value={notifEnabled}
+          onValueChange={handleNotifToggle}
+          disabled={notifLoading || notifSaving || Platform.OS === "web"}
+          testID="profile-toggle-notifications"
         />
 
         <View style={styles.sectionLabel}>
@@ -317,6 +373,64 @@ interface RowProps {
   disabled?: boolean;
   tone?: "default" | "crisis";
   testID?: string;
+}
+
+interface ToggleRowProps {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  subtitle?: string;
+  colors: ReturnType<typeof useColors>;
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+  disabled?: boolean;
+  testID?: string;
+}
+
+function ToggleRow({
+  icon,
+  label,
+  subtitle,
+  colors,
+  value,
+  onValueChange,
+  disabled,
+  testID,
+}: ToggleRowProps) {
+  return (
+    <View
+      style={[
+        styles.row,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          borderRadius: colors.radius,
+          opacity: disabled ? 0.7 : 1,
+        },
+      ]}
+    >
+      <View style={[styles.rowIcon, { backgroundColor: colors.gradientHeroMid }]}>
+        <Feather name={icon} size={16} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+          {label}
+        </Text>
+        {subtitle ? (
+          <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        testID={testID}
+        trackColor={{ true: colors.primary, false: colors.border }}
+        thumbColor={Platform.OS === "android" ? colors.card : undefined}
+      />
+    </View>
+  );
 }
 
 function Row({
