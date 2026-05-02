@@ -48,7 +48,10 @@ export function SessionReminderBanner() {
   }, []);
 
   const { data } = useQuery<{ scheduledSessions: ScheduledSession[] }>({
-    queryKey: ["/api/me/scheduled-sessions"],
+    // Must match the key used by SeekerScheduledSessionsCard so its
+    // confirm/cancel mutations invalidate this banner immediately
+    // instead of waiting for the 60s poll.
+    queryKey: ["scheduled-sessions", "me"],
     queryFn: async () => (await apiRequest("GET", "/api/me/scheduled-sessions")).json(),
     enabled: !!user,
     refetchInterval: 60_000,

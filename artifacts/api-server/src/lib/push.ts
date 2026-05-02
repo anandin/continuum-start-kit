@@ -29,21 +29,26 @@ function isExpoToken(t: string): boolean {
 export async function sendPushToUser(
   userId: string,
   payload: PushPayload,
-): Promise<{ sent: number; skipped: number }> {
+): Promise<{ sent: number; skipped: number; attempted: number }> {
   let tokens: { token: string }[] = [];
   try {
     const rows = await storage.getPushTokensByUserId(userId, { onlyEnabled: true });
     tokens = rows.map((r) => ({ token: r.token }));
   } catch (err) {
     logger.warn({ err, userId }, "push: failed to load tokens");
-    return { sent: 0, skipped: 0 };
+    // Token-load failure is transient (DB blip): callers can retry.
+    return { sent: 0, skipped: 0, attempted: 0 };
   }
 
-  if (tokens.length === 0) return { sent: 0, skipped: 0 };
+  // attempted = number of tokens we actually sent to the provider.
+  // Callers use this to distinguish "no devices to deliver to"
+  // (terminal — nothing to retry) from "provider rejected the call"
+  // (transient — worth retrying).
+  if (tokens.length === 0) return { sent: 0, skipped: 0, attempted: 0 };
 
   const valid = tokens.filter((t) => isExpoToken(t.token));
   const skipped = tokens.length - valid.length;
-  if (valid.length === 0) return { sent: 0, skipped };
+  if (valid.length === 0) return { sent: 0, skipped, attempted: 0 };
 
   const messages: ExpoPushMessage[] = valid.map((t) => ({
     to: t.token,
@@ -69,7 +74,7 @@ export async function sendPushToUser(
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       logger.warn({ status: res.status, text, userId }, "push: expo non-2xx");
-      return { sent: 0, skipped };
+      return { sent: 0, skipped, attempted: valid.length };
     }
     const json = (await res.json()) as {
       data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
@@ -97,9 +102,9 @@ export async function sendPushToUser(
     );
 
     const sent = tickets.filter((t) => t?.status === "ok").length;
-    return { sent, skipped };
+    return { sent, skipped, attempted: valid.length };
   } catch (err) {
     logger.warn({ err, userId }, "push: send failed");
-    return { sent: 0, skipped };
+    return { sent: 0, skipped, attempted: valid.length };
   }
 }

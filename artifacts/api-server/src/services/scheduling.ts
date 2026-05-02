@@ -303,6 +303,7 @@ async function fireReminderForRow(row: ScheduledSession): Promise<boolean> {
     Math.round((row.confirmedAt.getTime() - Date.now()) / 60_000),
   );
   let pushSent = 0;
+  let pushAttempted = 0;
   try {
     const res = await sendPushToUser(row.seekerUserId, {
       title: "Your session starts soon",
@@ -310,6 +311,7 @@ async function fireReminderForRow(row: ScheduledSession): Promise<boolean> {
       data: { kind: "scheduled_session_reminder", scheduledSessionId: row.id },
     });
     pushSent = res?.sent ?? 0;
+    pushAttempted = res?.attempted ?? 0;
   } catch (err) {
     logger.warn({ err, scheduledSessionId: row.id }, "scheduling: reminder push threw; will retry");
     return false;
@@ -318,9 +320,24 @@ async function fireReminderForRow(row: ScheduledSession): Promise<boolean> {
     await scheduledSessionStorage.markReminderSent(row.id);
     return true;
   }
+  // attempted === 0 means the seeker has no valid push tokens
+  // registered (push disabled, web-only user, no devices). Retrying
+  // every minute would just spam the logs and never succeed — the
+  // in-app banner already covers this seeker. Mark as sent so the
+  // cron stops considering this row, and emit a single info log.
+  if (pushAttempted === 0) {
+    await scheduledSessionStorage.markReminderSent(row.id);
+    logger.info(
+      { scheduledSessionId: row.id, seekerUserId: row.seekerUserId },
+      "scheduling: no push tokens for seeker; banner-only reminder, marking sent",
+    );
+    return false;
+  }
+  // attempted > 0 but provider rejected — transient, leave null so
+  // the next tick retries.
   logger.warn(
     { scheduledSessionId: row.id, seekerUserId: row.seekerUserId },
-    "scheduling: reminder push not delivered (0 tokens or provider rejected); will retry",
+    "scheduling: reminder push attempted but provider rejected; will retry",
   );
   return false;
 }
