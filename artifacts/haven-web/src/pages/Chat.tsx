@@ -55,6 +55,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [showEndDialog, setShowEndDialog] = useState(false);
+  const [isProviderViewing, setIsProviderViewing] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +99,14 @@ export default function Chat() {
         if (engRes.ok) {
           const engagement = await engRes.json();
           if (engagement.providerId) {
+            // Provider attribution: if the current viewer is the engagement
+            // provider, this is the supervisor reviewing the seeker's
+            // conversation. Sending is disabled — the AI twin replies on
+            // the provider's behalf, and the API rejects provider-authored
+            // /api/chat sends to keep attribution honest.
+            if (user && user.id === engagement.providerId) {
+              setIsProviderViewing(true);
+            }
             const configs = await fetch('/api/provider-configs', { credentials: 'include' });
             if (configs.ok) {
               const allConfigs = await configs.json();
@@ -359,14 +368,20 @@ export default function Chat() {
             <Input
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={isEnded ? 'This session has ended' : 'Share what\'s on your mind...'}
-              disabled={sending || isEnded}
+              placeholder={
+                isProviderViewing
+                  ? 'Read-only — the twin replies on your behalf'
+                  : isEnded
+                    ? 'This session has ended'
+                    : 'Share what\'s on your mind...'
+              }
+              disabled={sending || isEnded || isProviderViewing}
               className="flex-1 rounded-full px-5"
               data-testid="input-chat-message"
             />
             <Button
               type="submit"
-              disabled={sending || !inputMessage.trim() || isEnded}
+              disabled={sending || !inputMessage.trim() || isEnded || isProviderViewing}
               className="rounded-full"
               data-testid="button-send-message"
             >
@@ -377,11 +392,15 @@ export default function Chat() {
               )}
             </Button>
           </div>
-          {!isEnded && (
+          {isProviderViewing ? (
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              You're viewing this conversation as the supervising therapist. The AI twin responds on your behalf — direct sends are disabled to preserve attribution. Use the Review Queue or Calibration to shape the twin's responses.
+            </p>
+          ) : !isEnded ? (
             <p className="text-xs text-muted-foreground text-center mt-2">
               Your conversation is private and secure
             </p>
-          )}
+          ) : null}
         </form>
       </div>
 
