@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +26,7 @@ export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, loading, signIn, signUp } = useAuth();
+  const params = useLocalSearchParams<{ next?: string }>();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("seeker@haven.test");
@@ -33,11 +34,38 @@ export default function AuthScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Validate the post-login redirect target so a crafted invitation
+  // link can't pivot us to an external URL or out of the app.
+  // Only accept internal paths from a small allowlist.
+  const ALLOWED_NEXT_PREFIXES = ["/invite", "/(tabs)"];
+  const nextHref = (() => {
+    const raw = params.next;
+    if (typeof raw !== "string") return "/(tabs)";
+    // Reject empty, protocol-relative (//host), backslash, or anything
+    // that isn't a clean leading single slash followed by a non-slash.
+    if (
+      raw.length === 0 ||
+      raw.length > 256 ||
+      !raw.startsWith("/") ||
+      raw.startsWith("//") ||
+      raw.startsWith("/\\") ||
+      raw.includes("\\") ||
+      /^\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)
+    ) {
+      return "/(tabs)";
+    }
+    const head = raw.split("?")[0] ?? raw;
+    const ok = ALLOWED_NEXT_PREFIXES.some(
+      (prefix) => head === prefix || head.startsWith(`${prefix}/`) || head.startsWith(`${prefix}?`),
+    );
+    return ok ? raw : "/(tabs)";
+  })();
+
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/(tabs)");
+      router.replace(nextHref as never);
     }
-  }, [loading, user, router]);
+  }, [loading, user, router, nextHref]);
 
   const submit = async () => {
     if (!email.trim() || !password) {
@@ -52,7 +80,7 @@ export default function AuthScreen() {
       } else {
         await signUp(email.trim(), password);
       }
-      router.replace("/(tabs)");
+      router.replace(nextHref as never);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {

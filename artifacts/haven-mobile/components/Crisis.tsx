@@ -90,13 +90,19 @@ async function notifyCoach(): Promise<{
       });
     }
 
-    // The L1 safety gate intercepts crisis-flagged messages BEFORE the LLM
-    // is called, returns a templated reply, and creates a high-priority
-    // alert for the supervising coach. The crisis sheet itself never
-    // touches the LLM — this just routes a templated message through the
-    // existing safety pipeline. We only claim "alert sent" when the safety
-    // layer reports a critical/templated response, which is what creates
-    // the alert server-side.
+    // BACKEND CONSTRAINT: The api-server has no seeker-callable
+    // POST /api/alerts endpoint — alerts are only emitted server-side
+    // when the L1 safety gate flags a message as critical / escalate.
+    // Modifying the API contract is explicitly out of scope for this task.
+    //
+    // The L1 safety gate intercepts crisis-flagged messages BEFORE the
+    // LLM is called, returns a templated reply, and creates a
+    // high-priority alert for the supervising coach. The crisis sheet
+    // itself never touches the LLM — this just routes a templated
+    // message through the existing safety pipeline. We only claim
+    // "alert sent" when the safety layer actually reports a critical /
+    // templated / escalate decision, which is what creates the alert
+    // server-side.
     const response = await api<{
       safety?: { decision?: string; severity?: string; templated?: boolean };
     }>(`/api/chat`, {
@@ -388,8 +394,8 @@ function CrisisSheet({
               <Text
                 style={[styles.lineDesc, { color: colors.mutedForeground }]}
               >
-                Send a high-priority alert. Your coach will be notified
-                immediately.
+                Send an urgent message through your session safety channel.
+                Your coach is notified when our safety system flags it.
               </Text>
               {status.kind === "sent" ? (
                 <Text style={[styles.statusText, { color: colors.success }]}>
