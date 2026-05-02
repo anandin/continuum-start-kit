@@ -13,7 +13,23 @@ import { billingStorage } from "./billingStorage";
 //   - invoice.payment_failed           → mark engagement past_due
 //   - customer.subscription.deleted    → mark engagement canceled
 //
-// Any other event type is logged at debug and acked with 200.
+// Every event id is claimed via `billingStorage.claimStripeEvent` BEFORE
+// we mutate any local state. Stripe retries the same event id on
+// non-2xx responses (and sometimes after timeouts even on 2xx), so the
+// claim step is what guarantees ledger rows and status writes are not
+// applied twice.
+
+// stripe-node v18+ removed `subscription` from the typed Invoice surface
+// even though the API still returns it. Use a precise intersection so
+// the access stays type-safe.
+type InvoiceWithSub = Stripe.Invoice & {
+  subscription?: string | Stripe.Subscription | null;
+};
+
+function invoiceSubId(inv: Stripe.Invoice): string | null {
+  const raw = (inv as InvoiceWithSub).subscription ?? null;
+  return typeof raw === "string" ? raw : raw?.id ?? null;
+}
 
 export async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const stripe = getStripe();
@@ -46,6 +62,14 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     return;
   }
 
+  // Idempotency gate. If we've seen this event id before, ack and bail.
+  const claimed = await billingStorage.claimStripeEvent(event.id, event.type);
+  if (!claimed) {
+    logger.debug({ eventId: event.id, type: event.type }, "stripe webhook: duplicate, skipped");
+    res.status(200).json({ received: true, duplicate: true });
+    return;
+  }
+
   try {
     switch (event.type) {
       case "account.updated": {
@@ -73,16 +97,24 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
             lastFailureMessage: null,
             lastPaymentIntentId: pi.id,
           });
-          // Idempotent ledger entry: don't double-record if our charge
-          // path already wrote a "succeeded" row.
+          // Reconcile the ledger: chargePerSession may have inserted a
+          // pending row; flip it to succeeded. If no row exists (e.g.
+          // a manual confirm via Elements), insert one. Unique index on
+          // stripePaymentIntentId backstops any race.
+          await billingStorage.reconcilePaymentByPI({
+            engagementId,
+            stripePaymentIntentId: pi.id,
+            status: "succeeded",
+            amountCents: pi.amount,
+            tierId: (pi.metadata?.haven_tier_id as string) || null,
+          });
         }
         break;
       }
       case "payment_intent.payment_failed": {
         const pi = event.data.object as Stripe.PaymentIntent;
         const engagementId = pi.metadata?.haven_engagement_id;
-        const reason =
-          pi.last_payment_error?.message ?? "Payment failed";
+        const reason = pi.last_payment_error?.message ?? "Payment failed";
         if (engagementId) {
           await billingStorage.upsertEngagementBilling({
             engagementId,
@@ -91,14 +123,12 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
             lastFailureMessage: reason,
             lastPaymentIntentId: pi.id,
           });
-          await billingStorage.recordPayment({
+          await billingStorage.reconcilePaymentByPI({
             engagementId,
             stripePaymentIntentId: pi.id,
-            amountCents: pi.amount,
             status: "failed",
+            amountCents: pi.amount,
             failureMessage: reason,
-            scheduledSessionId:
-              (pi.metadata?.haven_scheduled_session_id as string) || null,
             tierId: (pi.metadata?.haven_tier_id as string) || null,
           });
         }
@@ -106,14 +136,9 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
       }
       case "invoice.paid": {
         const inv = event.data.object as Stripe.Invoice;
-        // Stripe SDK 22+ moved `subscription` off the typed Invoice
-        // surface (it lives on the underlying object). Cast to access.
-        const rawSub = (inv as unknown as { subscription?: string | { id: string } | null }).subscription;
-        const subId =
-          typeof rawSub === "string" ? rawSub : rawSub?.id ?? null;
+        const subId = invoiceSubId(inv);
         if (subId) {
-          const eb =
-            await billingStorage.getEngagementBillingBySubscriptionId(subId);
+          const eb = await billingStorage.getEngagementBillingBySubscriptionId(subId);
           if (eb) {
             await billingStorage.upsertEngagementBilling({
               engagementId: eb.engagementId,
@@ -122,25 +147,32 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
               failedAt: null,
               lastFailureMessage: null,
             });
-            await billingStorage.recordPayment({
-              engagementId: eb.engagementId,
-              tierId: eb.tierId ?? null,
-              stripeInvoiceId: inv.id,
-              amountCents: inv.amount_paid,
-              status: "succeeded",
-            });
+            // Use recordPayment; the unique index on stripeInvoiceId will
+            // raise on retry, but the event-id gate above already
+            // prevents that path from being entered twice.
+            try {
+              await billingStorage.recordPayment({
+                engagementId: eb.engagementId,
+                tierId: eb.tierId ?? null,
+                stripeInvoiceId: inv.id,
+                amountCents: inv.amount_paid,
+                status: "succeeded",
+              });
+            } catch (err: any) {
+              logger.debug(
+                { err: err?.message, invoiceId: inv.id },
+                "stripe webhook: invoice.paid duplicate row suppressed",
+              );
+            }
           }
         }
         break;
       }
       case "invoice.payment_failed": {
         const inv = event.data.object as Stripe.Invoice;
-        const rawSub = (inv as unknown as { subscription?: string | { id: string } | null }).subscription;
-        const subId =
-          typeof rawSub === "string" ? rawSub : rawSub?.id ?? null;
+        const subId = invoiceSubId(inv);
         if (subId) {
-          const eb =
-            await billingStorage.getEngagementBillingBySubscriptionId(subId);
+          const eb = await billingStorage.getEngagementBillingBySubscriptionId(subId);
           if (eb) {
             await billingStorage.upsertEngagementBilling({
               engagementId: eb.engagementId,
@@ -148,14 +180,21 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
               failedAt: new Date(),
               lastFailureMessage: "Subscription payment failed",
             });
-            await billingStorage.recordPayment({
-              engagementId: eb.engagementId,
-              tierId: eb.tierId ?? null,
-              stripeInvoiceId: inv.id,
-              amountCents: inv.amount_due,
-              status: "failed",
-              failureMessage: "Subscription payment failed",
-            });
+            try {
+              await billingStorage.recordPayment({
+                engagementId: eb.engagementId,
+                tierId: eb.tierId ?? null,
+                stripeInvoiceId: inv.id,
+                amountCents: inv.amount_due,
+                status: "failed",
+                failureMessage: "Subscription payment failed",
+              });
+            } catch (err: any) {
+              logger.debug(
+                { err: err?.message, invoiceId: inv.id },
+                "stripe webhook: invoice.payment_failed duplicate row suppressed",
+              );
+            }
           }
         }
         break;

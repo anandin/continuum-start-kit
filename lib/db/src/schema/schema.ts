@@ -688,7 +688,26 @@ export const billingPayments = pgTable(
   (t) => ({
     engagementIdx: index("billing_payments_engagement_idx").on(t.engagementId),
     createdIdx: index("billing_payments_created_idx").on(t.createdAt),
+    // Unique-when-set so a webhook retry that re-records the same
+    // PaymentIntent or invoice can't duplicate the ledger row. Postgres
+    // treats multiple NULLs as distinct, so per-session rows that
+    // haven't been linked to a PI yet still insert fine.
+    piUnique: uniqueIndex("billing_payments_pi_unique").on(t.stripePaymentIntentId),
+    invUnique: uniqueIndex("billing_payments_inv_unique").on(t.stripeInvoiceId),
   }),
+);
+
+// Webhook idempotency. Stripe retries every event up to 3 days; each
+// arrival is recorded here BEFORE we mutate any ledger or status row,
+// so retries become no-ops. Keep forever — table stays tiny relative
+// to traffic and gives us a debug trail for "did Stripe ever send X".
+export const billingProcessedEvents = pgTable(
+  "billing_processed_events",
+  {
+    eventId: text("event_id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+  },
 );
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });

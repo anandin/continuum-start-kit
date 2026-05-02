@@ -4,13 +4,14 @@ import {
   priceTiers,
   engagementBilling,
   billingPayments,
+  billingProcessedEvents,
   type ProviderBilling,
   type PriceTier,
   type EngagementBilling,
   type BillingPayment,
   type InsertPriceTier,
 } from "@workspace/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 // All billing data access goes through this module. Routes never call
 // drizzle directly for these tables so we have a single place to add
@@ -257,4 +258,57 @@ export const billingStorage = {
       .orderBy(desc(billingPayments.createdAt))
       .limit(limit);
   },
+
+  // Update an existing pending ledger row (matched by stripePaymentIntentId)
+  // so a webhook arriving after the initial charge attempt reconciles
+  // the row instead of inserting a duplicate. Falls back to inserting
+  // a new row when no pending row exists (e.g. the initial create wasn't
+  // reached because chargePerSession ran on an instance that crashed).
+  async reconcilePaymentByPI(input: {
+    engagementId: string;
+    stripePaymentIntentId: string;
+    status: "succeeded" | "failed" | "pending";
+    failureMessage?: string | null;
+    amountCents: number;
+    tierId?: string | null;
+  }): Promise<void> {
+    const [existing] = await db
+      .select()
+      .from(billingPayments)
+      .where(eq(billingPayments.stripePaymentIntentId, input.stripePaymentIntentId))
+      .limit(1);
+    if (existing) {
+      await db
+        .update(billingPayments)
+        .set({
+          status: input.status,
+          failureMessage: input.failureMessage ?? null,
+        })
+        .where(eq(billingPayments.id, existing.id));
+      return;
+    }
+    await db.insert(billingPayments).values({
+      engagementId: input.engagementId,
+      tierId: input.tierId ?? null,
+      stripePaymentIntentId: input.stripePaymentIntentId,
+      amountCents: input.amountCents,
+      status: input.status,
+      failureMessage: input.failureMessage ?? null,
+    });
+  },
+
+  // ---------------- webhook idempotency ----------------
+  // Returns true if this is the first time we've seen the event id.
+  // Uses INSERT ... ON CONFLICT DO NOTHING so concurrent webhook
+  // retries can race safely — only one claims the event.
+  async claimStripeEvent(eventId: string, eventType: string): Promise<boolean> {
+    const result = await db
+      .insert(billingProcessedEvents)
+      .values({ eventId, eventType })
+      .onConflictDoNothing({ target: billingProcessedEvents.eventId })
+      .returning({ eventId: billingProcessedEvents.eventId });
+    return result.length > 0;
+  },
 };
+// Silence unused-imports warning when only used inside template strings.
+void sql;

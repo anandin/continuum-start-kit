@@ -52,6 +52,12 @@ export function stripeWebhookSecret(): string | null {
   return process.env.STRIPE_WEBHOOK_SECRET ?? null;
 }
 
+// Publishable key for Stripe.js / Elements in the seeker UI. Mirrors
+// the same env-or-connector lookup used by the secret key.
+export function stripePublishableKey(): string | null {
+  return process.env.STRIPE_PUBLISHABLE_KEY ?? null;
+}
+
 // Bootstrap Stripe credentials from the Replit connector proxy. The
 // connector returns publishable + secret for the active environment
 // (development vs production). We mirror the secret into
@@ -86,12 +92,34 @@ export async function loadStripeCredentialsFromConnector(): Promise<void> {
       logger.warn({ status: r.status }, "stripe: connector lookup failed");
       return;
     }
-    const data = (await r.json()) as { items?: Array<{ settings?: { secret?: string; publishable?: string } }> };
+    const data = (await r.json()) as {
+      items?: Array<{
+        settings?: {
+          secret?: string;
+          publishable?: string;
+          publishable_key?: string;
+          publishableKey?: string;
+          webhook_signing_secret?: string;
+        };
+      }>;
+    };
     const item = data.items?.[0];
-    const secret = item?.settings?.secret;
+    const settings = item?.settings;
+    const secret = settings?.secret;
+    const publishable =
+      settings?.publishable ??
+      settings?.publishable_key ??
+      settings?.publishableKey;
+    const webhookSecret = settings?.webhook_signing_secret;
     if (secret) {
       process.env.STRIPE_SECRET_KEY = secret;
       logger.info("stripe: credentials loaded from Replit connector");
+    }
+    if (publishable && !process.env.STRIPE_PUBLISHABLE_KEY) {
+      process.env.STRIPE_PUBLISHABLE_KEY = publishable;
+    }
+    if (webhookSecret && !process.env.STRIPE_WEBHOOK_SECRET) {
+      process.env.STRIPE_WEBHOOK_SECRET = webhookSecret;
     }
   } catch (err: any) {
     logger.warn({ err: err?.message }, "stripe: connector bootstrap errored");

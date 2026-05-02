@@ -3,7 +3,7 @@ import { logger } from "../lib/logger";
 import { getStripe, publicBaseUrl } from "../lib/stripe";
 import { storage } from "../storage";
 import { billingStorage } from "./billingStorage";
-import type { PriceTier, EngagementBilling } from "@workspace/db/schema";
+import type { PriceTier } from "@workspace/db/schema";
 
 // High-level billing operations. Routes call into here so the Stripe
 // SDK is only touched in one place.
@@ -177,18 +177,35 @@ export async function chargePerSession(opts: {
     // assumes the seeker has set up a card during tier selection — if
     // not, the PI will require_payment_method and the UI will surface
     // it on the Payment tab.
-    const pi = await stripe.paymentIntents.create({
+    // Look up the customer's default payment method. If they have one
+    // we attempt an off_session, immediate confirm — that's the happy
+    // path where the charge actually settles before the response. If
+    // they don't, we still create the PI (returns requires_payment_method
+    // + a client_secret); the seeker UI then prompts them via Stripe
+    // Elements to add a card and confirm it explicitly.
+    const customer = (await stripe.customers.retrieve(cust.customerId)) as Stripe.Customer;
+    const defaultPm =
+      customer.invoice_settings?.default_payment_method ??
+      (typeof customer.default_source === "string" ? customer.default_source : null);
+    const piParams: Stripe.PaymentIntentCreateParams = {
       amount: tier.amountCents,
       currency: "usd",
       customer: cust.customerId,
-      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
       transfer_data: { destination: provBilling.stripeAccountId },
       metadata: {
         haven_engagement_id: opts.engagementId,
         haven_scheduled_session_id: opts.scheduledSessionId,
         haven_tier_id: tier.id,
       },
-    });
+    };
+    if (defaultPm) {
+      piParams.payment_method = typeof defaultPm === "string" ? defaultPm : defaultPm.id;
+      piParams.confirm = true;
+      piParams.off_session = true;
+    } else {
+      piParams.automatic_payment_methods = { enabled: true, allow_redirects: "never" };
+    }
+    const pi = await stripe.paymentIntents.create(piParams);
 
     // Treat any non-succeeded/non-processing PI status as a failure so
     // pause-on-failure kicks in (e.g. requires_payment_method when the
@@ -242,6 +259,129 @@ export async function chargePerSession(opts: {
       ok: false,
       error: { kind: "stripe_error", message: String(err?.message ?? err) },
     };
+  }
+}
+
+// ---------------- payment-method management ----------------
+// Mint a SetupIntent so the seeker UI can use Stripe Elements to
+// collect a card and attach it to their per-engagement Customer. We
+// always force off_session usage because future per-session charges
+// fire without the seeker present.
+export async function createSetupIntentForEngagement(opts: {
+  engagementId: string;
+  seekerUserId: string;
+}): Promise<
+  { ok: true; clientSecret: string } | { ok: false; error: BillingError }
+> {
+  const stripe = getStripe();
+  if (!stripe) return { ok: false, error: { kind: "not_configured" } };
+  const cust = await ensureCustomerForEngagement(opts);
+  if (!cust.ok) return cust;
+  try {
+    const si = await stripe.setupIntents.create({
+      customer: cust.customerId,
+      usage: "off_session",
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+      metadata: { haven_engagement_id: opts.engagementId },
+    });
+    if (!si.client_secret) {
+      return { ok: false, error: { kind: "stripe_error", message: "no client_secret" } };
+    }
+    return { ok: true, clientSecret: si.client_secret };
+  } catch (err: any) {
+    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+  }
+}
+
+// After Elements confirms the SetupIntent, the client tells us the
+// resulting payment_method id; we attach it (no-op if already attached
+// by Elements) and pin it as the customer-level default for invoices
+// and future PaymentIntents.
+export async function setEngagementDefaultPaymentMethod(opts: {
+  engagementId: string;
+  paymentMethodId: string;
+}): Promise<{ ok: true } | { ok: false; error: BillingError }> {
+  const stripe = getStripe();
+  if (!stripe) return { ok: false, error: { kind: "not_configured" } };
+  const eb = await billingStorage.getEngagementBilling(opts.engagementId);
+  if (!eb?.stripeCustomerId) {
+    return { ok: false, error: { kind: "stripe_error", message: "no customer on engagement" } };
+  }
+  try {
+    try {
+      await stripe.paymentMethods.attach(opts.paymentMethodId, {
+        customer: eb.stripeCustomerId,
+      });
+    } catch (err: any) {
+      // Already attached → fine. Anything else → bubble up.
+      if (err?.code !== "payment_method_already_attached") throw err;
+    }
+    await stripe.customers.update(eb.stripeCustomerId, {
+      invoice_settings: { default_payment_method: opts.paymentMethodId },
+    });
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+  }
+}
+
+// Retry the most recent past_due charge after the seeker has saved a
+// new card. Best-effort: returns the new PI status so the UI can
+// surface success or a fresh failure reason.
+export async function retryPendingChargeForEngagement(
+  engagementId: string,
+): Promise<
+  | { attempted: false; reason: string }
+  | { attempted: true; ok: true; paymentIntentId: string }
+  | { attempted: true; ok: false; message: string }
+> {
+  const stripe = getStripe();
+  if (!stripe) return { attempted: false, reason: "not_configured" };
+  const eb = await billingStorage.getEngagementBilling(engagementId);
+  if (!eb?.lastPaymentIntentId) return { attempted: false, reason: "no_pending_pi" };
+  if (eb.status !== "past_due") return { attempted: false, reason: "not_past_due" };
+  try {
+    const pi = await stripe.paymentIntents.retrieve(eb.lastPaymentIntentId);
+    if (pi.status === "succeeded") {
+      // Webhook will reconcile, but mark active eagerly so the UI
+      // doesn't keep showing "past due" for the next few seconds.
+      await billingStorage.upsertEngagementBilling({
+        engagementId,
+        status: "active",
+        failedAt: null,
+        lastFailureMessage: null,
+      });
+      return { attempted: true, ok: true, paymentIntentId: pi.id };
+    }
+    if (pi.status === "requires_payment_method" || pi.status === "requires_confirmation") {
+      const customer = (await stripe.customers.retrieve(
+        eb.stripeCustomerId!,
+      )) as Stripe.Customer;
+      const defaultPm = customer.invoice_settings?.default_payment_method;
+      if (!defaultPm) return { attempted: false, reason: "no_default_pm" };
+      const pmId = typeof defaultPm === "string" ? defaultPm : defaultPm.id;
+      const confirmed = await stripe.paymentIntents.confirm(pi.id, {
+        payment_method: pmId,
+        off_session: true,
+      });
+      if (confirmed.status === "succeeded" || confirmed.status === "processing") {
+        await billingStorage.upsertEngagementBilling({
+          engagementId,
+          status: "active",
+          failedAt: null,
+          lastFailureMessage: null,
+        });
+        return { attempted: true, ok: true, paymentIntentId: confirmed.id };
+      }
+      return {
+        attempted: true,
+        ok: false,
+        message: `payment_intent ${confirmed.status}`,
+      };
+    }
+    return { attempted: true, ok: false, message: `payment_intent ${pi.status}` };
+  } catch (err: any) {
+    return { attempted: true, ok: false, message: err?.message ?? String(err) };
   }
 }
 
@@ -323,10 +463,19 @@ export async function subscribeMonthly(opts: {
         haven_tier_id: tier.id,
       },
     });
-    const latestInvoice = sub.latest_invoice as Stripe.Invoice | null;
-    const pi =
+    // `latest_invoice.payment_intent` was removed from the typed Invoice
+    // surface in stripe-node v18+, but the field is still returned by
+    // the API when expanded. Narrow with an explicit intersection so we
+    // don't reach for `any`.
+    type InvoiceWithPI = Stripe.Invoice & {
+      payment_intent?: string | Stripe.PaymentIntent | null;
+    };
+    const latestInvoice = sub.latest_invoice as InvoiceWithPI | string | null;
+    const pi: Stripe.PaymentIntent | null =
       latestInvoice && typeof latestInvoice !== "string"
-        ? ((latestInvoice as any).payment_intent as Stripe.PaymentIntent | null)
+        ? typeof latestInvoice.payment_intent === "string"
+          ? null
+          : (latestInvoice.payment_intent ?? null)
         : null;
     await billingStorage.upsertEngagementBilling({
       engagementId: opts.engagementId,

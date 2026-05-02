@@ -7,8 +7,12 @@ import {
   createOnboardingLink,
   refreshConnectedAccount,
   subscribeMonthly,
+  createSetupIntentForEngagement,
+  setEngagementDefaultPaymentMethod,
+  retryPendingChargeForEngagement,
 } from "../services/billing";
-import { stripeConfigured } from "../lib/stripe";
+import { stripeConfigured, stripePublishableKey } from "../lib/stripe";
+import type { InsertPriceTier } from "@workspace/db/schema";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated() || !req.user) {
@@ -185,7 +189,17 @@ export function registerBillingRoutes(app: Express): void {
         return res.status(404).json({ error: "Tier not found" });
       }
       const parsed = patchTierSchema.parse(req.body);
-      const updated = await billingStorage.updateTier(tier.id, parsed as any);
+      // Build a typed patch instead of casting to any. Each field is
+      // copied only when present so we never accidentally null out a
+      // column the client didn't mean to touch.
+      const patch: Partial<InsertPriceTier> = {};
+      if (parsed.label !== undefined) patch.label = parsed.label;
+      if (parsed.description !== undefined) patch.description = parsed.description ?? null;
+      if (parsed.amountCents !== undefined) patch.amountCents = parsed.amountCents;
+      if (parsed.billingCadence !== undefined) patch.billingCadence = parsed.billingCadence;
+      if (parsed.sortOrder !== undefined) patch.sortOrder = parsed.sortOrder;
+      if (parsed.isActive !== undefined) patch.isActive = parsed.isActive;
+      const updated = await billingStorage.updateTier(tier.id, patch);
       return res.json({ tier: updated });
     } catch (e: any) {
       if (e?.issues) return res.status(400).json({ error: "Invalid input", issues: e.issues });
@@ -285,6 +299,82 @@ export function registerBillingRoutes(app: Express): void {
         }
         const summary = await buildBillingSummary(engagementId);
         return res.json(summary);
+      } catch (e: any) {
+        if (e?.issues) return res.status(400).json({ error: "Invalid input", issues: e.issues });
+        return res.status(500).json({ error: e.message });
+      }
+    },
+  );
+
+  // ---------------- payment-method management (seeker UI) ----------------
+  // Returns the publishable key (and configured flag) so the web UI
+  // can lazy-load Stripe.js only when billing is actually wired up.
+  app.get("/api/billing/config", requireAuth, (_req, res) => {
+    res.json({
+      configured: stripeConfigured(),
+      publishableKey: stripePublishableKey() ?? null,
+    });
+  });
+
+  // Create a SetupIntent for the seeker's customer on this engagement.
+  // The Elements PaymentElement uses the returned client_secret to
+  // collect a card and attach it as the default payment method.
+  app.post(
+    "/api/engagements/:id/billing/setup-intent",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const engagementId = String(req.params.id);
+        const party = await ensureEngagementParty(engagementId, req.user!.id);
+        if (!party.ok) return res.status(party.status).json({ error: party.error });
+        if (party.isProvider) {
+          return res.status(403).json({ error: "Only the seeker can manage payment methods" });
+        }
+        if (!stripeConfigured()) {
+          return res.status(503).json({ error: "Billing not configured" });
+        }
+        const result = await createSetupIntentForEngagement({
+          engagementId,
+          seekerUserId: party.seekerUserId,
+        });
+        if (!result.ok) {
+          return res.status(502).json({ error: result.error });
+        }
+        return res.json({ clientSecret: result.clientSecret });
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    },
+  );
+
+  // Called after Elements confirms the SetupIntent client-side. We
+  // pin it as the customer's default invoice PM so future per-session
+  // charges and subscription invoices off_session-confirm cleanly.
+  // Then we retry any past_due charge and report whether the
+  // engagement is now healthy.
+  app.post(
+    "/api/engagements/:id/billing/payment-method",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const engagementId = String(req.params.id);
+        const party = await ensureEngagementParty(engagementId, req.user!.id);
+        if (!party.ok) return res.status(party.status).json({ error: party.error });
+        if (party.isProvider) {
+          return res.status(403).json({ error: "Only the seeker can manage payment methods" });
+        }
+        const schema = z.object({ paymentMethodId: z.string().min(3) });
+        const parsed = schema.parse(req.body);
+        const set = await setEngagementDefaultPaymentMethod({
+          engagementId,
+          paymentMethodId: parsed.paymentMethodId,
+        });
+        if (!set.ok) return res.status(502).json({ error: set.error });
+        // Best-effort: if past_due, immediately retry the most recent
+        // failed PaymentIntent now that we have a working card.
+        const retry = await retryPendingChargeForEngagement(engagementId);
+        const summary = await buildBillingSummary(engagementId);
+        return res.json({ ...summary, retry });
       } catch (e: any) {
         if (e?.issues) return res.status(400).json({ error: "Invalid input", issues: e.issues });
         return res.status(500).json({ error: e.message });
