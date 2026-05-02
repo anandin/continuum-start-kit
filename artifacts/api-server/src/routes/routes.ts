@@ -3366,7 +3366,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         // seeker to have selected one before sessions can be booked.
         // Coaches who haven't set up billing at all skip this check.
         if (!eb?.tierId) {
-          const tiers = await billingStorage.listTiersForProvider(row.providerId, true);
+          const tiers = await billingStorage.listTiersForProvider(row.providerId, { activeOnly: true });
           if (tiers.length > 0) {
             return res.status(402).json({
               error:
@@ -3411,11 +3411,10 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         });
         if (!out.ok) {
           const k = out.error.kind;
-          // `no_tier_selected` is a real billing gap — surface it so
-          // the seeker fixes it before the next confirm. (The pre-confirm
-          // guard catches this when the coach has tiers, but if a tier
-          // gets removed mid-flight we still want a visible warning.)
-          if (k !== "not_configured" && k !== "no_connected_account") {
+          // Surface every billing failure to the seeker; chargePerSession
+          // already flips the engagement to past_due so the next confirm
+          // is blocked until the issue is fixed.
+          if (k !== "not_configured") {
             billingWarning =
               k === "account_incomplete"
                 ? "Coach hasn't finished Stripe onboarding — payment will be retried later."

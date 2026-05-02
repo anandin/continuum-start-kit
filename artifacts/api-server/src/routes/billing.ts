@@ -270,24 +270,30 @@ export function registerBillingRoutes(app: Express): void {
         if (!tier || tier.providerId !== party.engagementProviderId || !tier.isActive) {
           return res.status(404).json({ error: "Tier not available" });
         }
-        // If the seeker is switching AWAY from a monthly tier, cancel
-        // the existing Stripe subscription first — otherwise they'd be
-        // billed monthly AND per-session simultaneously.
+        // Monthly tiers require Stripe — refuse cleanly otherwise so we
+        // never persist a paid tier we can't actually bill.
+        if (tier.billingCadence === "monthly" && !stripeConfigured()) {
+          return res.status(503).json({
+            error: "Billing isn't configured on the server. Pick a per-session tier or contact support.",
+          });
+        }
+
         const existing = await billingStorage.getEngagementBilling(engagementId);
+
+        // Switching AWAY from a monthly tier: cancel the existing sub
+        // first so the customer isn't billed monthly + per-session.
         if (
           existing?.stripeSubscriptionId &&
           tier.billingCadence === "per_session"
         ) {
-          if (stripeConfigured()) {
-            try {
-              const stripe = getStripe();
-              if (stripe) await stripe.subscriptions.cancel(existing.stripeSubscriptionId);
-            } catch (err: any) {
-              req.log.warn(
-                { err: err?.message },
-                "billing: failed cancelling prior subscription on tier switch",
-              );
-            }
+          try {
+            const stripe = getStripe();
+            if (stripe) await stripe.subscriptions.cancel(existing.stripeSubscriptionId);
+          } catch (err: any) {
+            req.log.warn(
+              { err: err?.message },
+              "billing: failed cancelling prior subscription on tier switch",
+            );
           }
           await billingStorage.upsertEngagementBilling({
             engagementId,
@@ -296,30 +302,33 @@ export function registerBillingRoutes(app: Express): void {
           });
         }
 
-        await billingStorage.upsertEngagementBilling({
-          engagementId,
-          tierId: tier.id,
-          status: tier.billingCadence === "per_session" ? "active" : "none",
-          failedAt: null,
-          lastFailureMessage: null,
-        });
-
-        if (tier.billingCadence === "monthly" && stripeConfigured()) {
+        if (tier.billingCadence === "monthly") {
+          // Create the Stripe subscription FIRST. subscribeMonthly is
+          // the single source of truth for tierId + status writes when
+          // the cadence is monthly — that way local state can never
+          // claim a monthly tier without a backing Stripe subscription.
           const sub = await subscribeMonthly({
             engagementId,
             seekerUserId: party.seekerUserId,
             providerId: party.engagementProviderId,
             tierId: tier.id,
           });
-          if (!sub.ok) {
-            return res.status(502).json({ error: sub.error });
-          }
+          if (!sub.ok) return res.status(502).json({ error: sub.error });
           const summary = await buildBillingSummary(engagementId);
           return res.json({
             ...summary,
             subscription: { id: sub.subscriptionId, clientSecret: sub.clientSecret },
           });
         }
+
+        // Per-session: safe to write the tier directly.
+        await billingStorage.upsertEngagementBilling({
+          engagementId,
+          tierId: tier.id,
+          status: "active",
+          failedAt: null,
+          lastFailureMessage: null,
+        });
         const summary = await buildBillingSummary(engagementId);
         return res.json(summary);
       } catch (e: any) {

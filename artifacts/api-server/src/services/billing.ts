@@ -144,23 +144,45 @@ export async function chargePerSession(opts: {
   scheduledSessionId: string;
 }): Promise<ChargeOutcome> {
   const stripe = getStripe();
-  if (!stripe) return { ok: false, error: { kind: "not_configured" } };
+  if (!stripe) {
+    // Stripe disappeared between tier-pick and confirm: block future
+    // sessions instead of silently letting them stack up unbilled.
+    await billingStorage.upsertEngagementBilling({
+      engagementId: opts.engagementId,
+      status: "past_due",
+      failedAt: new Date(),
+      lastFailureMessage: "Billing isn't configured on the server.",
+    });
+    return { ok: false, error: { kind: "not_configured" } };
+  }
 
   const eb = await billingStorage.getEngagementBilling(opts.engagementId);
   if (!eb?.tierId) return { ok: false, error: { kind: "no_tier_selected" } };
   const tier = await billingStorage.getTierById(eb.tierId);
   if (!tier) return { ok: false, error: { kind: "tier_not_found" } };
   if (tier.billingCadence !== "per_session") {
-    // Subscription-cadence engagements are billed by Stripe's recurring
-    // invoice flow, not on session confirm. Treat as "no charge needed".
+    // Subscriptions are billed via Stripe recurring invoices, not on confirm.
     return { ok: true, paymentIntentId: "", amountCents: 0 };
   }
 
+  // Helper: a per-session tier exists but Stripe can't actually charge
+  // it right now. Mark engagement past_due so the next session confirm
+  // is blocked until the underlying issue is resolved.
+  const flagPastDue = (message: string) =>
+    billingStorage.upsertEngagementBilling({
+      engagementId: opts.engagementId,
+      status: "past_due",
+      failedAt: new Date(),
+      lastFailureMessage: message,
+    });
+
   const provBilling = await billingStorage.getProviderBilling(opts.providerId);
   if (!provBilling?.stripeAccountId) {
+    await flagPastDue("Coach hasn't connected a Stripe account yet.");
     return { ok: false, error: { kind: "no_connected_account" } };
   }
   if (!provBilling.chargesEnabled) {
+    await flagPastDue("Coach hasn't finished Stripe onboarding.");
     return { ok: false, error: { kind: "account_incomplete" } };
   }
 
