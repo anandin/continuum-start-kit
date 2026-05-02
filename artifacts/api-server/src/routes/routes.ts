@@ -17,7 +17,6 @@ import { z } from "zod/v4";
 import type { Engagement, Session as DbSession } from "@workspace/db";
 import { runTwinTurn } from "../services/twinChat";
 import { reflectAndWrite } from "../services/memory";
-import { checkOutput } from "../services/safety";
 import {
   listSafetyEventsByProvider,
   listSafetyEventsByEngagement,
@@ -37,7 +36,8 @@ import {
   getReviewItemForMessage,
   logSafetyEvent,
 } from "../services/twinStorage";
-import { chat, embed, llmConfigured, type ChatMessage } from "../lib/llm";
+import { embed, llmConfigured, type ChatMessage } from "../lib/llm";
+import { runGuardedLLM } from "../services/safety";
 import type {
   SyntheticClientProfile,
   CalibrationTurn,
@@ -415,17 +415,30 @@ Available stages: ${stagesList}
 
 Only return JSON. No extra text.`;
 
-      // Internal (non-client-facing) summarization. Routed through the
-      // centralized chat() helper and recorded in the safety audit log so
-      // every LLM invocation is traceable, even those whose output is never
-      // shown to the seeker.
-      const content = await chat({
+      // Internal (non-seeker-facing) summarization. Routed through the
+      // safety-wrapped LLM executor: L1 input + output gates run, fail closed,
+      // and an audit event is written. If gates block, we do not summarize.
+      const guarded = await runGuardedLLM({
+        purpose: "internal_provider",
+        kind: "session_summary",
+        ctx: {
+          sessionId,
+          engagementId: engagement.id,
+          userId: req.user!.id,
+          providerId: engagement.providerId,
+        },
         messages: [
           { role: "system", content: "You are an expert coaching session analyst. Always respond with valid JSON only." },
           { role: "user", content: prompt },
         ],
         temperature: 0.3,
       });
+      const content = guarded.content;
+      if (guarded.templated) {
+        // Safety gate replaced the model output; do not persist a summary.
+        await storage.updateSession(sessionId, { status: "ended", endedAt: new Date() });
+        return res.json({ success: true, summary: null, blockedBySafety: true });
+      }
       await logSafetyEvent({
         sessionId,
         engagementId: engagement.id,
@@ -533,18 +546,24 @@ Inputs:
 
 If ambiguous, choose the earliest relevant stage.`;
 
-      // Internal stage-assignment call. Routed through chat() and audited so
-      // the safety log captures every LLM invocation, including non-client
-      // facing config calls.
+      // Internal stage-assignment. Safety-wrapped: L1 in/out gates run on the
+      // prompt, fail-closed if they fire (we fall back to the default stage).
       let content = "";
       try {
-        content = await chat({
+        const guarded = await runGuardedLLM({
+          purpose: "internal_provider",
+          kind: "onboarding_assign",
+          ctx: { userId: req.user!.id },
           messages: [
             { role: "system", content: "You are a stage assignment expert. Always respond with valid JSON only." },
             { role: "user", content: prompt },
           ],
           temperature: 0.3,
         });
+        if (guarded.templated) {
+          return res.json({ initial_stage: stages[0]?.name || "Initial", rationale: "Default assignment (safety gate)" });
+        }
+        content = guarded.content;
       } catch {
         return res.json({ initial_stage: stages[0]?.name || "Initial", rationale: "Default assignment" });
       }
@@ -1067,8 +1086,16 @@ Until [READY_TO_GENERATE], just keep the conversation going naturally. Do NOT ge
         aiMessages.push({ role: "user", content: "Hi! I'm a new coach setting up my practice. Let's get started." });
       }
 
-      // Provider-only setup conversation. Routed through chat() and audited.
-      const aiContent = (await chat({ messages: aiMessages, temperature: 0.8 })) || "Could you tell me more about your practice?";
+      // Provider-only setup conversation. Safety-wrapped — the provider's own
+      // text goes through L1 input check, the model's reply through output check.
+      const guardedChat = await runGuardedLLM({
+        purpose: "internal_provider",
+        kind: "provider_onboarding_chat",
+        ctx: { userId, providerId: userId },
+        messages: aiMessages,
+        temperature: 0.8,
+      });
+      const aiContent = guardedChat.content || "Could you tell me more about your practice?";
       await logSafetyEvent({
         sessionId: null,
         engagementId: null,
@@ -1141,14 +1168,21 @@ Output STRICT JSON ONLY (no markdown, no commentary):
 
 Aim for 4-6 stages that reflect their actual journey. Use the coach's own language wherever possible.`;
 
-      // Provider-only config synthesis. Routed through chat() and audited.
-      const content = (await chat({
+      // Provider-only config synthesis. Safety-wrapped.
+      const guardedGen = await runGuardedLLM({
+        purpose: "internal_provider",
+        kind: "provider_onboarding_generate",
+        ctx: { userId, providerId: userId },
         messages: [
           { role: "system", content: "You synthesize practice configs from coaching conversations. Always return valid JSON only." },
           { role: "user", content: prompt },
         ],
         temperature: 0.4,
-      })) || "{}";
+      });
+      if (guardedGen.templated) {
+        return res.status(400).json({ error: "Safety gate blocked config synthesis. Please revise the conversation." });
+      }
+      const content = guardedGen.content || "{}";
       await logSafetyEvent({
         sessionId: null,
         engagementId: null,
@@ -1412,6 +1446,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     // Preserve querystring; req.path strips it but req.url still carries it.
     const qIdx = req.url.indexOf("?");
     const qs = qIdx >= 0 ? req.url.slice(qIdx) : "";
+
+    // /api/calibration/* aliases for the spec contract.
     if (req.path === "/api/calibration/start" && req.method === "POST") {
       req.url = `/api/twin/calibration${qs}`;
     } else if (req.path.startsWith("/api/calibration/")) {
@@ -1419,6 +1455,20 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (m) {
         const action = m[2] === "correct" ? "approve" : m[2];
         req.url = `/api/twin/calibration/${m[1]}/${action}${qs}`;
+      }
+    }
+
+    // /api/clients/:engagementId/memory[/:entryId] aliases for the spec contract.
+    // Provider ownership is still enforced by the underlying handler (which
+    // validates against the entry's engagementId, not the URL param), so the
+    // alias is safe regardless of what engagementId the caller passes.
+    const memList = req.path.match(/^\/api\/clients\/([^/]+)\/memory$/);
+    if (memList && req.method === "GET") {
+      req.url = `/api/twin/memory/${memList[1]}${qs}`;
+    } else {
+      const memItem = req.path.match(/^\/api\/clients\/([^/]+)\/memory\/([^/]+)$/);
+      if (memItem && (req.method === "PATCH" || req.method === "DELETE")) {
+        req.url = `/api/twin/memory/${memItem[2]}${qs}`;
       }
     }
     next();
@@ -1474,25 +1524,21 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         .map((t) => `Client: ${t.client}\nTherapist Twin: ${t.draft}${t.approvedEdit ? ` (therapist approved as: ${t.approvedEdit})` : ""}`)
         .join("\n\n");
       const clientPrompt = `You are role-playing a synthetic client for a therapist's AI calibration.\n\nClient profile: ${JSON.stringify(profile)}\n\nConversation so far:\n${clientHistory || "(none)"}\n\nSpeak the client's NEXT message in 1-3 sentences. Stay in character. Output only the message text.`;
-      const rawClientUtterance = (await chat({
-        temperature: 0.8,
-        messages: [
-          { role: "system", content: "You are a research-grade client simulator. Be realistic, not theatrical." },
-          { role: "user", content: clientPrompt },
-        ],
-      })).trim();
-      // Defense-in-depth: even calibration text (LLM-generated, shown to therapist) routes through L1 output gate.
-      let clientUtterance = rawClientUtterance;
+      // Synthetic-client utterance — safety-wrapped (full L1 in/out + audit).
+      let clientUtterance: string;
       try {
-        const simVerdict = await checkOutput(rawClientUtterance, "calibration_synthetic_client", {
-          providerId: req.user!.id,
-          userId: req.user!.id,
+        const simGuarded = await runGuardedLLM({
+          purpose: "internal_calibration",
+          kind: "synthetic_client_utterance",
+          ctx: { providerId: req.user!.id, userId: req.user!.id },
+          temperature: 0.8,
+          messages: [
+            { role: "system", content: "You are a research-grade client simulator. Be realistic, not theatrical." },
+            { role: "user", content: clientPrompt },
+          ],
         });
-        if (simVerdict.decision !== "allow" && simVerdict.templatedResponse) {
-          clientUtterance = simVerdict.templatedResponse;
-        }
+        clientUtterance = simGuarded.content.trim();
       } catch {
-        // If L1 audit failed, refuse to surface unchecked LLM output.
         return res.status(503).json({ error: "Safety audit unavailable; please retry" });
       }
 

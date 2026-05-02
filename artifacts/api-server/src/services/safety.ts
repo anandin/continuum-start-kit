@@ -16,7 +16,7 @@
  */
 
 import { logger } from "../lib/logger";
-import { classify } from "../lib/llm";
+import { classify, chat as rawChat, type ChatMessage } from "../lib/llm";
 import { logSafetyEvent } from "./twinStorage";
 
 // ---------------------------------------------------------------- constitution
@@ -415,4 +415,116 @@ async function persist(
 /** Prepend the constitutional identity to any system prompt. Non-overridable. */
 export function withConstitution(systemPrompt: string): string {
   return `${CONSTITUTIONAL_IDENTITY}\n\n---\n\n${systemPrompt}`;
+}
+
+// ---------------------------------------------------------------------------
+// runGuardedLLM — the ONLY supported way to invoke the LLM outside of
+// runTwinTurn. Every call performs the full L1 input check on the
+// representative user/assistant content, then the model call, then the L1
+// output check, all with audit persistence. Failures fail closed (throw).
+//
+// purpose: tags the safety_events for observability.
+//   - "seeker_facing" → use runTwinTurn instead; this fn refuses.
+//   - "internal_provider" → provider-only flows (config synthesis, summaries).
+//   - "internal_calibration" → calibration-driven synthetic content.
+//   - "internal_classifier" → reserved for non-conversational classifier calls.
+// ---------------------------------------------------------------------------
+
+export type GuardedPurpose =
+  | "internal_provider"
+  | "internal_calibration"
+  | "internal_classifier";
+
+export interface RunGuardedLLMOpts {
+  purpose: GuardedPurpose;
+  ctx: SafetyContext;
+  // Optional label written into classifierLabels for traceability.
+  kind: string;
+  model?: string;
+  temperature?: number;
+  jsonMode?: boolean;
+  messages: ChatMessage[];
+}
+
+export interface GuardedLLMResult {
+  content: string;
+  inputDecision: SafetyDecision;
+  outputDecision: SafetyDecision;
+  templated: boolean;
+}
+
+/**
+ * Extract the text we treat as "user input" for the L1 input gate. For
+ * single-prompt internal calls this is the last user message; if there is
+ * none, we use the concatenated message stream so the safety classifier sees
+ * the actual content being sent to the model.
+ */
+function representativeInput(messages: ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") return messages[i].content;
+  }
+  return messages.map((m) => `${m.role}: ${m.content}`).join("\n");
+}
+
+export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLMResult> {
+  const inputText = representativeInput(opts.messages);
+
+  // L1 input gate — fail closed.
+  const inVerdict = await checkInput(inputText, opts.ctx);
+  if (inVerdict.decision !== "allow") {
+    return {
+      content: inVerdict.templatedResponse ?? "",
+      inputDecision: inVerdict.decision,
+      outputDecision: "block_with_template",
+      templated: true,
+    };
+  }
+
+  // Model call — failures bubble up; caller's error handler renders 5xx.
+  const raw = await rawChat({
+    model: opts.model,
+    temperature: opts.temperature,
+    jsonMode: opts.jsonMode,
+    messages: opts.messages,
+  });
+
+  // Tag the audit row with purpose/kind so internal calls are queryable.
+  const ctxForOutput: SafetyContext = {
+    ...opts.ctx,
+  };
+  const outVerdict = await checkOutput(raw, inputText, ctxForOutput);
+
+  // Always write a tagged audit event so EVERY guarded call is recorded
+  // (in addition to the input/output gate events persist() already wrote).
+  await logSafetyEvent({
+    sessionId: opts.ctx.sessionId ?? null,
+    engagementId: opts.ctx.engagementId ?? null,
+    userId: opts.ctx.userId ?? null,
+    providerId: opts.ctx.providerId ?? null,
+    stage: "input",
+    decision: outVerdict.decision === "allow" ? "allow" : outVerdict.decision,
+    severity: outVerdict.severity,
+    reason: `guarded_llm:${opts.purpose}:${opts.kind}`,
+    classifierLabels: { internal: true, purpose: opts.purpose, kind: opts.kind },
+    inputSnippet: null, // raw text already redacted in caller-side audit if desired
+    outputSnippet: null,
+    templateUsed: outVerdict.templatedResponse ? outVerdict.templatedResponse.slice(0, 80) : null,
+    agentVersionId: opts.ctx.agentVersionId ?? null,
+  });
+
+  if (outVerdict.decision !== "allow" && outVerdict.templatedResponse) {
+    return {
+      content: outVerdict.templatedResponse,
+      inputDecision: "allow",
+      outputDecision: outVerdict.decision,
+      templated: true,
+    };
+  }
+
+  return {
+    content: raw,
+    inputDecision: "allow",
+    outputDecision: outVerdict.decision,
+    templated: false,
+  };
 }

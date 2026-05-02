@@ -7,7 +7,8 @@
  */
 
 import { logger } from "../lib/logger";
-import { chat, embed } from "../lib/llm";
+import { embed } from "../lib/llm";
+import { runGuardedLLM } from "./safety";
 import { writeClientMemory, topClientMemory } from "./twinStorage";
 import type { ClientMemory, Message } from "@workspace/db";
 
@@ -52,7 +53,12 @@ export async function reflectAndWrite(opts: {
 
   let parsed: ReflectionOutput;
   try {
-    const raw = await chat({
+    // Reflection is internal (provider-side) — still runs through the L1
+    // safety gate so we never invoke the LLM without input/output checks.
+    const guarded = await runGuardedLLM({
+      purpose: "internal_provider",
+      kind: "session_reflection",
+      ctx: { sessionId: opts.sessionId, engagementId: opts.engagementId },
       jsonMode: true,
       temperature: 0.2,
       messages: [
@@ -63,7 +69,13 @@ export async function reflectAndWrite(opts: {
         },
       ],
     });
-    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    if (guarded.templated) {
+      // Safety gate replaced the output with a template — don't ingest it
+      // as memory; just skip reflection for this session.
+      logger.warn({ sessionId: opts.sessionId }, "reflection blocked by safety gate; skipping memory write");
+      return [];
+    }
+    const cleaned = guarded.content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     parsed = JSON.parse(cleaned);
   } catch (err) {
     logger.error({ err }, "reflection LLM call failed");
