@@ -318,21 +318,27 @@ export function registerRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid engagement" });
       }
 
-      // Persist the seeker message first so it appears even if the model fails
-      await storage.createMessage({ sessionId, role: "seeker", content: message });
-      const recentMessages = await storage.getMessagesBySessionId(sessionId);
-
-      // Derive the SEEKER's user id from the engagement, not from req.user.
-      // Therapists can also send on behalf of a session, but the L1 ctx must
-      // attribute crisis localization (region) and safety_events to the
-      // seeker that owns the engagement — otherwise an INTL seeker chatting
-      // with a US-region provider would get US crisis numbers, and audit
-      // rows would attribute the seeker's crisis content to the provider.
+      // /api/chat is the SEEKER-facing Twin turn endpoint. The Twin is
+      // designed to respond to client messages — provider-authored turns
+      // must NOT be persisted as `role: "seeker"` (that would corrupt
+      // audit attribution, review-queue scenario extraction, reflection
+      // inputs, and L1 client-message semantics). Providers who want to
+      // post supervisory messages should use a dedicated provider-send
+      // endpoint, not this one.
       let seekerUserId = req.user!.id;
       if (engagement.seekerId) {
         const seeker = await storage.getSeekerById(engagement.seekerId);
         if (seeker?.ownerId) seekerUserId = seeker.ownerId;
       }
+      if (seekerUserId !== req.user!.id) {
+        return res.status(403).json({
+          error: "Only the seeker may send messages on this endpoint. Providers cannot author Twin turns.",
+        });
+      }
+
+      // Persist the seeker message first so it appears even if the model fails
+      await storage.createMessage({ sessionId, role: "seeker", content: message });
+      const recentMessages = await storage.getMessagesBySessionId(sessionId);
 
       const result = await runTwinTurn({
         providerId: engagement.providerId,
