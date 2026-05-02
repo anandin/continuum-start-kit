@@ -544,6 +544,7 @@ export type BillingSummary = {
   tier: PriceTier | null;
   status: string;
   pastDue: boolean;
+  hasPaymentMethod: boolean;
   subscription: { id: string | null };
   lastFailureMessage: string | null;
 };
@@ -564,6 +565,7 @@ export async function buildBillingSummary(
     // working card; an incomplete subscription is the same situation
     // (open invoice waiting on payment) so we lump them together.
     pastDue: eb?.status === "past_due" || eb?.status === "incomplete",
+    hasPaymentMethod: !!eb?.stripePaymentMethodId,
     subscription: { id: eb?.stripeSubscriptionId ?? null },
     lastFailureMessage: eb?.lastFailureMessage ?? null,
   };

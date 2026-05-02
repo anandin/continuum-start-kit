@@ -30,6 +30,7 @@ interface BillingSummary {
   tier: Tier | null;
   status: string;
   pastDue: boolean;
+  hasPaymentMethod: boolean;
   lastFailureMessage: string | null;
   tiers: Tier[];
 }
@@ -281,6 +282,15 @@ export default function SeekerPayment() {
         })?`,
       );
       if (!ok) return;
+    }
+    if (target?.billingCadence === "monthly" && !summary?.hasPaymentMethod) {
+      toast.message(
+        "Save a card below first — monthly subscriptions need a payment method on file before they can start.",
+      );
+      document
+        .querySelector('[data-testid="setup-intent-form"]')
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
     }
     setPicking(tierId);
     try {
