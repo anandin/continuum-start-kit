@@ -2081,10 +2081,10 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     if (starterSeedAttempted) return;
     starterSeedAttempted = true;
     try {
-      const existing = await storage.countGlobalStarterPrompts();
-      if (existing === 0) {
-        await storage.seedGlobalStarterPrompts(STARTER_PROMPTS);
-      }
+      // Always upsert — the partial unique index makes this a no-op when all
+      // starters already exist, and recovers the missing ones from partial
+      // states. Avoids the count==0 race that earlier versions had.
+      await storage.seedGlobalStarterPrompts(STARTER_PROMPTS);
     } catch {
       // Best-effort; let the next request retry by clearing the flag.
       starterSeedAttempted = false;
@@ -2228,24 +2228,33 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       }
       const { body, promptId, engagementId, sharedWithCoach } = parsed.data;
 
-      // If a prompt is referenced, make sure it exists.
-      if (promptId) {
-        const prompt = await storage.getJournalPromptById(promptId);
-        if (!prompt) return res.status(400).json({ error: "Unknown prompt" });
-      }
-
       // Resolve engagement: explicit id (must belong to seeker) or auto-attach active.
       let engagementIdToStore: string | null = null;
+      let providerIdForPromptCheck: string | null = null;
       if (engagementId) {
         const engagement = await storage.getEngagementById(engagementId);
         if (!engagement || engagement.seekerId !== seeker.id) {
           return res.status(403).json({ error: "Forbidden engagement" });
         }
         engagementIdToStore = engagement.id;
+        providerIdForPromptCheck = engagement.providerId;
       } else {
-        const engagements = await storage.getEngagementsBySeekerId(seeker.id);
-        const active = engagements.find((e) => (e.status ?? "active") === "active") ?? engagements[0];
+        const seekerEngagements = await storage.getEngagementsBySeekerId(seeker.id);
+        const active = seekerEngagements.find((e) => (e.status ?? "active") === "active") ?? seekerEngagements[0];
         engagementIdToStore = active?.id ?? null;
+        providerIdForPromptCheck = active?.providerId ?? null;
+      }
+
+      // If a prompt is referenced, ensure it's actually available to this seeker
+      // (global starter, their coach's library, or assigned to their engagement).
+      if (promptId) {
+        const available = await storage.listAvailableJournalPromptsForSeeker(
+          providerIdForPromptCheck,
+          engagementIdToStore,
+        );
+        if (!available.some((p) => p.id === promptId)) {
+          return res.status(403).json({ error: "Prompt not available to you" });
+        }
       }
 
       const entry = await storage.createJournalEntry({
