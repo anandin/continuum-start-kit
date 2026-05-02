@@ -304,6 +304,41 @@ export default function HomeScreen() {
 
         <MoodCard engagementId={activeEngagement?.id ?? null} />
 
+        <Pressable
+          onPress={() => router.push("/progress")}
+          accessibilityLabel="Open my progress"
+          testID="home-open-progress"
+          style={({ pressed }) => [
+            styles.progressLinkCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.progressLinkIcon,
+              { backgroundColor: colors.gradientHeroMid },
+            ]}
+          >
+            <Feather name="trending-up" size={16} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.progressLinkTitle, { color: colors.foreground }]}>
+              My progress
+            </Text>
+            <Text
+              style={[styles.progressLinkSub, { color: colors.mutedForeground }]}
+            >
+              Streak, sessions, goals, and your 30-day mood trend.
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
+
         {activeEngagement ? (
           <View
             style={[
@@ -809,5 +844,30 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     textAlign: "center",
     lineHeight: 19,
+  },
+  progressLinkCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  progressLinkIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressLinkTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  progressLinkSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+    lineHeight: 17,
   },
 });

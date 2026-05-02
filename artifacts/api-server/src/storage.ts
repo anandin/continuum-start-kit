@@ -621,6 +621,129 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(moodEntries.day));
   }
 
+  // ============ Seeker Progress Snapshot ============
+  // Aggregates everything the seeker progress view needs in a single call.
+  // - sessionsCompleted: total ended sessions across all the seeker's engagements.
+  // - moodSeries: last `moodWindowDays` days of mood entries.
+  // - streak: consecutive days (UTC) with a mood OR journal check-in. The
+  //   streak is "forgiving" — if today has no check-in but yesterday does,
+  //   we still report the streak with status "keep-going".
+  // - goalsThisWeek: count of self-checkoff rows in the last 7 days.
+  async getSeekerProgressSnapshot(
+    userId: string,
+    opts: { moodWindowDays?: number; streakWindowDays?: number } = {},
+  ): Promise<{
+    sessionsCompleted: number;
+    moodSeries: Array<{ day: string; score: number; note: string | null }>;
+    streak: { current: number; status: "active" | "keep-going" | "none"; lastCheckInDay: string | null };
+    goalsThisWeek: number;
+    hasSeekerProfile: boolean;
+  }> {
+    const moodWindow = opts.moodWindowDays ?? 30;
+    // Streak walks backward from today and stops at the first gap, so the
+    // window only matters as an upper bound on how long a streak we can
+    // measure. 400 days comfortably covers a year+ for any current user.
+    const streakWindow = opts.streakWindowDays ?? 400;
+
+    const seeker = await this.getSeekerByOwnerId(userId);
+    if (!seeker) {
+      return {
+        sessionsCompleted: 0,
+        moodSeries: [],
+        streak: { current: 0, status: "none", lastCheckInDay: null },
+        goalsThisWeek: 0,
+        hasSeekerProfile: false,
+      };
+    }
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    const shift = (days: number) => {
+      const d = new Date(today);
+      d.setUTCDate(today.getUTCDate() - days);
+      return d;
+    };
+
+    const moodSinceDay = ymd(shift(moodWindow - 1));
+    const streakSinceDay = ymd(shift(streakWindow - 1));
+    const sevenDaysAgo = shift(6); // inclusive 7-day window
+    sevenDaysAgo.setUTCHours(0, 0, 0, 0);
+
+    // Run aggregations in parallel.
+    const [sessionsCountRows, moodRows, streakMoodRows, journalDayRows, goalsCountRows] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(sessions)
+        .innerJoin(engagements, eq(sessions.engagementId, engagements.id))
+        .where(and(eq(engagements.seekerId, seeker.id), eq(sessions.status, "ended"))),
+      db.select({ day: moodEntries.day, score: moodEntries.score, note: moodEntries.note })
+        .from(moodEntries)
+        .where(and(eq(moodEntries.seekerId, seeker.id), gte(moodEntries.day, moodSinceDay)))
+        .orderBy(asc(moodEntries.day)),
+      db.select({ day: moodEntries.day })
+        .from(moodEntries)
+        .where(and(eq(moodEntries.seekerId, seeker.id), gte(moodEntries.day, streakSinceDay))),
+      db.select({ day: sql<string>`to_char((${journalEntries.createdAt}) AT TIME ZONE 'UTC', 'YYYY-MM-DD')` })
+        .from(journalEntries)
+        .where(and(
+          eq(journalEntries.seekerId, seeker.id),
+          gte(journalEntries.createdAt, shift(streakWindow - 1)),
+        )),
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(goalProgress)
+        .where(and(eq(goalProgress.seekerUserId, userId), gte(goalProgress.createdAt, sevenDaysAgo))),
+    ]);
+
+    const sessionsCompleted = sessionsCountRows[0]?.count ?? 0;
+    const goalsThisWeek = goalsCountRows[0]?.count ?? 0;
+
+    const moodSeries = moodRows.map((r) => ({
+      day: typeof r.day === "string" ? r.day : ymd(new Date(r.day as unknown as string)),
+      score: r.score,
+      note: r.note,
+    }));
+
+    // Build set of UTC day strings with any check-in (mood or journal).
+    const checkinDays = new Set<string>();
+    for (const r of streakMoodRows) {
+      const d = typeof r.day === "string" ? r.day : ymd(new Date(r.day as unknown as string));
+      checkinDays.add(d);
+    }
+    for (const r of journalDayRows) {
+      if (r.day) checkinDays.add(r.day);
+    }
+
+    const todayStr = ymd(today);
+    const yesterdayStr = ymd(shift(1));
+    let cursor: Date | null = null;
+    let status: "active" | "keep-going" | "none" = "none";
+    if (checkinDays.has(todayStr)) {
+      cursor = new Date(today);
+      status = "active";
+    } else if (checkinDays.has(yesterdayStr)) {
+      cursor = shift(1);
+      status = "keep-going";
+    }
+
+    let current = 0;
+    let lastCheckInDay: string | null = null;
+    if (cursor) {
+      while (checkinDays.has(ymd(cursor))) {
+        if (lastCheckInDay === null) lastCheckInDay = ymd(cursor);
+        current += 1;
+        cursor.setUTCDate(cursor.getUTCDate() - 1);
+      }
+    }
+
+    return {
+      sessionsCompleted,
+      moodSeries,
+      streak: { current, status, lastCheckInDay },
+      goalsThisWeek,
+      hasSeekerProfile: true,
+    };
+  }
+
   // ============ Journal Prompts ============
   async createJournalPrompt(data: InsertJournalPrompt): Promise<JournalPrompt> {
     const [prompt] = await db.insert(journalPrompts).values(data).returning();

@@ -2279,6 +2279,21 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     }
   });
 
+  // Single rolled-up snapshot for the seeker progress view.
+  // Returns sessions completed, daily check-in streak (forgiving), goals
+  // checked off this week, and a 30-day mood series — in one call.
+  app.get("/api/seeker/progress", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const moodWindowDays = clampDays(req.query.moodDays, 30, 90);
+      const snapshot = await storage.getSeekerProgressSnapshot(userId, { moodWindowDays });
+      return res.json(snapshot);
+    } catch (error: any) {
+      req.log.error({ err: error }, "Failed to load seeker progress snapshot");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   // Coach (or seeker on their own engagement) reads mood history for an engagement.
   app.get("/api/engagements/:id/mood", requireAuth, async (req: Request, res: Response) => {
     try {

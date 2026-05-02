@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   MessageSquare, 
   Calendar, 
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useEngagements } from '@/hooks/useEngagements';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
+import { SeekerProgressCard } from '@/components/dashboard/SeekerProgressCard';
 import { apiRequest } from '@/lib/queryClient';
 import { toast } from 'sonner';
 
@@ -28,6 +29,17 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
   const { loading, engagements, getLastSessionDate, getLatestStage, getTrajectoryStatus } = useEngagements(userId, 'seeker');
   const [latestSummary, setLatestSummary] = useState<any>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const journeyCardRef = useRef<HTMLDivElement | null>(null);
+
+  const handleProgressTileNav = useCallback((kind: 'sessions' | 'goals' | 'mood' | 'streak') => {
+    if (kind === 'mood' || kind === 'streak') {
+      navigate('/journal');
+      return;
+    }
+    // Sessions and goals live inside the "Your Active Journey" card on this
+    // page. Scroll there so the user lands on the relevant detail.
+    journeyCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [navigate]);
 
   const activeEngagements = useMemo(() => 
     engagements.filter(e => e.status === 'active'), 
@@ -175,6 +187,8 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
         </Card>
       </div>
 
+      <SeekerProgressCard onTileNavigate={handleProgressTileNav} />
+
       <Card className="shadow-warm border-primary/10" data-testid="card-journal-cta">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between gap-4">
@@ -202,7 +216,7 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
       </Card>
 
       {hasEngagements && activeEngagements[0] && (
-        <Card className="shadow-warm-md border-primary/10" data-testid="card-active-journey">
+        <Card ref={journeyCardRef} className="shadow-warm-md border-primary/10 scroll-mt-24" data-testid="card-active-journey">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
