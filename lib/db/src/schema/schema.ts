@@ -241,7 +241,15 @@ export const safetyEvents = pgTable("safety_events", {
   engagementId: uuid("engagement_id").references(() => engagements.id),
   userId: uuid("user_id").references(() => users.id),
   providerId: uuid("provider_id").references(() => users.id),
-  stage: text("stage").notNull(), // "input" | "output" | "review_label"
+  // Allowed stage values:
+  //   "input"            — L1 input gate verdict (checkInput)
+  //   "output"           — L1 output gate verdict (checkOutput)
+  //   "review_label"     — therapist review/calibration "never_say_this" label
+  //   "internal_audit"   — caller-side annotation around an internal guarded
+  //                        LLM call, carries redacted input/output snippets
+  //   "guarded_summary"  — runGuardedLLM aggregate row, written ONLY when the
+  //                        output gate did not allow (carries purpose+kind)
+  stage: text("stage").notNull(),
   decision: safetyDecisionEnum("decision").notNull(),
   severity: safetySeverityEnum("severity").notNull(),
   reason: text("reason"),
