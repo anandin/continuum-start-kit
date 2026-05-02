@@ -37,7 +37,7 @@ import {
   logSafetyEvent,
 } from "../services/twinStorage";
 import { embed, llmConfigured, type ChatMessage } from "../lib/llm";
-import { runGuardedLLM } from "../services/safety";
+import { runGuardedLLM, type SafetyDecision } from "../services/safety";
 import { snapshotAgentVersion } from "../services/persona";
 import type {
   SyntheticClientProfile,
@@ -578,6 +578,7 @@ If ambiguous, choose the earliest relevant stage.`;
       // Internal stage-assignment. Safety-wrapped: L1 in/out gates run on the
       // prompt, fail-closed if they fire (we fall back to the default stage).
       let content = "";
+      let guardedDecision: SafetyDecision = "allow";
       try {
         const guarded = await runGuardedLLM({
           purpose: "internal_provider",
@@ -593,6 +594,7 @@ If ambiguous, choose the earliest relevant stage.`;
           return res.json({ initial_stage: stages[0]?.name || "Initial", rationale: "Default assignment (safety gate)" });
         }
         content = guarded.content;
+        guardedDecision = guarded.outputDecision;
       } catch {
         return res.json({ initial_stage: stages[0]?.name || "Initial", rationale: "Default assignment" });
       }
@@ -602,8 +604,8 @@ If ambiguous, choose the earliest relevant stage.`;
         userId: req.user!.id,
         providerId: null,
         stage: "internal_audit",
-        decision: guarded.outputDecision,
-        severity: guarded.outputDecision === "allow" ? "info" : "medium",
+        decision: guardedDecision,
+        severity: guardedDecision === "allow" ? "info" : "medium",
         reason: "internal_onboarding_assign",
         classifierLabels: { internal: true, kind: "onboarding_assign" },
         inputSnippet: internalAuditSnippet(prompt, "onboarding_assign_prompt"),
@@ -1626,7 +1628,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         client: clientUtterance,
         draft: draftResult.reply,
         templated: draftResult.templated,
-        decision: draftResult.decision,
+        decision: draftResult.decision as SafetyDecision,
         approvedEdit: null,
         label: null,
       };
