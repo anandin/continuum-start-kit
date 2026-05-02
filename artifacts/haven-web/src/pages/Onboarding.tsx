@@ -168,31 +168,33 @@ export default function Onboarding() {
       // invoice confirmed (SCA / 3DS); we surface a friendly toast and
       // defer the actual card-confirm step to the Payment page rather
       // than blocking onboarding on a Stripe modal.
+      let needsPaymentSetup = false;
       if (selectedTierId) {
-        try {
-          const r = await apiRequest(
-            'POST',
-            `/api/engagements/${engagement.id}/billing/select-tier`,
-            { tierId: selectedTierId },
+        const r = await apiRequest(
+          'POST',
+          `/api/engagements/${engagement.id}/billing/select-tier`,
+          { tierId: selectedTierId },
+        );
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          toast.error(
+            body?.error ??
+              'Could not save your payment tier. Please choose it on the Payment page.',
           );
-          const body = await r.json().catch(() => ({}));
-          if (body?.subscription?.clientSecret) {
-            // Monthly tier produced an incomplete subscription — the
-            // seeker still needs to attach a card before the first
-            // invoice is paid. We surface this and route them straight
-            // to the Payment page after onboarding lands.
-            toast.message(
-              'Add a card on the Payment page to start your subscription.',
+          needsPaymentSetup = true;
+        } else if (body?.subscription?.clientSecret) {
+          toast.message(
+            'Add a card on the Payment page to start your subscription.',
+          );
+          needsPaymentSetup = true;
+        }
+        if (needsPaymentSetup) {
+          try {
+            sessionStorage.setItem(
+              'haven:pendingPayment',
+              JSON.stringify({ engagementId: engagement.id }),
             );
-            try {
-              sessionStorage.setItem(
-                'haven:pendingPayment',
-                JSON.stringify({ engagementId: engagement.id }),
-              );
-            } catch {}
-          }
-        } catch (err) {
-          console.warn('select-tier failed in onboarding', err);
+          } catch {}
         }
       }
 

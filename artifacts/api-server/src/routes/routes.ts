@@ -3341,9 +3341,9 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           // ignore invalid zones from the client
         }
       }
-      // Pre-confirm billing gate: block when payment needs attention,
-      // and (when the coach has tiers) require a selected tier first.
-      try {
+      // Pre-confirm billing gate. Fails closed: any error here surfaces
+      // as 500 rather than silently allowing an unbilled booking.
+      {
         const { billingStorage } = await import("../services/billingStorage");
         const eb = await billingStorage.getEngagementBilling(row.engagementId);
         if (eb?.status === "past_due" || eb?.status === "incomplete") {
@@ -3352,7 +3352,6 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
               "Payment needs attention. Please add or update your payment method on the Payment tab before booking new sessions.",
           });
         }
-        // If the coach has any active tiers, require a selection.
         if (!eb?.tierId) {
           const tiers = await billingStorage.listTiersForProvider(row.providerId, { activeOnly: true });
           if (tiers.length > 0) {
@@ -3361,9 +3360,18 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
                 "Please choose a payment tier on the Payment tab before booking sessions.",
             });
           }
+        } else {
+          // Tier is selected — require a saved card before booking so
+          // per-session charges (and the first monthly invoice) can't
+          // produce a confirmed-but-unpaid session.
+          const tier = await billingStorage.getTierById(eb.tierId);
+          if (tier && !eb.stripePaymentMethodId) {
+            return res.status(402).json({
+              error:
+                "Please add a payment method on the Payment tab before booking sessions.",
+            });
+          }
         }
-      } catch {
-        // billing optional — never block confirm on internal billing errors
       }
       const updated = await confirmSlot(row.id, chosen);
       // confirmSlot returns undefined when the atomic update missed

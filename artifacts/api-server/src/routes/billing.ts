@@ -189,9 +189,6 @@ export function registerBillingRoutes(app: Express): void {
         return res.status(404).json({ error: "Tier not found" });
       }
       const parsed = patchTierSchema.parse(req.body);
-      // Build a typed patch instead of casting to any. Each field is
-      // copied only when present so we never accidentally null out a
-      // column the client didn't mean to touch.
       const patch: Partial<InsertPriceTier> = {};
       if (parsed.label !== undefined) patch.label = parsed.label;
       if (parsed.description !== undefined) patch.description = parsed.description ?? null;
@@ -303,10 +300,9 @@ export function registerBillingRoutes(app: Express): void {
         }
 
         if (tier.billingCadence === "monthly") {
-          // Create the Stripe subscription FIRST. subscribeMonthly is
-          // the single source of truth for tierId + status writes when
-          // the cadence is monthly — that way local state can never
-          // claim a monthly tier without a backing Stripe subscription.
+          // Create the Stripe subscription before persisting the tier
+          // so local state can never claim a monthly tier without a
+          // backing subscription.
           const sub = await subscribeMonthly({
             engagementId,
             seekerUserId: party.seekerUserId,

@@ -651,6 +651,7 @@ export const engagementBilling = pgTable(
     tierId: uuid("tier_id").references(() => priceTiers.id),
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubscriptionId: text("stripe_subscription_id"),
+    stripePaymentMethodId: text("stripe_payment_method_id"),
     lastPaymentIntentId: text("last_payment_intent_id"),
     status: text("status").notNull().default("none"),
     lastChargedAt: timestamp("last_charged_at"),

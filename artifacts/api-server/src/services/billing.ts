@@ -332,6 +332,10 @@ export async function setEngagementDefaultPaymentMethod(opts: {
     await stripe.customers.update(eb.stripeCustomerId, {
       invoice_settings: { default_payment_method: opts.paymentMethodId },
     });
+    await billingStorage.upsertEngagementBilling({
+      engagementId: opts.engagementId,
+      stripePaymentMethodId: opts.paymentMethodId,
+    });
     // If there's an active subscription, also pin the default PM at
     // the subscription level so future invoices charge this card
     // automatically without falling back to customer defaults.
