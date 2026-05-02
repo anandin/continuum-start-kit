@@ -81,6 +81,18 @@ with `done|skip|snooze`) — only the owning seeker can respond.
 Therapist control tower pages in `artifacts/haven-web/src/pages/twin/`: Calibration.tsx,
 PersonaLibrary.tsx, MemoryInspector.tsx, AuditLog.tsx — linked from ProviderDashboardView.
 
+AI session prep brief (`services/sessionBriefs.ts` + `sessionBriefStorage.ts`, table
+`session_briefs`): coach-only "Generate brief" composes a 4-section brief (whatsChanged,
+suggestedOpening, topicsToRevisit, safetyContext) from L3 memory + last 3 summaries + open
+goals + recent mood/journal + open alerts via gemini-2.5-flash JSON mode. All free-text
+context is PII-scrubbed (emails / phones / URLs / long digit runs / known seeker+provider
+identifiers → `[email]`/`[phone]`/`[name]`) before reaching the LLM. Composed text passes
+through L1 `checkOutput` defense-in-depth — non-allow verdicts replace the body with the
+template and flag `templated_safety`; safety-persist failures fail closed with `failed`.
+Briefs are saved (not regenerated per view); `POST /api/briefs/:id/used` is atomic
+(`UPDATE … WHERE used_at IS NULL`). Provider UI: `SessionPrepBriefPanel.tsx` mounted as
+the "Prep brief" tab on `ClientSessionSummary.tsx` (history toggle + AI disclaimer).
+
 ## Authorization
 
 All engagement/session-scoped routes use `assertEngagementMember` or `assertSessionMember` helpers

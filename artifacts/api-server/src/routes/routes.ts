@@ -17,6 +17,13 @@ import { z } from "zod/v4";
 import type { Engagement, Goal, Session as DbSession } from "@workspace/db";
 import { runTwinTurn } from "../services/twinChat";
 import { reflectAndWrite } from "../services/memory";
+import { generateAndSaveBriefForEngagement } from "../services/sessionBriefs";
+import {
+  getSessionBriefById,
+  getLatestSessionBriefForEngagement,
+  listSessionBriefsForEngagement,
+  markSessionBriefUsed,
+} from "../services/sessionBriefStorage";
 import {
   listPlaybooksByProvider,
   getPlaybookById,
@@ -3030,6 +3037,110 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       return res.json({ nudge: updated });
     } catch (error: any) {
       req.log.error({ err: error }, "POST /api/nudges/:id/respond failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Session prep briefs (Task #17)
+  // Coach reads an AI-composed brief before a session. Briefs are
+  // saved (not regenerated per view); the coach hits "Generate" to
+  // refresh, and "Mark used in session" once they've worked from it.
+  // All routes are coach-only — even the GETs — because briefs may
+  // surface clinical synthesis that isn't appropriate for the seeker.
+  // ============================================================
+  app.post("/api/engagements/:id/briefs/generate", requireProvider, async (req, res) => {
+    try {
+      const engagementId = String(req.params.id);
+      const auth = await assertProviderOwnsEngagement(req, engagementId);
+      if (!auth.ok) {
+        return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
+      }
+      const result = await generateAndSaveBriefForEngagement({
+        engagementId,
+        providerId: req.user!.id,
+      });
+      if ("error" in result) {
+        return res.status(500).json({ error: result.error });
+      }
+      return res.json({ brief: result.brief });
+    } catch (error: any) {
+      req.log.error({ err: error }, "POST /api/engagements/:id/briefs/generate failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/engagements/:id/briefs/latest", requireProvider, async (req, res) => {
+    try {
+      const engagementId = String(req.params.id);
+      const auth = await assertProviderOwnsEngagement(req, engagementId);
+      if (!auth.ok) {
+        return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
+      }
+      const brief = await getLatestSessionBriefForEngagement(engagementId);
+      return res.json({ brief: brief ?? null });
+    } catch (error: any) {
+      req.log.error({ err: error }, "GET /api/engagements/:id/briefs/latest failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/engagements/:id/briefs", requireProvider, async (req, res) => {
+    try {
+      const engagementId = String(req.params.id);
+      const auth = await assertProviderOwnsEngagement(req, engagementId);
+      if (!auth.ok) {
+        return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
+      }
+      const briefs = await listSessionBriefsForEngagement(engagementId);
+      return res.json({ briefs });
+    } catch (error: any) {
+      req.log.error({ err: error }, "GET /api/engagements/:id/briefs failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  const markBriefUsedSchema = z.object({
+    sessionId: z.string().uuid().optional().nullable(),
+  });
+
+  app.post("/api/briefs/:id/used", requireProvider, async (req, res) => {
+    try {
+      const briefId = String(req.params.id);
+      const existing = await getSessionBriefById(briefId);
+      if (!existing) return res.status(404).json({ error: "Brief not found" });
+      // Authz: must be the provider who owns the brief's engagement.
+      const auth = await assertProviderOwnsEngagement(req, existing.engagementId);
+      if (!auth.ok) {
+        return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
+      }
+      const parsed = markBriefUsedSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid body", details: parsed.error.issues });
+      }
+      // If a sessionId is supplied, sanity-check it belongs to this engagement
+      // so callers can't tag a brief with a session from another client.
+      if (parsed.data.sessionId) {
+        const session = await storage.getSessionById(parsed.data.sessionId);
+        if (!session || session.engagementId !== existing.engagementId) {
+          return res.status(400).json({ error: "Session does not belong to this engagement" });
+        }
+      }
+      const result = await markSessionBriefUsed(briefId, {
+        sessionId: parsed.data.sessionId ?? null,
+      });
+      if ("error" in result) {
+        if (result.error === "already_used") {
+          // Idempotent: return the existing used brief rather than 409 so
+          // the UI can refresh state without special-casing the race.
+          const refreshed = await getSessionBriefById(briefId);
+          return res.json({ brief: refreshed, alreadyUsed: true });
+        }
+        return res.status(404).json({ error: result.error });
+      }
+      return res.json({ brief: result.brief });
+    } catch (error: any) {
+      req.log.error({ err: error }, "POST /api/briefs/:id/used failed");
       return res.status(500).json({ error: error.message });
     }
   });

@@ -505,6 +505,33 @@ export const nudges = pgTable(
   }),
 );
 
+// AI-generated session prep briefs the coach reads before a session.
+// Briefs are saved (not regenerated per view); the coach explicitly
+// triggers a refresh and can mark the brief as "used in session".
+// status lifecycle: "ready" (LLM produced & passed L1 output gate)
+//                 | "templated_safety" (L1 wrapped/blocked the output)
+//                 | "failed" (composition or LLM call errored)
+export const sessionBriefs = pgTable(
+  "session_briefs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+    providerId: uuid("provider_id").references(() => users.id).notNull(),
+    sections: jsonb("sections").notNull().default({}),
+    status: text("status").notNull().default("ready"),
+    safetyDecision: text("safety_decision"),
+    safetyReason: text("safety_reason"),
+    model: text("model"),
+    generatedAt: timestamp("generated_at").defaultNow(),
+    usedAt: timestamp("used_at"),
+    usedInSessionId: uuid("used_in_session_id").references(() => sessions.id),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    engagementIdx: index("session_briefs_engagement_idx").on(t.engagementId),
+  }),
+);
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, createdAt: true });
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
@@ -537,6 +564,7 @@ export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit(
 export const insertCoachInboxDismissalSchema = createInsertSchema(coachInboxDismissals).omit({ id: true, dismissedAt: true });
 export const insertPlaybookSchema = createInsertSchema(playbooks).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertNudgeSchema = createInsertSchema(nudges).omit({ id: true, createdAt: true, sentAt: true, respondedAt: true });
+export const insertSessionBriefSchema = createInsertSchema(sessionBriefs).omit({ id: true, createdAt: true, generatedAt: true, usedAt: true, usedInSessionId: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -570,6 +598,7 @@ export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
 export type InsertCoachInboxDismissal = z.infer<typeof insertCoachInboxDismissalSchema>;
 export type InsertPlaybook = z.infer<typeof insertPlaybookSchema>;
 export type InsertNudge = z.infer<typeof insertNudgeSchema>;
+export type InsertSessionBrief = z.infer<typeof insertSessionBriefSchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -604,3 +633,4 @@ export type JournalEntry = typeof journalEntries.$inferSelect;
 export type CoachInboxDismissal = typeof coachInboxDismissals.$inferSelect;
 export type Playbook = typeof playbooks.$inferSelect;
 export type Nudge = typeof nudges.$inferSelect;
+export type SessionBrief = typeof sessionBriefs.$inferSelect;
