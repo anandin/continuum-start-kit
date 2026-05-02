@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 
 import { Notifications } from "@/lib/notifications";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -33,6 +34,10 @@ function NotificationDeepLinkHandler() {
   // notification. We honor explicit `data.path` overrides if the server
   // ever sends them, otherwise default to the chat tab.
   useEffect(() => {
+    // expo-notifications response APIs are native-only; on web they throw
+    // "not available on web" and crash the app shell. Skip on web.
+    if (Platform.OS === "web") return;
+
     const handle = (data: Record<string, unknown> | undefined) => {
       if (!data) return;
       const explicit = typeof data.path === "string" ? (data.path as string) : null;
@@ -51,9 +56,13 @@ function NotificationDeepLinkHandler() {
     };
 
     // Cold-start: the user tapped the notification while the app was killed.
-    Notifications.getLastNotificationResponseAsync().then((res) => {
-      handle(res?.notification.request.content.data as Record<string, unknown> | undefined);
-    });
+    Notifications.getLastNotificationResponseAsync()
+      .then((res) => {
+        handle(res?.notification.request.content.data as Record<string, unknown> | undefined);
+      })
+      .catch(() => {
+        // Best-effort; ignore failures (e.g. permissions, simulator).
+      });
 
     // Warm-start: the app was already running.
     const sub = Notifications.addNotificationResponseReceivedListener((res) => {
