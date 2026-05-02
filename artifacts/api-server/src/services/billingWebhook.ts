@@ -127,12 +127,34 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         if (subId) {
           const eb = await billingStorage.getEngagementBillingBySubscriptionId(subId);
           if (eb) {
+            // Persist the payment method that successfully paid this
+            // invoice so the per-confirm gate doesn't block bookings on
+            // an active monthly subscription. Stripe may report the PM
+            // on the invoice's PaymentIntent (charge automatically) or
+            // on the parent subscription's default_payment_method.
+            let pmId: string | null = null;
+            const piRef = (inv as any).payment_intent;
+            if (typeof piRef === "string" && piRef && stripe) {
+              try {
+                const pi = await stripe.paymentIntents.retrieve(piRef);
+                if (typeof pi.payment_method === "string") pmId = pi.payment_method;
+              } catch {}
+            }
+            if (!pmId && stripe) {
+              try {
+                const sub = await stripe.subscriptions.retrieve(subId);
+                if (typeof sub.default_payment_method === "string") {
+                  pmId = sub.default_payment_method;
+                }
+              } catch {}
+            }
             await billingStorage.upsertEngagementBilling({
               engagementId: eb.engagementId,
               status: "active",
               lastChargedAt: new Date(),
               failedAt: null,
               lastFailureMessage: null,
+              ...(pmId ? { stripePaymentMethodId: pmId } : {}),
             });
             // Use recordPayment; the unique index on stripeInvoiceId will
             // raise on retry, but the event-id gate above already

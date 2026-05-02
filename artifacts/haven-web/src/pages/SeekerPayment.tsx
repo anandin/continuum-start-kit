@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -203,11 +203,36 @@ export default function SeekerPayment() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { engagements, loading: engLoading } = useEngagements(user?.id ?? "", "seeker");
-  const activeEng = useMemo(
-    () => engagements.find((e) => e.status === "active") ?? engagements[0],
-    [engagements],
-  );
-  const engagementId = activeEng?.id;
+  const [searchParams] = useSearchParams();
+  const requestedEngagementId = useMemo(() => {
+    const fromQuery = searchParams.get("engagementId");
+    if (fromQuery) return fromQuery;
+    try {
+      const raw = sessionStorage.getItem("haven:pendingPayment");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.engagementId) return parsed.engagementId as string;
+      }
+    } catch {}
+    return null;
+  }, [searchParams]);
+  const targetEng = useMemo(() => {
+    if (requestedEngagementId) {
+      const match = engagements.find((e) => e.id === requestedEngagementId);
+      if (match) return match;
+    }
+    return engagements.find((e) => e.status === "active") ?? engagements[0];
+  }, [engagements, requestedEngagementId]);
+  const engagementId = targetEng?.id;
+
+  useEffect(() => {
+    if (!engagementId || !requestedEngagementId) return;
+    if (engagementId === requestedEngagementId) {
+      try {
+        sessionStorage.removeItem("haven:pendingPayment");
+      } catch {}
+    }
+  }, [engagementId, requestedEngagementId]);
 
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [history, setHistory] = useState<PaymentRow[]>([]);
