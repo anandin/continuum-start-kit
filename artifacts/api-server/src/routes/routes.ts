@@ -1474,7 +1474,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // Spec-compliant aliases. The original implementation lives under
   // /api/twin/calibration/*; we expose /api/calibration/* as well so callers
   // following the public spec keep working without code changes.
-  app.use((req, _res, next) => {
+  app.use(async (req, res, next) => {
     // Preserve querystring; req.path strips it but req.url still carries it.
     const qIdx = req.url.indexOf("?");
     const qs = qIdx >= 0 ? req.url.slice(qIdx) : "";
@@ -1501,15 +1501,28 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     }
 
     // /api/clients/:engagementId/memory[/:entryId] aliases.
-    // Provider ownership is enforced by the underlying handler.
+    // Provider ownership is enforced by the underlying handler; for item
+    // aliases we additionally enforce that the entry belongs to the path
+    // engagementId so a forged path can't act on another client's memory.
     const memList = req.path.match(/^\/api\/clients\/([^/]+)\/memory$/);
     if (memList && req.method === "GET") {
       req.url = `/api/twin/memory/${memList[1]}${qs}`;
-    } else {
-      const memItem = req.path.match(/^\/api\/clients\/([^/]+)\/memory\/([^/]+)$/);
-      if (memItem && (req.method === "PATCH" || req.method === "DELETE")) {
-        req.url = `/api/twin/memory/${memItem[2]}${qs}`;
+      return next();
+    }
+    const memItem = req.path.match(/^\/api\/clients\/([^/]+)\/memory\/([^/]+)$/);
+    if (memItem && (req.method === "PATCH" || req.method === "DELETE")) {
+      const pathEngagementId = memItem[1];
+      const entryId = memItem[2];
+      try {
+        const mem = await getClientMemoryById(entryId);
+        if (!mem || mem.engagementId !== pathEngagementId) {
+          return res.status(404).json({ error: "Not found" });
+        }
+      } catch {
+        // Invalid UUID or DB error — treat as not found rather than leaking details.
+        return res.status(404).json({ error: "Not found" });
       }
+      req.url = `/api/twin/memory/${entryId}${qs}`;
     }
     next();
   });
