@@ -322,11 +322,23 @@ export function registerRoutes(app: Express) {
       await storage.createMessage({ sessionId, role: "seeker", content: message });
       const recentMessages = await storage.getMessagesBySessionId(sessionId);
 
+      // Derive the SEEKER's user id from the engagement, not from req.user.
+      // Therapists can also send on behalf of a session, but the L1 ctx must
+      // attribute crisis localization (region) and safety_events to the
+      // seeker that owns the engagement — otherwise an INTL seeker chatting
+      // with a US-region provider would get US crisis numbers, and audit
+      // rows would attribute the seeker's crisis content to the provider.
+      let seekerUserId = req.user!.id;
+      if (engagement.seekerId) {
+        const seeker = await storage.getSeekerById(engagement.seekerId);
+        if (seeker?.ownerId) seekerUserId = seeker.ownerId;
+      }
+
       const result = await runTwinTurn({
         providerId: engagement.providerId,
         engagementId: engagement.id,
         sessionId,
-        userId: req.user!.id,
+        userId: seekerUserId,
         initialStage: session.initialStage,
         userMessage: message,
         recentMessages: recentMessages.slice(0, -1), // drop the message we just inserted
