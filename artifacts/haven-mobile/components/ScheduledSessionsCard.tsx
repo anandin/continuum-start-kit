@@ -5,10 +5,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -125,45 +128,32 @@ export function ScheduledSessionsCard() {
     onError: (e: Error) => Alert.alert("Could not cancel", e.message),
   });
 
-  // Native uses Alert.prompt for the reason; Android falls back to a
-  // generic reason so the cancel still works without a custom modal.
-  const handleCancel = (id: string, label: string) => {
-    if (Platform.OS === "ios" && (Alert as any).prompt) {
-      (Alert as any).prompt(
-        label,
-        "Tell your coach why (they'll see this)",
-        [
-          { text: "Keep it", style: "cancel" },
-          {
-            text: "Cancel session",
-            style: "destructive",
-            onPress: (reason?: string) => {
-              const trimmed = (reason ?? "").trim();
-              if (!trimmed) return;
-              cancelMut.mutate({ id, reason: trimmed });
-            },
-          },
-        ],
-        "plain-text",
-      );
-    } else {
-      Alert.alert(
-        label,
-        "Cancel this session? Your coach will be notified.",
-        [
-          { text: "Keep it", style: "cancel" },
-          {
-            text: "Cancel session",
-            style: "destructive",
-            onPress: () =>
-              cancelMut.mutate({
-                id,
-                reason: "Cancelled by client from mobile",
-              }),
-          },
-        ],
-      );
-    }
+  // Cross-platform reason entry via an in-app Modal. Alert.prompt
+  // is iOS-only and would force Android into a hardcoded reason —
+  // the spec requires either side to cancel *with a reason*, so we
+  // present the same TextInput modal on both platforms.
+  const [cancelTarget, setCancelTarget] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+
+  const openCancel = (id: string, label: string) => {
+    setCancelTarget({ id, label });
+    setCancelReason("");
+  };
+  const closeCancel = () => {
+    setCancelTarget(null);
+    setCancelReason("");
+  };
+  const submitCancel = () => {
+    const trimmed = cancelReason.trim();
+    if (!trimmed || !cancelTarget) return;
+    const target = cancelTarget;
+    cancelMut.mutate(
+      { id: target.id, reason: trimmed },
+      { onSuccess: () => closeCancel() },
+    );
   };
 
   const rows = sessionsQ.data?.scheduledSessions ?? [];
@@ -204,6 +194,91 @@ export function ScheduledSessionsCard() {
   }
 
   if (!proposed && !confirmed) return null;
+
+  // Reusable cross-platform reason-entry modal. Mounted as a sibling
+  // of whichever branch renders so it overlays the card when open.
+  const cancelModal = (
+    <Modal
+      visible={!!cancelTarget}
+      transparent
+      animationType="fade"
+      onRequestClose={closeCancel}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.modalBackdrop}
+      >
+        <View
+          style={[
+            styles.modalCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+            },
+          ]}
+        >
+          <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+            {cancelTarget?.label ?? "Cancel session"}
+          </Text>
+          <Text
+            style={[styles.modalHint, { color: colors.mutedForeground }]}
+          >
+            Tell your coach why — they&apos;ll see this.
+          </Text>
+          <TextInput
+            testID="cancel-reason-input"
+            value={cancelReason}
+            onChangeText={setCancelReason}
+            placeholder="Reason"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            numberOfLines={3}
+            style={[
+              styles.reasonInput,
+              {
+                color: colors.foreground,
+                borderColor: colors.border,
+                backgroundColor: colors.muted,
+              },
+            ]}
+          />
+          <View style={styles.modalRow}>
+            <Pressable
+              testID="cancel-reason-back"
+              onPress={closeCancel}
+              style={({ pressed }) => [
+                styles.modalBtn,
+                { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text style={{ color: colors.foreground }}>Keep it</Text>
+            </Pressable>
+            <Pressable
+              testID="cancel-reason-submit"
+              onPress={submitCancel}
+              disabled={!cancelReason.trim() || cancelMut.isPending}
+              style={({ pressed }) => [
+                styles.modalBtn,
+                {
+                  backgroundColor: colors.primary,
+                  borderColor: colors.primary,
+                  opacity:
+                    !cancelReason.trim() || cancelMut.isPending || pressed
+                      ? 0.7
+                      : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: colors.primaryForeground }}>
+                Cancel session
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 
   // Confirmed-and-imminent (≤ 60 min) takes precedence over a separate
   // proposed row because the user's "next thing" is the confirmed one.
@@ -275,7 +350,7 @@ export function ScheduledSessionsCard() {
         )}
         <Pressable
           testID={`cancel-confirmed-${confirmed.id}`}
-          onPress={() => handleCancel(confirmed.id, "Cancel session?")}
+          onPress={() => openCancel(confirmed.id, "Cancel session?")}
           disabled={cancelMut.isPending}
           style={({ pressed }) => [
             styles.cancelBtn,
@@ -300,6 +375,7 @@ export function ScheduledSessionsCard() {
             Cancel
           </Text>
         </Pressable>
+        {cancelModal}
       </View>
     );
   }
@@ -364,7 +440,7 @@ export function ScheduledSessionsCard() {
         <Pressable
           testID={`decline-proposed-${proposed.id}`}
           onPress={() =>
-            handleCancel(proposed.id, "None of these times work?")
+            openCancel(proposed.id, "None of these times work?")
           }
           disabled={cancelMut.isPending}
           style={({ pressed }) => [
@@ -381,6 +457,7 @@ export function ScheduledSessionsCard() {
             None of these work — decline
           </Text>
         </Pressable>
+        {cancelModal}
       </View>
     );
   }
@@ -455,5 +532,43 @@ const styles = StyleSheet.create({
   cancelText: {
     fontSize: 12,
     fontWeight: "500",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "stretch",
+    padding: 20,
+  },
+  modalCard: {
+    borderWidth: 1,
+    padding: 16,
+    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  modalHint: {
+    fontSize: 12,
+  },
+  reasonInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    minHeight: 70,
+    textAlignVertical: "top",
+    fontSize: 14,
+  },
+  modalRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  modalBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
   },
 });

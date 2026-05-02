@@ -305,24 +305,32 @@ export async function maybeFireReminderForSeeker(seekerUserId: string): Promise<
         1,
         Math.round((row.confirmedAt.getTime() - Date.now()) / 60_000),
       );
-      // Only mark the reminder as sent when the push delivery
-      // succeeds. Otherwise we leave reminderSentAt null so the next
-      // poll (or any future scheduled job) retries delivery instead
-      // of silently swallowing transient failures.
-      let pushOk = false;
+      // sendPushToUser is best-effort and returns { sent, skipped }
+      // rather than throwing on no-tokens / provider failure. Only
+      // mark the reminder as delivered when at least one notification
+      // was actually accepted by the push provider — otherwise leave
+      // reminderSentAt null so the next /api/me/scheduled-sessions
+      // poll (or a future cron) retries instead of silently dropping
+      // the user's required reminder.
+      let pushSent = 0;
       try {
-        await sendPushToUser(seekerUserId, {
+        const res = await sendPushToUser(seekerUserId, {
           title: "Your session starts soon",
           body: `${row.title} in ${minutes} minute${minutes === 1 ? "" : "s"}`,
           data: { kind: "scheduled_session_reminder", scheduledSessionId: row.id },
         });
-        pushOk = true;
+        pushSent = res?.sent ?? 0;
       } catch (err) {
-        logger.warn({ err }, "scheduling: reminder push failed; will retry");
+        logger.warn({ err }, "scheduling: reminder push threw; will retry");
       }
-      if (pushOk) {
+      if (pushSent > 0) {
         await scheduledSessionStorage.markReminderSent(row.id);
         fired += 1;
+      } else {
+        logger.warn(
+          { scheduledSessionId: row.id, seekerUserId },
+          "scheduling: reminder push not delivered (0 tokens or provider rejected); will retry next poll",
+        );
       }
     }
   } catch (err) {
