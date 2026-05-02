@@ -291,50 +291,90 @@ export async function cancelSession(
   return updated;
 }
 
-// Best-effort 1-hour-before push reminder fired lazily when the seeker
-// fetches their upcoming sessions. We don't run a cron — by piggybacking
-// on a request the seeker is already making (mobile home screen poll,
-// web banner refresh) we get within-minutes accuracy without infra.
+// Internal helper: send the 1h push for one row and mark it sent only
+// when the provider accepted at least one token. Shared by both the
+// per-seeker lazy trigger and the global cron tick so the
+// "leave reminderSentAt null on failure → retry next pass" semantics
+// stay consistent across both code paths.
+async function fireReminderForRow(row: ScheduledSession): Promise<boolean> {
+  if (!row.confirmedAt) return false;
+  const minutes = Math.max(
+    1,
+    Math.round((row.confirmedAt.getTime() - Date.now()) / 60_000),
+  );
+  let pushSent = 0;
+  try {
+    const res = await sendPushToUser(row.seekerUserId, {
+      title: "Your session starts soon",
+      body: `${row.title} in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+      data: { kind: "scheduled_session_reminder", scheduledSessionId: row.id },
+    });
+    pushSent = res?.sent ?? 0;
+  } catch (err) {
+    logger.warn({ err, scheduledSessionId: row.id }, "scheduling: reminder push threw; will retry");
+    return false;
+  }
+  if (pushSent > 0) {
+    await scheduledSessionStorage.markReminderSent(row.id);
+    return true;
+  }
+  logger.warn(
+    { scheduledSessionId: row.id, seekerUserId: row.seekerUserId },
+    "scheduling: reminder push not delivered (0 tokens or provider rejected); will retry",
+  );
+  return false;
+}
+
+// Global cron tick: scans every seeker's confirmed sessions for ones
+// inside the 1h window with no reminder yet and dispatches a push.
+// Runs on a setInterval started in index.ts so the reminder fires
+// regardless of whether the seeker is actively polling the app.
+export async function runReminderTick(): Promise<number> {
+  let fired = 0;
+  try {
+    const due = await scheduledSessionStorage.findAllDueForReminder();
+    for (const row of due) {
+      if (await fireReminderForRow(row)) fired += 1;
+    }
+  } catch (err) {
+    logger.warn({ err }, "scheduling: reminder tick failed");
+  }
+  return fired;
+}
+
+// Per-seeker lazy trigger kept for fast path when the seeker is
+// already polling (mobile home screen, web banner) — gives within-
+// seconds accuracy even between cron ticks.
 export async function maybeFireReminderForSeeker(seekerUserId: string): Promise<number> {
   let fired = 0;
   try {
     const due = await scheduledSessionStorage.findDueForReminder(seekerUserId);
     for (const row of due) {
-      if (!row.confirmedAt) continue;
-      const minutes = Math.max(
-        1,
-        Math.round((row.confirmedAt.getTime() - Date.now()) / 60_000),
-      );
-      // sendPushToUser is best-effort and returns { sent, skipped }
-      // rather than throwing on no-tokens / provider failure. Only
-      // mark the reminder as delivered when at least one notification
-      // was actually accepted by the push provider — otherwise leave
-      // reminderSentAt null so the next /api/me/scheduled-sessions
-      // poll (or a future cron) retries instead of silently dropping
-      // the user's required reminder.
-      let pushSent = 0;
-      try {
-        const res = await sendPushToUser(seekerUserId, {
-          title: "Your session starts soon",
-          body: `${row.title} in ${minutes} minute${minutes === 1 ? "" : "s"}`,
-          data: { kind: "scheduled_session_reminder", scheduledSessionId: row.id },
-        });
-        pushSent = res?.sent ?? 0;
-      } catch (err) {
-        logger.warn({ err }, "scheduling: reminder push threw; will retry");
-      }
-      if (pushSent > 0) {
-        await scheduledSessionStorage.markReminderSent(row.id);
-        fired += 1;
-      } else {
-        logger.warn(
-          { scheduledSessionId: row.id, seekerUserId },
-          "scheduling: reminder push not delivered (0 tokens or provider rejected); will retry next poll",
-        );
-      }
+      if (await fireReminderForRow(row)) fired += 1;
     }
   } catch (err) {
     logger.warn({ err }, "scheduling: reminder check failed");
   }
   return fired;
+}
+
+// Wire the cron from server bootstrap. Single-process setInterval is
+// sufficient for the current single-instance deployment; if we ever
+// horizontally scale this should move to a real job queue with row-
+// level locking, but markReminderSent already guards against double-
+// send within a single process.
+let reminderTimer: ReturnType<typeof setInterval> | null = null;
+export function startReminderCron(intervalMs = 60_000): void {
+  if (reminderTimer) return;
+  reminderTimer = setInterval(() => {
+    void runReminderTick();
+  }, intervalMs);
+  // Don't keep the event loop alive just for the timer.
+  if (typeof reminderTimer.unref === "function") reminderTimer.unref();
+}
+export function stopReminderCron(): void {
+  if (reminderTimer) {
+    clearInterval(reminderTimer);
+    reminderTimer = null;
+  }
 }

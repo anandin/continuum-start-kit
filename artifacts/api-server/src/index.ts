@@ -1,6 +1,7 @@
 import { createApp } from "./app";
 import { ensureExtensions } from "./db";
 import { logger } from "./lib/logger";
+import { startReminderCron } from "./services/scheduling";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +29,9 @@ ensureExtensions()
         process.exit(1);
       }
       logger.info({ port }, "Server listening");
+      // Start the 1h-before scheduled-session reminder cron once the
+      // server is accepting connections. Runs every 60s; idempotent.
+      startReminderCron();
     });
   })
   .catch((err) => {

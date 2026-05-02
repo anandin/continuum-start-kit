@@ -19,7 +19,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CrisisProvider } from "@/components/Crisis";
 import { BiometricLockProvider } from "@/components/BiometricLock";
+import { SessionReminderBanner } from "@/components/SessionReminderBanner";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { View } from "react-native";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -116,7 +118,16 @@ export default function RootLayout() {
                 <CrisisProvider>
                   <BiometricLockProvider>
                     <NotificationDeepLinkHandler />
-                    <RootLayoutNav />
+                    {/* App-wide reminder banner. Sits above every
+                        screen so the user sees it regardless of which
+                        tab or stack they're on — mirrors the web
+                        AppLayout banner placement. */}
+                    <View style={{ flex: 1 }}>
+                      <SessionReminderBanner />
+                      <View style={{ flex: 1 }}>
+                        <RootLayoutNav />
+                      </View>
+                    </View>
                   </BiometricLockProvider>
                 </CrisisProvider>
               </AuthProvider>

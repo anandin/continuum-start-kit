@@ -189,6 +189,26 @@ export const scheduledSessionStorage = {
       );
   },
 
+  // Cron variant of findDueForReminder: returns *all* confirmed
+  // sessions across every seeker that are due for a 1h reminder and
+  // haven't already been sent. Used by the scheduling tick so the
+  // reminder fires whether or not the seeker has the app open.
+  async findAllDueForReminder(): Promise<ScheduledSession[]> {
+    const now = new Date();
+    const inOneHour = new Date(now.getTime() + 60 * 60_000);
+    return db
+      .select()
+      .from(scheduledSessions)
+      .where(
+        and(
+          eq(scheduledSessions.status, "confirmed"),
+          isNull(scheduledSessions.reminderSentAt),
+          gt(scheduledSessions.confirmedAt, now),
+          sql`${scheduledSessions.confirmedAt} <= ${inOneHour}`,
+        ),
+      );
+  },
+
   async markReminderSent(id: string): Promise<void> {
     await db
       .update(scheduledSessions)
