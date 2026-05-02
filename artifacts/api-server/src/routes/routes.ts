@@ -14,7 +14,7 @@ function internalAuditSnippet(text: string | undefined | null, label: string): s
   return `[redacted:${label}] len=${text.length} sha256=${hash}`;
 }
 import { z } from "zod/v4";
-import type { Engagement, Session as DbSession } from "@workspace/db";
+import type { Engagement, Goal, Session as DbSession } from "@workspace/db";
 import { runTwinTurn } from "../services/twinChat";
 import { reflectAndWrite } from "../services/memory";
 import {
@@ -876,6 +876,12 @@ If ambiguous, choose the earliest relevant stage.`;
         ...(status !== undefined ? { status } : {}),
         ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
       });
+      // If the coach just marked this goal complete via the legacy path,
+      // resolve any outstanding pending self-checkoffs so the
+      // "to confirm" badge reflects reality.
+      if (status === "completed" && goal.status !== "completed") {
+        await storage.resolvePendingProgressForCompletedGoal(req.params.id, req.user!.id);
+      }
       res.json(updated);
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
@@ -888,6 +894,126 @@ If ambiguous, choose the earliest relevant stage.`;
       await storage.deleteGoal(req.params.id);
       res.json({ success: true });
     } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  // ============================================================
+  // GOAL PROGRESS — seeker self-checkoffs the coach can confirm
+  // ============================================================
+
+  // Helper: ensure caller is the seeker on the engagement that owns this goal.
+  async function assertSeekerOwnsGoal(
+    req: Request,
+    goalId: string,
+  ): Promise<AuthOk<{ goal: Goal; engagement: Engagement }> | AuthFail> {
+    const goal = await storage.getGoalById(goalId);
+    if (!goal) return { ok: false, error: "Goal not found" };
+    const engagement = await storage.getEngagementById(goal.engagementId);
+    if (!engagement) return { ok: false, error: "Engagement not found" };
+    if (!engagement.seekerId) return { ok: false, error: "Forbidden" };
+    const seeker = await storage.getSeekerById(engagement.seekerId);
+    if (!seeker || seeker.ownerId !== req.user!.id) return { ok: false, error: "Forbidden" };
+    return { ok: true, goal, engagement };
+  }
+
+  // Seeker marks a goal as "I think I did this" (idempotent toggle-on).
+  // Body: { note?: string }
+  app.post("/api/goals/:id/seeker-progress", requireAuth, async (req, res) => {
+    try {
+      const check = await assertSeekerOwnsGoal(req, req.params.id);
+      if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
+      const { goal, engagement } = check;
+      if (goal.status === "completed") {
+        return res.status(400).json({ error: "Goal already completed" });
+      }
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() || null : null;
+
+      // If a pending self-checkoff already exists, update its note rather than
+      // creating a duplicate so each (goal, seeker) pair has at most one
+      // pending signal for the coach to confirm.
+      const existing = await storage.getPendingGoalProgress(goal.id, req.user!.id);
+      if (existing) {
+        const updated = await storage.updateGoalProgress(existing.id, { note });
+        return res.json(updated);
+      }
+
+      const created = await storage.createGoalProgress({
+        goalId: goal.id,
+        engagementId: engagement.id,
+        seekerUserId: req.user!.id,
+        note,
+        status: "pending",
+      });
+
+      // Surface the self-checkoff in the coach's alerts inbox so they don't
+      // have to keep the goals tab open to notice it.
+      if (engagement.providerId) {
+        try {
+          await storage.createAlert({
+            providerId: engagement.providerId,
+            engagementId: engagement.id,
+            type: "goal_self_checkoff",
+            message: `Your client says they completed "${goal.title}". Confirm when ready.`,
+            isRead: false,
+          });
+        } catch {}
+      }
+
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Seeker undoes their self-checkoff (toggle-off). Only removes pending
+  // entries — confirmed entries are part of the audit trail and stay put.
+  app.delete("/api/goals/:id/seeker-progress", requireAuth, async (req, res) => {
+    try {
+      const check = await assertSeekerOwnsGoal(req, req.params.id);
+      if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
+      await storage.deletePendingGoalProgress(check.goal.id, req.user!.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // List all goal-progress signals on an engagement. Both the coach (to
+  // review/confirm) and the seeker (so the mobile UI knows which goals are
+  // currently checked off, even after reinstall) need this.
+  app.get("/api/engagements/:id/goal-progress", requireAuth, async (req, res) => {
+    try {
+      const m = await assertEngagementMember(req, req.params.id);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+      const rows = await storage.getGoalProgressByEngagementId(req.params.id);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Coach one-tap "confirm complete": mark the progress entry confirmed AND
+  // flip the underlying goal to completed in a single request.
+  app.post("/api/goal-progress/:id/confirm", requireAuth, async (req, res) => {
+    try {
+      const progress = await storage.getGoalProgressById(req.params.id);
+      if (!progress) return res.status(404).json({ error: "Progress not found" });
+      const goal = await storage.getGoalById(progress.goalId);
+      if (!goal) return res.status(404).json({ error: "Goal not found" });
+      if (goal.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
+
+      const result = await storage.confirmGoalProgress(progress.id, req.user!.id);
+      if ("error" in result) {
+        if (result.error === "not_found") {
+          return res.status(404).json({ error: "Progress not found" });
+        }
+        // not_pending: already confirmed (race or double-tap). Return 409 so
+        // the client can refresh rather than treating this as a hard failure.
+        return res.status(409).json({ error: "Progress already confirmed" });
+      }
+      res.json({ progress: result.progress, goal: result.goal });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // ============================================================

@@ -1,9 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -20,7 +20,13 @@ import { MoodCard } from "@/components/MoodCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
-import { loadSeekerDone, persistSeekerDone } from "@/lib/seekerGoals";
+import {
+  buildPendingMap,
+  checkOffGoal,
+  fetchGoalProgress,
+  uncheckGoal,
+  type GoalProgress,
+} from "@/lib/seekerGoals";
 
 interface Engagement {
   id: string;
@@ -115,31 +121,91 @@ export default function HomeScreen() {
     enabled: !!activeEngagement?.id,
   });
 
-  const [seekerDone, setSeekerDone] = useState<Record<string, boolean>>({});
-  // Re-read on every focus so toggles made in the Goals tab show up here
-  // immediately when this tab regains focus (and vice versa).
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      loadSeekerDone().then((s) => {
-        if (active) setSeekerDone(s);
-      });
-      return () => {
-        active = false;
-      };
-    }, []),
+  const qc = useQueryClient();
+  const progressQ = useQuery({
+    queryKey: ["goal-progress", activeEngagement?.id],
+    queryFn: () => fetchGoalProgress(activeEngagement!.id),
+    enabled: !!activeEngagement?.id,
+  });
+
+  const seekerDone = useMemo(
+    () => buildPendingMap(progressQ.data ?? [], user?.id),
+    [progressQ.data, user?.id],
   );
 
-  const toggleGoal = useCallback((goalId: string) => {
-    setSeekerDone((prev) => {
-      const next = { ...prev, [goalId]: !prev[goalId] };
-      persistSeekerDone(next);
-      return next;
-    });
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
-  }, []);
+  const checkMutation = useMutation({
+    mutationFn: (goalId: string) => checkOffGoal(goalId),
+    onMutate: async (goalId) => {
+      const key = ["goal-progress", activeEngagement?.id];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<GoalProgress[]>(key) ?? [];
+      const optimistic: GoalProgress = {
+        id: `optimistic-${goalId}`,
+        goalId,
+        engagementId: activeEngagement!.id,
+        seekerUserId: user?.id ?? "",
+        note: null,
+        status: "pending",
+      };
+      qc.setQueryData<GoalProgress[]>(key, [optimistic, ...prev]);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData(["goal-progress", activeEngagement?.id], ctx.prev);
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({
+        queryKey: ["goal-progress", activeEngagement?.id],
+      });
+    },
+  });
+
+  const uncheckMutation = useMutation({
+    mutationFn: (goalId: string) => uncheckGoal(goalId),
+    onMutate: async (goalId) => {
+      const key = ["goal-progress", activeEngagement?.id];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<GoalProgress[]>(key) ?? [];
+      qc.setQueryData<GoalProgress[]>(
+        key,
+        prev.filter(
+          (r) =>
+            !(
+              r.goalId === goalId &&
+              r.status === "pending" &&
+              (!user?.id || r.seekerUserId === user.id)
+            ),
+        ),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData(["goal-progress", activeEngagement?.id], ctx.prev);
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({
+        queryKey: ["goal-progress", activeEngagement?.id],
+      });
+    },
+  });
+
+  const toggleGoal = useCallback(
+    (goalId: string) => {
+      if (Platform.OS !== "web") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
+      if (seekerDone[goalId]) {
+        uncheckMutation.mutate(goalId);
+      } else {
+        checkMutation.mutate(goalId);
+      }
+    },
+    [seekerDone, checkMutation, uncheckMutation],
+  );
 
   const activeGoals = useMemo(
     () => (goalsQ.data ?? []).filter((g) => g.status !== "completed"),

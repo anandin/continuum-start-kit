@@ -21,6 +21,7 @@ export const engagementStatusEnum = pgEnum("engagement_status", ["active", "paus
 export const msgRoleEnum = pgEnum("msg_role", ["seeker", "agent", "provider"]);
 export const sessionStatusEnum = pgEnum("session_status", ["active", "ended"]);
 export const goalStatusEnum = pgEnum("goal_status", ["active", "completed", "paused"]);
+export const goalProgressStatusEnum = pgEnum("goal_progress_status", ["pending", "confirmed"]);
 export const resourceTypeEnum = pgEnum("resource_type", ["link", "document", "exercise"]);
 export const onboardingChatStatusEnum = pgEnum("onboarding_chat_status", ["in_progress", "completed"]);
 export const safetyDecisionEnum = pgEnum("safety_decision", ["allow", "soften", "block_with_template", "escalate"]);
@@ -158,6 +159,18 @@ export const goals = pgTable("goals", {
   dueDate: timestamp("due_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const goalProgress = pgTable("goal_progress", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  goalId: uuid("goal_id").references(() => goals.id).notNull(),
+  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+  note: text("note"),
+  status: goalProgressStatusEnum("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),
+  confirmedBy: uuid("confirmed_by").references(() => users.id),
 });
 
 export const intakeForms = pgTable("intake_forms", {
@@ -408,6 +421,7 @@ export const insertSummarySchema = createInsertSchema(summaries).omit({ id: true
 export const insertProgressIndicatorSchema = createInsertSchema(progressIndicators).omit({ id: true, createdAt: true });
 export const insertClientNoteSchema = createInsertSchema(clientNotes).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertGoalSchema = createInsertSchema(goals).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertGoalProgressSchema = createInsertSchema(goalProgress).omit({ id: true, createdAt: true, confirmedAt: true, confirmedBy: true });
 export const insertIntakeFormSchema = createInsertSchema(intakeForms).omit({ id: true, createdAt: true });
 export const insertIntakeResponseSchema = createInsertSchema(intakeResponses).omit({ id: true, completedAt: true });
 export const insertResourceSchema = createInsertSchema(resources).omit({ id: true, createdAt: true });
@@ -436,6 +450,7 @@ export type InsertSummary = z.infer<typeof insertSummarySchema>;
 export type InsertProgressIndicator = z.infer<typeof insertProgressIndicatorSchema>;
 export type InsertClientNote = z.infer<typeof insertClientNoteSchema>;
 export type InsertGoal = z.infer<typeof insertGoalSchema>;
+export type InsertGoalProgress = z.infer<typeof insertGoalProgressSchema>;
 export type InsertIntakeForm = z.infer<typeof insertIntakeFormSchema>;
 export type InsertIntakeResponse = z.infer<typeof insertIntakeResponseSchema>;
 export type InsertResource = z.infer<typeof insertResourceSchema>;
@@ -464,6 +479,7 @@ export type Summary = typeof summaries.$inferSelect;
 export type ProgressIndicator = typeof progressIndicators.$inferSelect;
 export type ClientNote = typeof clientNotes.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
+export type GoalProgress = typeof goalProgress.$inferSelect;
 export type IntakeForm = typeof intakeForms.$inferSelect;
 export type IntakeResponse = typeof intakeResponses.$inferSelect;
 export type Resource = typeof resources.$inferSelect;

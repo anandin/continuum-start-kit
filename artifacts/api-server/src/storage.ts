@@ -3,17 +3,17 @@ import { eq, and, or, desc, asc, sql, isNull, lt, gte } from "drizzle-orm";
 import {
   users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs,
   engagements, sessions, messages, summaries, progressIndicators,
-  clientNotes, goals, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
+  clientNotes, goals, goalProgress, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
   moodEntries, journalPrompts, journalEntries,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
   InsertSummary, InsertProgressIndicator,
-  InsertClientNote, InsertGoal, InsertIntakeForm, InsertIntakeResponse,
+  InsertClientNote, InsertGoal, InsertGoalProgress, InsertIntakeForm, InsertIntakeResponse,
   InsertResource, InsertResourceAssignment, InsertAlert, InsertProviderOnboardingChat,
   InsertMoodEntry, InsertJournalPrompt, InsertJournalEntry,
   User, Profile, UserRole, Seeker,
   ProviderConfig, ProviderAgentConfig, Engagement, Session, Message, Summary, ProgressIndicator,
-  ClientNote, Goal, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat,
+  ClientNote, Goal, GoalProgress, IntakeForm, IntakeResponse, Resource, ResourceAssignment, Alert, ProviderOnboardingChat,
   MoodEntry, JournalPrompt, JournalEntry
 } from "@workspace/db";
 
@@ -75,6 +75,16 @@ export interface IStorage {
   getGoalById(id: string): Promise<Goal | undefined>;
   updateGoal(id: string, data: Partial<InsertGoal>): Promise<Goal | undefined>;
   deleteGoal(id: string): Promise<void>;
+
+  // Goal Progress (seeker self-checkoffs)
+  createGoalProgress(data: InsertGoalProgress): Promise<GoalProgress>;
+  getPendingGoalProgress(goalId: string, seekerUserId: string): Promise<GoalProgress | undefined>;
+  getGoalProgressById(id: string): Promise<GoalProgress | undefined>;
+  getGoalProgressByEngagementId(engagementId: string): Promise<GoalProgress[]>;
+  updateGoalProgress(id: string, data: Partial<{ note: string | null; status: "pending" | "confirmed"; confirmedAt: Date | null; confirmedBy: string | null }>): Promise<GoalProgress | undefined>;
+  deletePendingGoalProgress(goalId: string, seekerUserId: string): Promise<void>;
+  confirmGoalProgress(progressId: string, confirmedBy: string): Promise<{ progress: GoalProgress; goal: Goal } | { error: "not_found" | "not_pending" }>;
+  resolvePendingProgressForCompletedGoal(goalId: string, confirmedBy: string): Promise<void>;
 
   // Intake Forms
   createIntakeForm(data: InsertIntakeForm): Promise<IntakeForm>;
@@ -355,7 +365,105 @@ export class DatabaseStorage implements IStorage {
     return goal;
   }
   async deleteGoal(id: string): Promise<void> {
+    await db.delete(goalProgress).where(eq(goalProgress.goalId, id));
     await db.delete(goals).where(eq(goals.id, id));
+  }
+
+  // ============ Goal Progress ============
+  async createGoalProgress(data: InsertGoalProgress): Promise<GoalProgress> {
+    const [row] = await db.insert(goalProgress).values(data).returning();
+    return row;
+  }
+  async getPendingGoalProgress(goalId: string, seekerUserId: string): Promise<GoalProgress | undefined> {
+    const [row] = await db.select().from(goalProgress)
+      .where(and(
+        eq(goalProgress.goalId, goalId),
+        eq(goalProgress.seekerUserId, seekerUserId),
+        eq(goalProgress.status, "pending"),
+      ))
+      .orderBy(desc(goalProgress.createdAt))
+      .limit(1);
+    return row;
+  }
+  async getGoalProgressById(id: string): Promise<GoalProgress | undefined> {
+    const [row] = await db.select().from(goalProgress).where(eq(goalProgress.id, id));
+    return row;
+  }
+  async getGoalProgressByEngagementId(engagementId: string): Promise<GoalProgress[]> {
+    return db.select().from(goalProgress)
+      .where(eq(goalProgress.engagementId, engagementId))
+      .orderBy(desc(goalProgress.createdAt));
+  }
+  async updateGoalProgress(
+    id: string,
+    data: Partial<{ note: string | null; status: "pending" | "confirmed"; confirmedAt: Date | null; confirmedBy: string | null }>,
+  ): Promise<GoalProgress | undefined> {
+    const [row] = await db.update(goalProgress).set(data).where(eq(goalProgress.id, id)).returning();
+    return row;
+  }
+  async deletePendingGoalProgress(goalId: string, seekerUserId: string): Promise<void> {
+    await db.delete(goalProgress).where(and(
+      eq(goalProgress.goalId, goalId),
+      eq(goalProgress.seekerUserId, seekerUserId),
+      eq(goalProgress.status, "pending"),
+    ));
+  }
+
+  // Atomic confirm: only succeeds if the row is still pending. Updates the
+  // progress row and the goal in a single transaction so the two never drift.
+  async confirmGoalProgress(
+    progressId: string,
+    confirmedBy: string,
+  ): Promise<{ progress: GoalProgress; goal: Goal } | { error: "not_found" | "not_pending" }> {
+    return db.transaction(async (tx) => {
+      const [updatedProgress] = await tx.update(goalProgress)
+        .set({
+          status: "confirmed",
+          confirmedAt: new Date(),
+          confirmedBy,
+        })
+        .where(and(
+          eq(goalProgress.id, progressId),
+          eq(goalProgress.status, "pending"),
+        ))
+        .returning();
+      if (!updatedProgress) {
+        const [existing] = await tx.select().from(goalProgress).where(eq(goalProgress.id, progressId));
+        return { error: existing ? "not_pending" as const : "not_found" as const };
+      }
+      const [updatedGoal] = await tx.update(goals)
+        .set({ status: "completed", updatedAt: new Date() })
+        .where(eq(goals.id, updatedProgress.goalId))
+        .returning();
+      // Auto-resolve any sibling pending rows for the same goal so the
+      // coach's "to confirm" badge reflects the now-completed state.
+      await tx.update(goalProgress)
+        .set({
+          status: "confirmed",
+          confirmedAt: new Date(),
+          confirmedBy,
+        })
+        .where(and(
+          eq(goalProgress.goalId, updatedProgress.goalId),
+          eq(goalProgress.status, "pending"),
+        ));
+      return { progress: updatedProgress, goal: updatedGoal };
+    });
+  }
+
+  // Used when the coach completes a goal via the legacy goal-status path so
+  // any outstanding pending self-checkoffs get resolved instead of dangling.
+  async resolvePendingProgressForCompletedGoal(goalId: string, confirmedBy: string): Promise<void> {
+    await db.update(goalProgress)
+      .set({
+        status: "confirmed",
+        confirmedAt: new Date(),
+        confirmedBy,
+      })
+      .where(and(
+        eq(goalProgress.goalId, goalId),
+        eq(goalProgress.status, "pending"),
+      ));
   }
 
   // ============ Intake Forms ============
