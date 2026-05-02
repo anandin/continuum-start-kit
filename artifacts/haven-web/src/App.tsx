@@ -22,6 +22,7 @@ import ClientSessionSummary from "./pages/ClientSessionSummary";
 import AgentSetup from "./pages/AgentSetup";
 import Schedule from "./pages/Schedule";
 import Resources from "./pages/Resources";
+import JournalPromptLibrary from "./pages/JournalPromptLibrary";
 import IntakeForms from "./pages/IntakeForms";
 import Analytics from "./pages/Analytics";
 import ProviderProfile from "./pages/ProviderProfile";
@@ -50,6 +51,7 @@ const App = () => (
             <Route path="/provider/dashboard" element={<ProtectedRoute><ProviderDashboard /></ProtectedRoute>} />
             <Route path="/provider/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
             <Route path="/provider/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
+            <Route path="/provider/journal-prompts" element={<ProtectedRoute><JournalPromptLibrary /></ProtectedRoute>} />
             <Route path="/provider/intake-forms" element={<ProtectedRoute><IntakeForms /></ProtectedRoute>} />
             <Route path="/provider/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/provider/engagement/:engagementId" element={<ProtectedRoute><ProviderEngagement /></ProtectedRoute>} />
