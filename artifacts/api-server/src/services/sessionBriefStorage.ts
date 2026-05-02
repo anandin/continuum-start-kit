@@ -12,13 +12,22 @@ export async function getSessionBriefById(id: string): Promise<SessionBrief | un
   return row;
 }
 
+/**
+ * Returns the most recent UNUSED brief for the engagement (or undefined).
+ *
+ * "Latest" deliberately means "latest unused" so the main panel naturally
+ * archives a brief once the coach marks it used in session — it disappears
+ * from the active view and only the history list still shows it. Without
+ * this filter, a stale used brief would keep appearing as if it were the
+ * current prep until a new one was generated.
+ */
 export async function getLatestSessionBriefForEngagement(
   engagementId: string,
 ): Promise<SessionBrief | undefined> {
   const [row] = await db
     .select()
     .from(sessionBriefs)
-    .where(eq(sessionBriefs.engagementId, engagementId))
+    .where(and(eq(sessionBriefs.engagementId, engagementId), isNull(sessionBriefs.usedAt)))
     .orderBy(desc(sessionBriefs.generatedAt))
     .limit(1);
   return row;

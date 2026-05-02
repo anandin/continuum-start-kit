@@ -147,8 +147,13 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
       const res = await apiRequest("POST", `/api/briefs/${briefId}/used`, {});
       return (await res.json()) as { brief: SessionBriefDTO; alreadyUsed?: boolean };
     },
+    // Once a brief is used, it should disappear from the active panel —
+    // the backend's "latest" endpoint excludes used briefs, so we clear the
+    // cache optimistically and refetch in case there's an older unused one
+    // waiting. The history view (which keeps used briefs) is also refreshed.
     onSuccess: (data) => {
-      qc.setQueryData<LatestResponse>(latestKey, { brief: data.brief });
+      qc.setQueryData<LatestResponse>(latestKey, { brief: null });
+      qc.invalidateQueries({ queryKey: latestKey });
       qc.invalidateQueries({ queryKey: historyKey });
       toast.success(
         data.alreadyUsed ? "Already marked used." : "Marked as used in session.",
