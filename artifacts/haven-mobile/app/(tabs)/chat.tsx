@@ -1,9 +1,27 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import {
+  AudioModule,
+  RecordingPresets,
+  createAudioPlayer,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+  type AudioPlayer,
+} from "expo-audio";
+import * as Haptics from "expo-haptics";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   FlatList,
   Modal,
   Platform,
@@ -20,6 +38,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
+import { fetchSpokenReplyUri, transcribeRecordingUri } from "@/lib/voice";
 
 interface Engagement {
   id: string;
@@ -100,6 +119,89 @@ export default function ChatScreen() {
   const [confirmEndOpen, setConfirmEndOpen] = useState(false);
   const [activeSummary, setActiveSummary] = useState<SessionSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // ---- Voice in/out state ---------------------------------------------------
+  // `voiceOut` toggles whether new agent replies are spoken aloud.
+  // `isTranscribing` covers the brief window between recording-stop and the
+  // transcript being POSTed to /api/chat. `voiceError` surfaces transient
+  // mic / network / Whisper failures without breaking text chat.
+  const [voiceOut, setVoiceOut] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [isSpeakingMessageId, setIsSpeakingMessageId] = useState<string | null>(
+    null,
+  );
+
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder, 250);
+  const recordingActiveRef = useRef(false);
+
+  const ttsPlayerRef = useRef<AudioPlayer | null>(null);
+  const lastSpokenAgentMessageIdRef = useRef<string | null>(null);
+
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (recorderState.isRecording) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 700,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0,
+            duration: 700,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      loop.start();
+      return () => {
+        loop.stop();
+        pulseAnim.setValue(0);
+      };
+    }
+    pulseAnim.setValue(0);
+    return undefined;
+  }, [recorderState.isRecording, pulseAnim]);
+
+  // Configure the iOS audio session once so recording + playback can coexist.
+  useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: true,
+    }).catch(() => {
+      /* best-effort; voice features will surface their own error if unusable */
+    });
+  }, []);
+
+  const stopAndReleaseTts = useCallback(() => {
+    const player = ttsPlayerRef.current;
+    ttsPlayerRef.current = null;
+    setIsSpeakingMessageId(null);
+    if (player) {
+      try {
+        player.pause();
+      } catch {
+        /* ignore */
+      }
+      try {
+        player.remove();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopAndReleaseTts();
+    };
+  }, [stopAndReleaseTts]);
 
   const engagementsQ = useQuery({
     queryKey: ["engagements"],
@@ -249,10 +351,172 @@ export default function ChatScreen() {
     sendMutation.mutate(text);
   };
 
+  // ---- Voice recording (hold-to-talk) --------------------------------------
+  const startRecording = useCallback(async () => {
+    if (!session?.id || session.status === "ended") return;
+    if (recordingActiveRef.current) return;
+    setVoiceError(null);
+    try {
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
+      if (!perm.granted) {
+        setVoiceError(
+          "Haven needs microphone access to hear your voice. Enable it in Settings.",
+        );
+        return;
+      }
+      // Stop any in-flight TTS so the mic isn't fighting the speaker.
+      stopAndReleaseTts();
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      recordingActiveRef.current = true;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    } catch (err) {
+      recordingActiveRef.current = false;
+      setVoiceError(
+        err instanceof Error ? err.message : "Couldn't start recording.",
+      );
+    }
+  }, [recorder, session?.id, session?.status, stopAndReleaseTts]);
+
+  const finishRecording = useCallback(
+    async (cancelled: boolean) => {
+      // Hold-to-talk fires `onPressIn` (kicks off async startRecording) and
+      // `onPressOut` (calls finishRecording). For brief taps or when iOS
+      // shows a permission prompt on first use, onPressOut can land before
+      // recordingActiveRef has flipped. Treat the recorder's own state as
+      // authoritative so we still stop it cleanly in those races.
+      const recorderIsLive =
+        recorderState.isRecording || recorder.isRecording === true;
+      if (!recordingActiveRef.current && !recorderIsLive) return;
+      recordingActiveRef.current = false;
+      let uri: string | null = null;
+      try {
+        await recorder.stop();
+        uri = recorder.uri ?? null;
+      } catch (err) {
+        setVoiceError(
+          err instanceof Error ? err.message : "Couldn't stop recording.",
+        );
+        return;
+      }
+
+      if (cancelled || !uri || !session?.id) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        return;
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => {},
+      );
+      setIsTranscribing(true);
+      try {
+        const text = await transcribeRecordingUri({ uri });
+        if (!text) {
+          setVoiceError("We couldn't hear you clearly. Try again.");
+          return;
+        }
+        sendMutation.mutate(text);
+      } catch (err) {
+        setVoiceError(
+          err instanceof Error
+            ? err.message
+            : "We couldn't transcribe that recording. Please try again.",
+        );
+      } finally {
+        setIsTranscribing(false);
+      }
+    },
+    [recorder, recorderState.isRecording, sendMutation, session?.id],
+  );
+
+  // ---- TTS auto-play of new agent replies -----------------------------------
+  const speakAgentMessage = useCallback(
+    async (msg: Message) => {
+      if (!session?.id) return;
+      try {
+        stopAndReleaseTts();
+        const uri = await fetchSpokenReplyUri({
+          sessionId: session.id,
+          messageId: msg.id,
+        });
+        const player = createAudioPlayer({ uri }, { updateInterval: 250 });
+        ttsPlayerRef.current = player;
+        setIsSpeakingMessageId(msg.id);
+        const sub = player.addListener("playbackStatusUpdate", (status) => {
+          if (status.didJustFinish) {
+            try {
+              sub.remove();
+            } catch {
+              /* ignore */
+            }
+            if (ttsPlayerRef.current === player) {
+              stopAndReleaseTts();
+            }
+          }
+        });
+        player.play();
+      } catch (err) {
+        setVoiceError(
+          err instanceof Error
+            ? err.message
+            : "Couldn't play the reply out loud.",
+        );
+        stopAndReleaseTts();
+      }
+    },
+    [session?.id, stopAndReleaseTts],
+  );
+
   const data = useMemo(() => {
     const arr = (messagesQ.data ?? []).slice().sort((a, b) => ts(a) - ts(b));
     return arr.slice().reverse();
   }, [messagesQ.data]);
+
+  // Auto-speak the latest agent message when voice-out is enabled and the
+  // message id changes. We track `lastSpokenAgentMessageIdRef` so toggling
+  // the speaker on mid-conversation doesn't replay older messages.
+  useEffect(() => {
+    if (!voiceOut) return;
+    const sortedAsc = (messagesQ.data ?? [])
+      .slice()
+      .sort((a, b) => ts(a) - ts(b));
+    const latestAgent = [...sortedAsc].reverse().find((m) => m.role === "agent");
+    if (!latestAgent) return;
+    if (lastSpokenAgentMessageIdRef.current === latestAgent.id) return;
+    lastSpokenAgentMessageIdRef.current = latestAgent.id;
+    void speakAgentMessage(latestAgent);
+  }, [messagesQ.data, voiceOut, speakAgentMessage]);
+
+  // When voice-out is turned off, silence anything currently speaking.
+  useEffect(() => {
+    if (!voiceOut) {
+      stopAndReleaseTts();
+    }
+  }, [voiceOut, stopAndReleaseTts]);
+
+  const toggleVoiceOut = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    setVoiceOut((prev) => {
+      const next = !prev;
+      if (next) {
+        // First enable: don't replay history, just start from the next reply.
+        const sortedAsc = (messagesQ.data ?? [])
+          .slice()
+          .sort((a, b) => ts(a) - ts(b));
+        const latestAgent = [...sortedAsc]
+          .reverse()
+          .find((m) => m.role === "agent");
+        lastSpokenAgentMessageIdRef.current = latestAgent?.id ?? null;
+      }
+      return next;
+    });
+  }, [messagesQ.data]);
+
+  const recordingDisabled =
+    !session?.id ||
+    session?.status === "ended" ||
+    sendMutation.isPending ||
+    isTranscribing;
 
   const coachInitial = providerConfig?.title?.charAt(0) ?? "H";
   const coachTitle = providerConfig?.title ?? "Your Coach";
@@ -341,6 +605,37 @@ export default function ChatScreen() {
               "Coaching session"}
           </Text>
         </View>
+        <Pressable
+          onPress={toggleVoiceOut}
+          accessibilityLabel={
+            voiceOut ? "Mute coach voice playback" : "Hear coach replies aloud"
+          }
+          accessibilityRole="switch"
+          accessibilityState={{ checked: voiceOut }}
+          testID="chat-voice-out-toggle"
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.voiceToggleBtn,
+            {
+              backgroundColor: voiceOut
+                ? colors.primary
+                : colors.gradientHeroMid,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Feather
+            name={
+              isSpeakingMessageId
+                ? "volume-2"
+                : voiceOut
+                  ? "volume-2"
+                  : "volume-x"
+            }
+            size={14}
+            color={voiceOut ? colors.primaryForeground : colors.primary}
+          />
+        </Pressable>
         {session?.status === "ended" ? (
           <View
             style={[
@@ -569,6 +864,84 @@ export default function ChatScreen() {
           }}
         />
 
+        {voiceError || recorderState.isRecording || isTranscribing ? (
+          <View
+            style={[
+              styles.voiceBanner,
+              {
+                backgroundColor: voiceError
+                  ? colors.muted
+                  : colors.gradientHeroMid,
+                borderTopColor: colors.border,
+              },
+            ]}
+            accessibilityLiveRegion="polite"
+          >
+            {recorderState.isRecording ? (
+              <>
+                <Animated.View
+                  style={[
+                    styles.recordingDot,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pulseAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.4, 1],
+                      }),
+                      transform: [
+                        {
+                          scale: pulseAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.8, 1.3],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+                <Text
+                  style={[styles.voiceBannerText, { color: colors.primary }]}
+                >
+                  Listening… release to send
+                </Text>
+              </>
+            ) : isTranscribing ? (
+              <>
+                <ActivityIndicator color={colors.primary} size="small" />
+                <Text
+                  style={[styles.voiceBannerText, { color: colors.primary }]}
+                >
+                  Transcribing what you said…
+                </Text>
+              </>
+            ) : (
+              <>
+                <Feather
+                  name="alert-circle"
+                  size={14}
+                  color={colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.voiceBannerText,
+                    { color: colors.mutedForeground, flex: 1 },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {voiceError}
+                </Text>
+                <Pressable
+                  onPress={() => setVoiceError(null)}
+                  hitSlop={8}
+                  accessibilityLabel="Dismiss voice error"
+                >
+                  <Feather name="x" size={14} color={colors.mutedForeground} />
+                </Pressable>
+              </>
+            )}
+          </View>
+        ) : null}
+
         <View
           style={[
             styles.inputBar,
@@ -586,10 +959,18 @@ export default function ChatScreen() {
             placeholder={
               session?.status === "ended"
                 ? "This session has ended"
-                : "Share what's on your mind…"
+                : recorderState.isRecording
+                  ? "Listening…"
+                  : isTranscribing
+                    ? "Transcribing…"
+                    : "Share what's on your mind…"
             }
             placeholderTextColor={colors.mutedForeground}
-            editable={session?.status !== "ended"}
+            editable={
+              session?.status !== "ended" &&
+              !recorderState.isRecording &&
+              !isTranscribing
+            }
             multiline
             style={[
               styles.input,
@@ -602,39 +983,99 @@ export default function ChatScreen() {
             ]}
             testID="chat-input"
           />
-          <Pressable
-            onPress={handleSend}
-            disabled={
-              !input.trim() ||
-              sendMutation.isPending ||
-              session?.status === "ended"
-            }
-            accessibilityLabel="Send message"
-            testID="chat-send"
-            style={({ pressed }) => [
-              styles.sendBtn,
-              {
-                backgroundColor: colors.primary,
-                opacity:
-                  !input.trim() ||
-                  sendMutation.isPending ||
-                  session?.status === "ended" ||
-                  pressed
-                    ? 0.6
-                    : 1,
-              },
-            ]}
-          >
-            {sendMutation.isPending ? (
-              <ActivityIndicator color={colors.primaryForeground} size="small" />
-            ) : (
-              <Feather
-                name="send"
-                size={18}
-                color={colors.primaryForeground}
-              />
-            )}
-          </Pressable>
+          {input.trim().length > 0 ? (
+            <Pressable
+              onPress={handleSend}
+              disabled={
+                !input.trim() ||
+                sendMutation.isPending ||
+                session?.status === "ended"
+              }
+              accessibilityLabel="Send message"
+              testID="chat-send"
+              style={({ pressed }) => [
+                styles.sendBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity:
+                    !input.trim() ||
+                    sendMutation.isPending ||
+                    session?.status === "ended" ||
+                    pressed
+                      ? 0.6
+                      : 1,
+                },
+              ]}
+            >
+              {sendMutation.isPending ? (
+                <ActivityIndicator
+                  color={colors.primaryForeground}
+                  size="small"
+                />
+              ) : (
+                <Feather
+                  name="send"
+                  size={18}
+                  color={colors.primaryForeground}
+                />
+              )}
+            </Pressable>
+          ) : (
+            <Pressable
+              onPressIn={() => {
+                if (recordingDisabled) return;
+                void startRecording();
+              }}
+              onPressOut={() => {
+                void finishRecording(false);
+              }}
+              onLongPress={() => {
+                /* hold-to-talk handled in onPressIn/onPressOut */
+              }}
+              delayLongPress={120}
+              disabled={recordingDisabled}
+              accessibilityLabel="Hold to record a voice message"
+              accessibilityHint="Press and hold to record. Release to send your voice message."
+              testID="chat-mic"
+              style={({ pressed }) => [
+                styles.sendBtn,
+                {
+                  backgroundColor: recorderState.isRecording
+                    ? "#D9534F"
+                    : colors.primary,
+                  opacity:
+                    recordingDisabled && !recorderState.isRecording
+                      ? 0.4
+                      : pressed && !recorderState.isRecording
+                        ? 0.8
+                        : 1,
+                  transform: recorderState.isRecording
+                    ? [
+                        {
+                          scale: pulseAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.12],
+                          }),
+                        },
+                      ]
+                    : undefined,
+                },
+              ]}
+            >
+              {isTranscribing ? (
+                <ActivityIndicator
+                  color={colors.primaryForeground}
+                  size="small"
+                />
+              ) : (
+                <Feather
+                  name="mic"
+                  size={20}
+                  color={colors.primaryForeground}
+                />
+              )}
+            </Pressable>
+          )}
         </View>
       </KeyboardAvoidingView>
 
@@ -1089,6 +1530,30 @@ const styles = StyleSheet.create({
   endBtnText: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
+  },
+  voiceToggleBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voiceBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+  },
+  voiceBannerText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   viewSummaryBar: {
     flexDirection: "row",

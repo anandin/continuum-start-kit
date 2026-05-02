@@ -1,4 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createHash } from "crypto";
 import { storage } from "../storage";
 
@@ -36,7 +36,15 @@ import {
   getReviewItemForMessage,
   logSafetyEvent,
 } from "../services/twinStorage";
-import { embed, llmConfigured, type ChatMessage } from "../lib/llm";
+import {
+  embed,
+  llmConfigured,
+  transcribeAudio,
+  transcriptionConfigured,
+  synthesizeSpeech,
+  ttsConfigured,
+  type ChatMessage,
+} from "../lib/llm";
 import { runGuardedLLM, type SafetyDecision } from "../services/safety";
 import { snapshotAgentVersion } from "../services/persona";
 import type {
@@ -382,6 +390,106 @@ export function registerRoutes(app: Express) {
           templated: result.templated,
         },
       });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // /api/voice/transcribe — Whisper transcription for voice messages.
+  // The mobile client records audio (e.g. m4a/aac), base64-encodes it, and
+  // POSTs it here. The transcript is returned to the client which then
+  // sends it through /api/chat so all L1/L2/L3 safety, persona, and memory
+  // logic still applies — there is no separate voice pipeline.
+  //
+  // Body limit is scoped to this route (and /api/voice/tts response payloads)
+  // rather than applied globally — base64 audio can be large but only voice
+  // endpoints need it. Whisper's hard cap is 25mb of raw audio; base64 adds
+  // ~33% overhead, so we lift the JSON limit to 35mb to actually be able to
+  // forward a full-cap recording.
+  const voiceJson = express.json({ limit: "35mb" });
+  app.post("/api/voice/transcribe", voiceJson, requireAuth, async (req, res) => {
+    try {
+      if (!transcriptionConfigured()) {
+        return res.status(503).json({ error: "Voice transcription is not configured" });
+      }
+      const { audioBase64, mimeType, filename, language } = req.body ?? {};
+      if (!audioBase64 || typeof audioBase64 !== "string") {
+        return res.status(400).json({ error: "audioBase64 is required" });
+      }
+      const text = await transcribeAudio({
+        audioBase64,
+        mimeType: typeof mimeType === "string" ? mimeType : undefined,
+        filename: typeof filename === "string" ? filename : undefined,
+        language: typeof language === "string" ? language : undefined,
+      });
+      if (!text) {
+        return res
+          .status(422)
+          .json({ error: "We couldn't understand that recording. Try again." });
+      }
+      res.json({ text });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // /api/voice/tts — Speak a coach (agent/provider) reply back to the
+  // seeker. Locked down to: (1) the seeker who owns the engagement,
+  // (2) a real persisted message in their session, (3) non-seeker roles
+  // only. No arbitrary text-to-audio surface.
+  app.post("/api/voice/tts", voiceJson, requireAuth, async (req, res) => {
+    try {
+      if (!ttsConfigured()) {
+        return res.status(503).json({ error: "Voice playback is not configured" });
+      }
+      const { sessionId, messageId, voice, format } = req.body ?? {};
+      if (!sessionId || typeof sessionId !== "string") {
+        return res.status(400).json({ error: "sessionId is required" });
+      }
+      if (!messageId || typeof messageId !== "string") {
+        return res.status(400).json({ error: "messageId is required" });
+      }
+      const m = await assertSessionMember(req, sessionId);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+
+      // Seeker-only: must be the owner of this engagement's seeker.
+      const userId = req.user!.id;
+      const engagement = m.engagement;
+      let isSeeker = false;
+      if (engagement.seekerId) {
+        const seeker = await storage.getSeekerById(engagement.seekerId);
+        if (seeker?.ownerId === userId) isSeeker = true;
+      }
+      if (!isSeeker) {
+        return res.status(403).json({ error: "Only the seeker can play coach audio" });
+      }
+
+      const messages = await storage.getMessagesBySessionId(sessionId);
+      const msg = messages.find((x) => x.id === messageId);
+      if (!msg) return res.status(404).json({ error: "Message not found" });
+      if (msg.role === "seeker") {
+        return res.status(400).json({ error: "Only coach replies can be spoken" });
+      }
+      const spoken = msg.content;
+      if (!spoken.trim()) {
+        return res.status(400).json({ error: "Nothing to speak" });
+      }
+
+      const result = await synthesizeSpeech({
+        text: spoken,
+        voice: typeof voice === "string" ? voice : undefined,
+        format:
+          format === "mp3" ||
+          format === "opus" ||
+          format === "aac" ||
+          format === "wav"
+            ? format
+            : undefined,
+      });
+      if (!result) {
+        return res.status(502).json({ error: "Couldn't generate audio right now." });
+      }
+      res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

@@ -141,6 +141,120 @@ export function moderationConfigured(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
+// ---------------------------------------------------------------- transcription
+//
+// OpenAI Whisper for speech-to-text. Used by the seeker mobile app's
+// voice-message flow: recorded audio is shipped as base64, the server
+// decodes it and forwards it to Whisper, and the resulting transcript is
+// then routed through the normal /api/chat L1/L2/L3 pipeline so that all
+// safety/persona/memory invariants still apply to spoken input.
+
+const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
+const TRANSCRIBE_MODEL = "whisper-1";
+
+export function transcriptionConfigured(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
+export async function transcribeAudio(opts: {
+  audioBase64: string;
+  mimeType?: string;
+  filename?: string;
+  language?: string;
+}): Promise<string | null> {
+  const k = process.env.OPENAI_API_KEY;
+  if (!k) return null;
+  if (!opts.audioBase64) return null;
+  try {
+    const buf = Buffer.from(opts.audioBase64, "base64");
+    if (buf.length === 0) return null;
+    const mime = opts.mimeType || "audio/m4a";
+    const filename =
+      opts.filename ||
+      `voice.${(mime.split("/")[1] || "m4a").split(";")[0]}`;
+    const blob = new Blob([new Uint8Array(buf)], { type: mime });
+
+    const form = new FormData();
+    form.append("file", blob, filename);
+    form.append("model", TRANSCRIBE_MODEL);
+    form.append("response_format", "json");
+    if (opts.language) form.append("language", opts.language);
+
+    const res = await fetch(TRANSCRIBE_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${k}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      logger.warn({ status: res.status, errText }, "whisper transcription failed");
+      return null;
+    }
+    const data = (await res.json()) as { text?: string };
+    const text = (data.text || "").trim();
+    return text.length > 0 ? text : null;
+  } catch (err) {
+    logger.warn({ err }, "whisper transcription threw");
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------- text-to-speech
+//
+// OpenAI TTS for reading agent replies back to the seeker. Returns base64
+// audio in the requested format so the mobile client can write it to a
+// cache file and hand it to expo-audio for playback. The agent reply has
+// already been safety-gated before persistence, so we only need to guard
+// against runtime/network failures here.
+
+const TTS_URL = "https://api.openai.com/v1/audio/speech";
+const TTS_MODEL = "gpt-4o-mini-tts";
+const TTS_VOICE_DEFAULT = "alloy";
+const TTS_FORMAT_DEFAULT: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm" = "mp3";
+
+export function ttsConfigured(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
+export async function synthesizeSpeech(opts: {
+  text: string;
+  voice?: string;
+  format?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
+}): Promise<{ audioBase64: string; mimeType: string } | null> {
+  const k = process.env.OPENAI_API_KEY;
+  if (!k) return null;
+  const text = (opts.text || "").trim();
+  if (!text) return null;
+  const format = opts.format || TTS_FORMAT_DEFAULT;
+  try {
+    const res = await fetch(TTS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${k}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: TTS_MODEL,
+        voice: opts.voice || TTS_VOICE_DEFAULT,
+        input: text.slice(0, 4000),
+        response_format: format,
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      logger.warn({ status: res.status, errText }, "openai tts failed");
+      return null;
+    }
+    const ab = await res.arrayBuffer();
+    const audioBase64 = Buffer.from(ab).toString("base64");
+    const mimeType = format === "mp3" ? "audio/mpeg" : `audio/${format}`;
+    return { audioBase64, mimeType };
+  } catch (err) {
+    logger.warn({ err }, "openai tts threw");
+    return null;
+  }
+}
+
 export async function moderate(text: string): Promise<ModerationResult | null> {
   const k = process.env.OPENAI_API_KEY;
   if (!k) return null;

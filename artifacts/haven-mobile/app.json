@@ -36,7 +36,13 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Haven uses your microphone so you can talk to your coach by voice instead of typing during stressful moments."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
