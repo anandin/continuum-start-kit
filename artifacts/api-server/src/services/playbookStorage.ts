@@ -7,6 +7,8 @@ import {
   type Playbook,
   type PersonaExample,
 } from "@workspace/db";
+import { embed } from "../lib/llm";
+import { logger } from "../lib/logger";
 
 // ============================================================
 // Coach playbooks (L2) — named bundles of persona_examples that
@@ -232,9 +234,28 @@ const STARTER_PLAYBOOKS: StarterPlaybook[] = [
 export async function seedStarterPlaybooksIfEmpty(providerId: string): Promise<Playbook[]> {
   const existing = await db.select({ id: playbooks.id }).from(playbooks).where(eq(playbooks.providerId, providerId)).limit(1);
   if (existing.length > 0) return [];
+
+  // Pre-compute embeddings BEFORE opening any transaction. Vector search
+  // requires `embedding IS NOT NULL`; without these, the seeded examples
+  // would never surface in persona compilation.
+  const embeddedExamples = await Promise.all(
+    STARTER_PLAYBOOKS.map(async (sp) => ({
+      sp,
+      examples: await Promise.all(
+        sp.examples.map(async (ex) => ({
+          ex,
+          embedding: await embed(`${ex.scenario}\n${ex.approvedResponse}`).catch((err) => {
+            logger.warn({ err, scenario: ex.scenario.slice(0, 60) }, "starter example embed failed; will fall back to lexical retrieval");
+            return null;
+          }),
+        })),
+      ),
+    })),
+  );
+
   const created: Playbook[] = [];
-  for (let i = 0; i < STARTER_PLAYBOOKS.length; i++) {
-    const sp = STARTER_PLAYBOOKS[i];
+  for (let i = 0; i < embeddedExamples.length; i++) {
+    const { sp, examples } = embeddedExamples[i];
     const playbook = await db.transaction(async (tx) => {
       const [pb] = await tx.insert(playbooks).values({
         providerId,
@@ -244,18 +265,19 @@ export async function seedStarterPlaybooksIfEmpty(providerId: string): Promise<P
         isDefault: i === 0,
         isArchived: false,
       }).returning();
-      for (const ex of sp.examples) {
-        await tx.insert(personaExamples).values({
+      for (const { ex, embedding } of examples) {
+        const base = {
           providerId,
           playbookId: pb.id,
-          source: "manual",
+          source: "manual" as const,
           scenario: ex.scenario,
           approvedResponse: ex.approvedResponse,
           notes: ex.notes,
           tags: ex.tags,
           weight: 1.0,
           isActive: true,
-        });
+        };
+        await tx.insert(personaExamples).values(embedding ? { ...base, embedding } : base);
       }
       return pb;
     });
