@@ -126,6 +126,7 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
       providerId: input.providerId,
       query: input.userMessage,
       currentStage: input.initialStage,
+      engagementId: input.engagementId ?? null,
     }),
     input.engagementId
       ? buildMemoryContext({ engagementId: input.engagementId, query: input.userMessage })

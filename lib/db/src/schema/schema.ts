@@ -97,6 +97,12 @@ export const engagements = pgTable("engagements", {
   seekerId: uuid("seeker_id").references(() => seekers.id),
   providerId: uuid("provider_id").references(() => users.id),
   status: engagementStatusEnum("status").default("active"),
+  // L2 — which playbook (bundle of persona_examples) drives this engagement.
+  // Nullable: when null, persona compilation falls back to the provider's
+  // default playbook, then to all provider examples (legacy back-compat).
+  // FK is declared loosely (no .references) because playbooks is defined
+  // later in this file; circular references resolve cleanly at runtime.
+  playbookId: uuid("playbook_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -307,10 +313,33 @@ export const agentVersions = pgTable("agent_versions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// L2 — coach-authored playbook: a named bundle of persona_examples that
+// captures how the coach wants the AI to handle a recurring situation
+// (intake, check-in, harm-reduction, celebration, etc.). One playbook per
+// engagement (or the provider's default) drives persona compilation.
+export const playbooks = pgTable("playbooks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  // Exactly one playbook per provider may be the default; enforced by
+  // `setDefaultPlaybook` clearing the previous default in a transaction.
+  isDefault: boolean("is_default").default(false),
+  isArchived: boolean("is_archived").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  providerIdx: index("playbooks_provider_idx").on(t.providerId),
+}));
+
 // L2 — therapist-approved exemplars (and negative labels) used for retrieval
 export const personaExamples = pgTable("persona_examples", {
   id: uuid("id").primaryKey().defaultRandom(),
   providerId: uuid("provider_id").references(() => users.id).notNull(),
+  // Which playbook this example belongs to. Nullable so legacy rows (created
+  // before playbooks existed) keep working — they're retrieved as the
+  // "unscoped" pool when no playbook is assigned.
+  playbookId: uuid("playbook_id").references(() => playbooks.id),
   source: personaExampleSourceEnum("source").notNull(),
   // Therapist's review-queue label, when this row originated there. Distinguishes
   // positive examples ("this_is_me", "needs_edit") from negatives ("not_me",
@@ -456,6 +485,7 @@ export const insertMoodEntrySchema = createInsertSchema(moodEntries).omit({ id: 
 export const insertJournalPromptSchema = createInsertSchema(journalPrompts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true, updatedAt: true, sharedAt: true });
 export const insertCoachInboxDismissalSchema = createInsertSchema(coachInboxDismissals).omit({ id: true, dismissedAt: true });
+export const insertPlaybookSchema = createInsertSchema(playbooks).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -486,6 +516,7 @@ export type InsertMoodEntry = z.infer<typeof insertMoodEntrySchema>;
 export type InsertJournalPrompt = z.infer<typeof insertJournalPromptSchema>;
 export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
 export type InsertCoachInboxDismissal = z.infer<typeof insertCoachInboxDismissalSchema>;
+export type InsertPlaybook = z.infer<typeof insertPlaybookSchema>;
 
 export type User = typeof users.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -517,3 +548,4 @@ export type MoodEntry = typeof moodEntries.$inferSelect;
 export type JournalPrompt = typeof journalPrompts.$inferSelect;
 export type JournalEntry = typeof journalEntries.$inferSelect;
 export type CoachInboxDismissal = typeof coachInboxDismissals.$inferSelect;
+export type Playbook = typeof playbooks.$inferSelect;

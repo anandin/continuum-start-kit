@@ -30,6 +30,7 @@ import Analytics from "./pages/Analytics";
 import ProviderProfile from "./pages/ProviderProfile";
 import Calibration from "./pages/twin/Calibration";
 import PersonaLibrary from "./pages/twin/PersonaLibrary";
+import Playbooks from "./pages/twin/Playbooks";
 import MemoryInspector from "./pages/twin/MemoryInspector";
 import AuditLog from "./pages/twin/AuditLog";
 import ReviewQueue from "./pages/twin/ReviewQueue";
@@ -65,6 +66,8 @@ const App = () => (
             <Route path="/session-summary/:sessionId" element={<ProtectedRoute><SessionSummary /></ProtectedRoute>} />
             <Route path="/provider/twin/calibration" element={<ProtectedRoute><Calibration /></ProtectedRoute>} />
             <Route path="/provider/twin/persona" element={<ProtectedRoute><PersonaLibrary /></ProtectedRoute>} />
+            <Route path="/provider/twin/playbooks" element={<ProtectedRoute><Playbooks /></ProtectedRoute>} />
+            <Route path="/provider/twin/playbooks/:playbookId" element={<ProtectedRoute><PersonaLibrary /></ProtectedRoute>} />
             <Route path="/provider/twin/review" element={<ProtectedRoute><ReviewQueue /></ProtectedRoute>} />
             <Route path="/provider/twin/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
             <Route path="/provider/twin/memory/:engagementId" element={<ProtectedRoute><MemoryInspector /></ProtectedRoute>} />

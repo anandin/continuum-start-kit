@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Calendar, Users, BookOpen, ClipboardList, BarChart3, Settings, Sparkles, BookText, Inbox } from "lucide-react";
+import { LayoutDashboard, Calendar, Users, BookOpen, ClipboardList, BarChart3, Settings, Sparkles, BookText, Inbox, BookMarked } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -8,6 +8,7 @@ const navItems = [
   { to: "/provider/schedule", label: "Schedule", icon: Calendar },
   { to: "/provider/resources", label: "Resources", icon: BookOpen },
   { to: "/provider/journal-prompts", label: "Journal Prompts", icon: BookText },
+  { to: "/provider/twin/playbooks", label: "Playbooks", icon: BookMarked },
   { to: "/provider/intake-forms", label: "Intake Forms", icon: ClipboardList },
   { to: "/provider/analytics", label: "Insights", icon: BarChart3 },
   { to: "/provider/setup", label: "Settings", icon: Settings },

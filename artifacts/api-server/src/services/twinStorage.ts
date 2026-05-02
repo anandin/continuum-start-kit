@@ -137,20 +137,30 @@ export async function deactivatePersonaExample(id: string): Promise<void> {
 
 // Top-K most relevant persona examples for a query (vector search if embedding given,
 // otherwise recency + tag overlap fallback).
+//
+// `playbookId` (when supplied) restricts retrieval to that playbook only — used
+// when an engagement has been assigned a playbook. When null, the legacy
+// behavior (all of the provider's active examples) is preserved so seekers
+// without an assigned playbook keep working.
 export async function topPersonaExamples(
   providerId: string,
   query: string,
   queryEmbedding: number[] | null,
   k = 4,
+  playbookId: string | null = null,
 ): Promise<PersonaExample[]> {
   if (queryEmbedding) {
     const literal = `[${queryEmbedding.join(",")}]`;
+    const playbookClause = playbookId
+      ? sql`AND ${personaExamples.playbookId} = ${playbookId}`
+      : sql``;
     // Vector search picks the IDs; Drizzle loads the typed rows in proper order.
     const ranked = await db.execute<{ id: string }>(sql`
       SELECT id FROM ${personaExamples}
       WHERE ${personaExamples.providerId} = ${providerId}
         AND ${personaExamples.isActive} = true
         AND ${personaExamples.embedding} IS NOT NULL
+        ${playbookClause}
       ORDER BY ${personaExamples.embedding} <=> ${literal}::vector
       LIMIT ${k}
     `);
@@ -160,7 +170,9 @@ export async function topPersonaExamples(
     const byId = new Map(rows.map((r) => [r.id, r]));
     return ids.map((id) => byId.get(id)).filter((r): r is PersonaExample => Boolean(r));
   }
-  const all = await listPersonaExamplesByProvider(providerId);
+  // Lexical fallback. When scoped to a playbook, only consider rows in that playbook.
+  const allBase = await listPersonaExamplesByProvider(providerId);
+  const all = playbookId ? allBase.filter((e) => e.playbookId === playbookId) : allBase;
   if (all.length === 0) return [];
   const lc = query.toLowerCase();
   const scored = all.map((ex) => {

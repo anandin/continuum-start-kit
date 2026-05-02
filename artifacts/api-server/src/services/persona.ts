@@ -10,6 +10,10 @@
 
 import { storage } from "../storage";
 import { topPersonaExamples, listPersonaExamplesByProvider, bumpAgentVersion } from "./twinStorage";
+import { getDefaultPlaybookForProvider } from "./playbookStorage";
+import { db } from "../db";
+import { engagements } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { embed } from "../lib/llm";
 import type { PersonaExample, ProviderConfig, ProviderAgentConfig } from "@workspace/db";
 
@@ -68,14 +72,33 @@ export async function compilePersonaForTurn(opts: {
   providerId: string;
   query: string;
   currentStage?: string | null;
+  // Optional engagement context. When provided, the engagement's assigned
+  // playbook is used; falling back to the provider's default playbook; falling
+  // back to all of the provider's active examples (legacy behavior).
+  engagementId?: string | null;
 }): Promise<CompiledPersona> {
   const [agentConfig, providerConfig] = await Promise.all([
     storage.getProviderAgentConfigByProviderId(opts.providerId),
     storage.getProviderConfigByProviderId(opts.providerId),
   ]);
 
+  // Resolve which playbook (if any) drives this turn.
+  let activePlaybookId: string | null = null;
+  if (opts.engagementId) {
+    const [eng] = await db
+      .select({ playbookId: engagements.playbookId })
+      .from(engagements)
+      .where(eq(engagements.id, opts.engagementId))
+      .limit(1);
+    if (eng?.playbookId) activePlaybookId = eng.playbookId;
+  }
+  if (!activePlaybookId) {
+    const def = await getDefaultPlaybookForProvider(opts.providerId);
+    if (def) activePlaybookId = def.id;
+  }
+
   const queryEmbedding = await embed(opts.query);
-  const examples = await topPersonaExamples(opts.providerId, opts.query, queryEmbedding, 4);
+  const examples = await topPersonaExamples(opts.providerId, opts.query, queryEmbedding, 4, activePlaybookId);
 
   const sections = [
     renderAgentConfig(agentConfig),

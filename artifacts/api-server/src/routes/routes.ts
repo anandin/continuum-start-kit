@@ -18,6 +18,17 @@ import type { Engagement, Goal, Session as DbSession } from "@workspace/db";
 import { runTwinTurn } from "../services/twinChat";
 import { reflectAndWrite } from "../services/memory";
 import {
+  listPlaybooksByProvider,
+  getPlaybookById,
+  getDefaultPlaybookForProvider,
+  createPlaybook,
+  updatePlaybook,
+  setDefaultPlaybook,
+  duplicatePlaybook,
+  listPersonaExamplesForPlaybook,
+  seedStarterPlaybooksIfEmpty,
+} from "../services/playbookStorage";
+import {
   listSafetyEventsByProvider,
   listSafetyEventsByEngagement,
   createPersonaExample,
@@ -1682,6 +1693,17 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // ---- Persona examples (L2 memory of approved responses) ----
   app.get("/api/twin/persona-examples", requireProvider, async (req, res) => {
     try {
+      // When ?playbookId=... is supplied, scope to that playbook (verifying ownership).
+      // Otherwise return all of the provider's active examples (legacy callers).
+      const playbookId = typeof req.query.playbookId === "string" ? req.query.playbookId : null;
+      if (playbookId) {
+        const pb = await getPlaybookById(playbookId);
+        if (!pb || pb.providerId !== req.user!.id) {
+          return res.status(404).json({ error: "Playbook not found" });
+        }
+        const rows = await listPersonaExamplesForPlaybook(req.user!.id, playbookId);
+        return res.json(rows);
+      }
       const rows = await listPersonaExamplesByProvider(req.user!.id);
       res.json(rows);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -1689,14 +1711,24 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
   app.post("/api/twin/persona-examples", requireProvider, async (req, res) => {
     try {
-      const { scenario, approvedResponse, rejectedResponse, notes, tags, source } = req.body;
+      const { scenario, approvedResponse, rejectedResponse, notes, tags, source, playbookId } = req.body;
       if (!scenario || !approvedResponse) {
         return res.status(400).json({ error: "scenario and approvedResponse required" });
+      }
+      // Validate playbook ownership when supplied.
+      let resolvedPlaybookId: string | null = null;
+      if (playbookId) {
+        const pb = await getPlaybookById(playbookId);
+        if (!pb || pb.providerId !== req.user!.id) {
+          return res.status(404).json({ error: "Playbook not found" });
+        }
+        resolvedPlaybookId = pb.id;
       }
       const embedding = await embed(`${scenario}\n${approvedResponse}`);
       const row = await createPersonaExample(
         {
           providerId: req.user!.id,
+          playbookId: resolvedPlaybookId,
           source: source || "manual",
           scenario,
           approvedResponse,
@@ -1715,6 +1747,123 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       });
       res.json(row);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ============================================================
+  // Playbooks (L2) — coach-authored bundles of persona examples
+  // ============================================================
+
+  // List provider playbooks. Auto-seeds starter playbooks the first time a
+  // provider opens the page so the feature isn't empty out of the box.
+  app.get("/api/twin/playbooks", requireProvider, async (req, res) => {
+    try {
+      await seedStarterPlaybooksIfEmpty(req.user!.id);
+      const includeArchived = req.query.includeArchived === "true";
+      const rows = await listPlaybooksByProvider(req.user!.id, { includeArchived });
+      res.json(rows);
+    } catch (e: any) {
+      req.log?.error?.({ err: e }, "playbooks_list_failed");
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/twin/playbooks/:id", requireProvider, async (req, res) => {
+    try {
+      const pb = await getPlaybookById(req.params.id);
+      if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
+      res.json(pb);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/twin/playbooks", requireProvider, async (req, res) => {
+    try {
+      const { title, description, isDefault } = req.body as {
+        title?: string;
+        description?: string | null;
+        isDefault?: boolean;
+      };
+      if (!title || !title.trim()) {
+        return res.status(400).json({ error: "title required" });
+      }
+      const row = await createPlaybook({
+        providerId: req.user!.id,
+        title: title.trim().slice(0, 200),
+        description: description?.slice(0, 2000) ?? null,
+        isDefault: Boolean(isDefault),
+        isArchived: false,
+      });
+      res.json(row);
+    } catch (e: any) {
+      req.log?.error?.({ err: e }, "playbook_create_failed");
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // PATCH for rename / description edit / archive toggle.
+  app.patch("/api/twin/playbooks/:id", requireProvider, async (req, res) => {
+    try {
+      const pb = await getPlaybookById(req.params.id);
+      if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
+      const { title, description, isArchived } = req.body as {
+        title?: string;
+        description?: string | null;
+        isArchived?: boolean;
+      };
+      const patch: Partial<{ title: string; description: string | null; isArchived: boolean }> = {};
+      if (typeof title === "string" && title.trim()) patch.title = title.trim().slice(0, 200);
+      if (description !== undefined) patch.description = description?.slice(0, 2000) ?? null;
+      if (typeof isArchived === "boolean") patch.isArchived = isArchived;
+      const row = await updatePlaybook(req.params.id, patch);
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Promote to default. Demotes the previous default in the same transaction.
+  app.post("/api/twin/playbooks/:id/default", requireProvider, async (req, res) => {
+    try {
+      const pb = await getPlaybookById(req.params.id);
+      if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
+      const row = await setDefaultPlaybook(req.user!.id, req.params.id);
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Clone a playbook + all its active examples. Embeddings are copied across
+  // so retrieval works on the duplicate immediately without re-embedding.
+  app.post("/api/twin/playbooks/:id/duplicate", requireProvider, async (req, res) => {
+    try {
+      const pb = await getPlaybookById(req.params.id);
+      if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
+      const titleOverride = typeof req.body?.title === "string" && req.body.title.trim()
+        ? req.body.title.trim().slice(0, 200)
+        : `${pb.title} (copy)`;
+      const dup = await duplicatePlaybook(req.user!.id, req.params.id, titleOverride);
+      if (!dup) return res.status(500).json({ error: "Duplication failed" });
+      res.json(dup);
+    } catch (e: any) {
+      req.log?.error?.({ err: e }, "playbook_duplicate_failed");
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Assign a playbook (or unassign with playbookId=null) to an engagement.
+  app.patch("/api/engagements/:id/playbook", requireProvider, async (req, res) => {
+    try {
+      const check = await assertProviderOwnsEngagement(req, req.params.id);
+      if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
+      const { playbookId } = req.body as { playbookId?: string | null };
+      let resolved: string | null = null;
+      if (playbookId) {
+        const pb = await getPlaybookById(playbookId);
+        if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Playbook not found" });
+        resolved = pb.id;
+      }
+      const updated = await storage.updateEngagement(req.params.id, { playbookId: resolved });
+      res.json(updated);
+    } catch (e: any) {
+      req.log?.error?.({ err: e }, "engagement_set_playbook_failed");
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.delete("/api/twin/persona-examples/:id", requireProvider, async (req, res) => {
@@ -1922,9 +2071,14 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           : null;
         const labelTag = `label:${label}`;
         const userTags = Array.isArray(tags) ? tags : [];
+        // Calibration is provider-wide (no engagement). Drop into the
+        // provider's default playbook so the example is owned by something
+        // and shows up in the editor; coach can move it later.
+        const defaultPb = await getDefaultPlaybookForProvider(req.user!.id);
         await createPersonaExample(
           {
             providerId: req.user!.id,
+            playbookId: defaultPb?.id ?? null,
             source: "calibration",
             label,
             scenario: turn.client,
@@ -2004,9 +2158,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       const userTags = Array.isArray(tags) ? tags : [];
       const labelTag = "label:this_is_me";
       const embedding = await embed(`${turn.client}\n${finalText}`);
+      const defaultPb = await getDefaultPlaybookForProvider(req.user!.id);
       await createPersonaExample(
         {
           providerId: req.user!.id,
+          playbookId: defaultPb?.id ?? null,
           source: "calibration",
           label: "this_is_me",
           scenario: turn.client,
@@ -2172,9 +2328,17 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         : null;
       const labelTag = `label:${safeLabel}`;
       const userTags = Array.isArray(tags) ? tags : [];
+      // Attribute the labeled example to the engagement's playbook (or the
+      // provider's default if the engagement has none assigned). Keeps the
+      // example surface-able from the same playbook the AI is actually
+      // pulling from for that client.
+      const reviewedEng = ownerCheck.engagement;
+      const defaultPb = reviewedEng.playbookId ? null : await getDefaultPlaybookForProvider(req.user!.id);
+      const reviewPlaybookId = reviewedEng.playbookId ?? defaultPb?.id ?? null;
       await createPersonaExample(
         {
           providerId: req.user!.id,
+          playbookId: reviewPlaybookId,
           source: "review_queue",
           label: safeLabel,
           scenario: scenario || "(prior context unavailable)",

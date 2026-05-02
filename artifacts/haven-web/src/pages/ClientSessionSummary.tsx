@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, 
   MessageSquare, 
@@ -25,16 +26,43 @@ import { NotesPanel } from '@/components/NotesPanel';
 import { GoalsTracker } from '@/components/GoalsTracker';
 import { MoodPanel } from '@/components/MoodPanel';
 import { JournalPanel } from '@/components/JournalPanel';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface PlaybookOption {
+  id: string;
+  title: string;
+  isDefault: boolean;
+  isArchived: boolean;
+}
 
 export default function ClientSessionSummary() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const qc = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [engagement, setEngagement] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
   const [latestSummary, setLatestSummary] = useState<any>(null);
+
+  // Playbook picker — list active playbooks so the coach can pin one for this engagement.
+  const playbooksQ = useQuery<PlaybookOption[]>({
+    queryKey: ['/api/twin/playbooks'],
+    queryFn: async () => (await apiRequest('GET', '/api/twin/playbooks')).json(),
+    enabled: !!user,
+  });
+
+  const setPlaybookMut = useMutation({
+    mutationFn: async (playbookId: string | null) =>
+      (await apiRequest('PATCH', `/api/engagements/${clientId}/playbook`, { playbookId })).json(),
+    onSuccess: (updated: any) => {
+      setEngagement(updated);
+      qc.invalidateQueries({ queryKey: ['/api/twin/playbooks'] });
+      toast.success('Playbook updated for this client');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to update playbook'),
+  });
 
   useEffect(() => {
     if (!user || !clientId) {
@@ -181,7 +209,41 @@ export default function ClientSessionSummary() {
                   <p className="text-sm text-muted-foreground" data-testid="text-engagement-id">Engagement ID: {engagement.id.slice(0, 8)}</p>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Playbook</span>
+                  <Select
+                    value={engagement.playbookId ?? engagement.playbook_id ?? '__default__'}
+                    onValueChange={(val) =>
+                      setPlaybookMut.mutate(val === '__default__' ? null : val)
+                    }
+                    disabled={setPlaybookMut.isPending}
+                  >
+                    <SelectTrigger className="w-[220px]" data-testid="select-playbook">
+                      <SelectValue placeholder="Use default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__default__" data-testid="option-playbook-default">
+                        Use default
+                        {(() => {
+                          const def = playbooksQ.data?.find((p) => p.isDefault);
+                          return def ? ` (${def.title})` : '';
+                        })()}
+                      </SelectItem>
+                      {(playbooksQ.data ?? [])
+                        .filter((p) => !p.isArchived)
+                        .map((p) => (
+                          <SelectItem
+                            key={p.id}
+                            value={p.id}
+                            data-testid={`option-playbook-${p.id}`}
+                          >
+                            {p.title}{p.isDefault ? ' ★' : ''}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   variant="outline"
                   onClick={() => navigate(`/provider/twin/memory/${engagement.id}`)}
