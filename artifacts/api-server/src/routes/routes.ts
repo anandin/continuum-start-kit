@@ -1,5 +1,18 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { createHash } from "crypto";
 import { storage } from "../storage";
+
+/**
+ * Build redacted snippets for internal (non-seeker-facing) LLM call audit
+ * entries. We must record that a call happened (length + sha256) for
+ * traceability, but storing raw transcript text would expand the PHI footprint
+ * of safety_events beyond what is justified for safety telemetry.
+ */
+function internalAuditSnippet(text: string | undefined | null, label: string): string {
+  if (!text) return `[redacted:${label}] empty`;
+  const hash = createHash("sha256").update(text).digest("hex").slice(0, 12);
+  return `[redacted:${label}] len=${text.length} sha256=${hash}`;
+}
 import { z } from "zod/v4";
 import type { Engagement, Session as DbSession } from "@workspace/db";
 import { runTwinTurn } from "../services/twinChat";
@@ -24,8 +37,7 @@ import {
   getReviewItemForMessage,
   logSafetyEvent,
 } from "../services/twinStorage";
-import { chat } from "../lib/llm";
-import { embed } from "../lib/llm";
+import { chat, embed, llmConfigured, type ChatMessage } from "../lib/llm";
 import type {
   SyntheticClientProfile,
   CalibrationTurn,
@@ -372,8 +384,7 @@ export function registerRoutes(app: Express) {
         return res.status(400).json({ error: "Provider config not found" });
       }
 
-      const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-      if (!OPENROUTER_API_KEY) {
+      if (!llmConfigured()) {
         await storage.updateSession(sessionId, { status: "ended", endedAt: new Date() });
         return res.json({ success: true, summary: null });
       }
@@ -404,28 +415,32 @@ Available stages: ${stagesList}
 
 Only return JSON. No extra text.`;
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "You are an expert coaching session analyst. Always respond with valid JSON only." },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0.3,
-        }),
+      // Internal (non-client-facing) summarization. Routed through the
+      // centralized chat() helper and recorded in the safety audit log so
+      // every LLM invocation is traceable, even those whose output is never
+      // shown to the seeker.
+      const content = await chat({
+        messages: [
+          { role: "system", content: "You are an expert coaching session analyst. Always respond with valid JSON only." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.3,
       });
-
-      if (!response.ok) {
-        throw new Error(`AI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
+      await logSafetyEvent({
+        sessionId,
+        engagementId: engagement.id,
+        userId: req.user!.id,
+        providerId: engagement.providerId,
+        stage: "input",
+        decision: "allow",
+        severity: "info",
+        reason: "internal_session_summary",
+        classifierLabels: { internal: true, kind: "session_summary" },
+        inputSnippet: internalAuditSnippet(prompt, "session_summary_prompt"),
+        outputSnippet: internalAuditSnippet(content, "session_summary_output"),
+        templateUsed: null,
+        agentVersionId: null,
+      });
 
       let summaryData;
       try {
@@ -495,11 +510,10 @@ Only return JSON. No extra text.`;
     try {
       const { answers, stages } = req.body;
 
-      const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-      if (!OPENROUTER_API_KEY) {
-        return res.json({ 
-          initial_stage: stages[0]?.name || "Initial", 
-          rationale: "Assigned to starting stage" 
+      if (!llmConfigured()) {
+        return res.json({
+          initial_stage: stages[0]?.name || "Initial",
+          rationale: "Assigned to starting stage",
         });
       }
 
@@ -519,28 +533,36 @@ Inputs:
 
 If ambiguous, choose the earliest relevant stage.`;
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      // Internal stage-assignment call. Routed through chat() and audited so
+      // the safety log captures every LLM invocation, including non-client
+      // facing config calls.
+      let content = "";
+      try {
+        content = await chat({
           messages: [
             { role: "system", content: "You are a stage assignment expert. Always respond with valid JSON only." },
             { role: "user", content: prompt },
           ],
           temperature: 0.3,
-        }),
-      });
-
-      if (!response.ok) {
+        });
+      } catch {
         return res.json({ initial_stage: stages[0]?.name || "Initial", rationale: "Default assignment" });
       }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
+      await logSafetyEvent({
+        sessionId: null,
+        engagementId: null,
+        userId: req.user!.id,
+        providerId: null,
+        stage: "input",
+        decision: "allow",
+        severity: "info",
+        reason: "internal_onboarding_assign",
+        classifierLabels: { internal: true, kind: "onboarding_assign" },
+        inputSnippet: internalAuditSnippet(prompt, "onboarding_assign_prompt"),
+        outputSnippet: internalAuditSnippet(content, "onboarding_assign_output"),
+        templateUsed: null,
+        agentVersionId: null,
+      });
 
       try {
         const cleanContent = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
@@ -994,12 +1016,12 @@ If ambiguous, choose the earliest relevant stage.`;
       const userId = req.user!.id;
       const { message, reset } = req.body;
 
-      let chat = await storage.getActiveOnboardingChatByProviderId(userId);
-      if (reset || !chat) {
-        if (chat) {
-          await storage.updateProviderOnboardingChat(chat.id, { status: "completed" });
+      let onboardingChat = await storage.getActiveOnboardingChatByProviderId(userId);
+      if (reset || !onboardingChat) {
+        if (onboardingChat) {
+          await storage.updateProviderOnboardingChat(onboardingChat.id, { status: "completed" });
         }
-        chat = await storage.createProviderOnboardingChat({
+        onboardingChat = await storage.createProviderOnboardingChat({
           providerId: userId,
           messages: [],
           status: "in_progress",
@@ -1007,11 +1029,10 @@ If ambiguous, choose the earliest relevant stage.`;
         });
       }
 
-      const history = (chat.messages as Array<{ role: string; content: string }>) || [];
+      const history = (onboardingChat.messages as Array<{ role: string; content: string }>) || [];
       if (message) history.push({ role: "user", content: message });
 
-      const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-      if (!OPENROUTER_API_KEY) {
+      if (!llmConfigured()) {
         return res.status(500).json({ error: "AI service not configured" });
       }
 
@@ -1033,9 +1054,12 @@ Then offer one short closing message like "I think I have a great picture of you
 
 Until [READY_TO_GENERATE], just keep the conversation going naturally. Do NOT generate the config — that's a separate step.`;
 
-      const aiMessages = [
+      const aiMessages: ChatMessage[] = [
         { role: "system", content: systemPrompt },
-        ...history.map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content })),
+        ...history.map((m) => ({
+          role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+          content: m.content,
+        })),
       ];
 
       // First message bootstrap
@@ -1043,21 +1067,30 @@ Until [READY_TO_GENERATE], just keep the conversation going naturally. Do NOT ge
         aiMessages.push({ role: "user", content: "Hi! I'm a new coach setting up my practice. Let's get started." });
       }
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: aiMessages, temperature: 0.8 }),
+      // Provider-only setup conversation. Routed through chat() and audited.
+      const aiContent = (await chat({ messages: aiMessages, temperature: 0.8 })) || "Could you tell me more about your practice?";
+      await logSafetyEvent({
+        sessionId: null,
+        engagementId: null,
+        userId,
+        providerId: userId,
+        stage: "input",
+        decision: "allow",
+        severity: "info",
+        reason: "internal_provider_onboarding_chat",
+        classifierLabels: { internal: true, kind: "provider_onboarding_chat" },
+        inputSnippet: internalAuditSnippet(message, "provider_onboarding_chat_input"),
+        outputSnippet: internalAuditSnippet(aiContent, "provider_onboarding_chat_output"),
+        templateUsed: null,
+        agentVersionId: null,
       });
-      if (!response.ok) throw new Error(`AI API error: ${response.status}`);
-      const data = await response.json();
-      const aiContent = data.choices?.[0]?.message?.content || "Could you tell me more about your practice?";
 
       const readyToGenerate = aiContent.includes("[READY_TO_GENERATE]");
       const cleanContent = aiContent.replace(/\[READY_TO_GENERATE\]/g, "").trim();
 
       history.push({ role: "assistant", content: cleanContent });
 
-      const updated = await storage.updateProviderOnboardingChat(chat.id, {
+      const updated = await storage.updateProviderOnboardingChat(onboardingChat.id, {
         messages: history,
       });
 
@@ -1068,14 +1101,13 @@ Until [READY_TO_GENERATE], just keep the conversation going naturally. Do NOT ge
   app.post("/api/provider-onboarding/generate", requireProvider, async (req, res) => {
     try {
       const userId = req.user!.id;
-      const chat = await storage.getActiveOnboardingChatByProviderId(userId);
-      if (!chat) return res.status(404).json({ error: "No active onboarding chat" });
+      const onboardingChat = await storage.getActiveOnboardingChatByProviderId(userId);
+      if (!onboardingChat) return res.status(404).json({ error: "No active onboarding chat" });
 
-      const history = (chat.messages as Array<{ role: string; content: string }>) || [];
+      const history = (onboardingChat.messages as Array<{ role: string; content: string }>) || [];
       if (history.length < 4) return res.status(400).json({ error: "Need more conversation first" });
 
-      const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-      if (!OPENROUTER_API_KEY) return res.status(500).json({ error: "AI service not configured" });
+      if (!llmConfigured()) return res.status(500).json({ error: "AI service not configured" });
 
       const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
 
@@ -1109,21 +1141,30 @@ Output STRICT JSON ONLY (no markdown, no commentary):
 
 Aim for 4-6 stages that reflect their actual journey. Use the coach's own language wherever possible.`;
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "You synthesize practice configs from coaching conversations. Always return valid JSON only." },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0.4,
-        }),
+      // Provider-only config synthesis. Routed through chat() and audited.
+      const content = (await chat({
+        messages: [
+          { role: "system", content: "You synthesize practice configs from coaching conversations. Always return valid JSON only." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.4,
+      })) || "{}";
+      await logSafetyEvent({
+        sessionId: null,
+        engagementId: null,
+        userId,
+        providerId: userId,
+        stage: "input",
+        decision: "allow",
+        severity: "info",
+        reason: "internal_provider_onboarding_generate",
+        classifierLabels: { internal: true, kind: "provider_onboarding_generate" },
+        inputSnippet: internalAuditSnippet(prompt, "provider_onboarding_generate_prompt"),
+        outputSnippet: internalAuditSnippet(content, "provider_onboarding_generate_output"),
+        templateUsed: null,
+        agentVersionId: null,
       });
-      if (!response.ok) throw new Error(`AI API error: ${response.status}`);
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || "{}";
+
       const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       let generated;
       try {
@@ -1132,7 +1173,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         return res.status(500).json({ error: "AI returned invalid format. Please continue the conversation." });
       }
 
-      const updated = await storage.updateProviderOnboardingChat(chat.id, {
+      const updated = await storage.updateProviderOnboardingChat(onboardingChat.id, {
         generatedConfig: generated,
       });
 
@@ -1364,6 +1405,25 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   });
 
   // ---- Calibration sessions (synthetic-client interview) ----
+  // Spec-compliant aliases. The original implementation lives under
+  // /api/twin/calibration/*; we expose /api/calibration/* as well so callers
+  // following the public spec keep working without code changes.
+  app.use((req, _res, next) => {
+    // Preserve querystring; req.path strips it but req.url still carries it.
+    const qIdx = req.url.indexOf("?");
+    const qs = qIdx >= 0 ? req.url.slice(qIdx) : "";
+    if (req.path === "/api/calibration/start" && req.method === "POST") {
+      req.url = `/api/twin/calibration${qs}`;
+    } else if (req.path.startsWith("/api/calibration/")) {
+      const m = req.path.match(/^\/api\/calibration\/([^/]+)\/(turn|correct)$/);
+      if (m) {
+        const action = m[2] === "correct" ? "approve" : m[2];
+        req.url = `/api/twin/calibration/${m[1]}/${action}${qs}`;
+      }
+    }
+    next();
+  });
+
   app.post("/api/twin/calibration", requireProvider, async (req, res) => {
     try {
       const { scenarioName, syntheticClientProfile } = req.body;
@@ -1436,11 +1496,14 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         return res.status(503).json({ error: "Safety audit unavailable; please retry" });
       }
 
-      // 2. The Twin drafts a response (using the same persona path as production)
+      // 2. The Twin drafts a response (using the same persona path as production).
+      // Calibration runs without an engagement/session, so we pass null IDs and
+      // tag the safety event downstream — safety_events.session_id / engagement_id
+      // are nullable in the schema, so the audit trail still persists.
       const draftResult = await runTwinTurn({
         providerId: req.user!.id,
-        engagementId: "00000000-0000-0000-0000-000000000000",
-        sessionId: "00000000-0000-0000-0000-000000000000",
+        engagementId: null,
+        sessionId: null,
         userId: req.user!.id,
         initialStage: null,
         userMessage: clientUtterance,

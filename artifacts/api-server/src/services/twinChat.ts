@@ -18,8 +18,11 @@ import type { Message } from "@workspace/db";
 
 export interface TwinTurnInput {
   providerId: string;
-  engagementId: string;
-  sessionId: string;
+  // Nullable for non-persisted contexts (e.g. calibration, dry runs).
+  // When null, no memory is loaded and safety events are written without
+  // engagement/session FK references (those columns are nullable in the schema).
+  engagementId: string | null;
+  sessionId: string | null;
   userId: string;
   initialStage?: string | null;
   userMessage: string;
@@ -44,8 +47,8 @@ const SAFETY_FAIL_CLOSED_TEMPLATE =
 
 export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult> {
   const ctx = {
-    sessionId: input.sessionId,
-    engagementId: input.engagementId,
+    sessionId: input.sessionId ?? undefined,
+    engagementId: input.engagementId ?? undefined,
     userId: input.userId,
     providerId: input.providerId,
   };
@@ -99,7 +102,9 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
       query: input.userMessage,
       currentStage: input.initialStage,
     }),
-    buildMemoryContext({ engagementId: input.engagementId, query: input.userMessage }),
+    input.engagementId
+      ? buildMemoryContext({ engagementId: input.engagementId, query: input.userMessage })
+      : Promise.resolve({ block: "", entryIds: [] as string[] }),
   ]);
 
   const composed = [persona.systemPrompt, memory.block].filter(Boolean).join("\n\n");

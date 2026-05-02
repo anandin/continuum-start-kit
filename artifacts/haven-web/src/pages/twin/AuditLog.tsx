@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -36,13 +36,25 @@ const DECISION_COLORS: Record<string, string> = {
 
 export default function AuditLog() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const engagementId = searchParams.get("engagementId");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [decisionFilter, setDecisionFilter] = useState<string>("all");
 
+  const endpoint = engagementId
+    ? `/api/clients/${engagementId}/safety-events`
+    : "/api/twin/safety-events";
+
   const eventsQ = useQuery<SafetyEvent[]>({
-    queryKey: ["/api/twin/safety-events"],
-    queryFn: async () => (await apiRequest("GET", "/api/twin/safety-events")).json(),
+    queryKey: [endpoint],
+    queryFn: async () => (await apiRequest("GET", endpoint)).json(),
   });
+
+  function clearEngagementFilter() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("engagementId");
+    setSearchParams(next);
+  }
 
   const filtered = (eventsQ.data || []).filter((e) => {
     if (severityFilter !== "all" && e.severity !== severityFilter) return false;
@@ -83,6 +95,19 @@ export default function AuditLog() {
               <option value="escalate">escalate</option>
             </select>
           </label>
+          {engagementId && (
+            <span className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-900 flex items-center gap-1">
+              client: {engagementId.slice(0, 8)}…
+              <button
+                type="button"
+                onClick={clearEngagementFilter}
+                className="ml-1 text-amber-700 hover:text-amber-900"
+                aria-label="Clear client filter"
+              >
+                ×
+              </button>
+            </span>
+          )}
           <span className="text-xs text-stone-500 ml-auto">{filtered.length} events</span>
         </div>
 
