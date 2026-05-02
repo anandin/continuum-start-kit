@@ -229,14 +229,26 @@ async function gatherContext(engagementId: string): Promise<GatheredContext | { 
       importance: typeof m.importance === "number" ? m.importance : 0.5,
     }));
 
-  // Open safety events scoped to this engagement (last 30, newest first).
-  const safetyRows = await listSafetyEventsByEngagement(engagementId, 30);
-  const openSafetyEvents = safetyRows.map((e) => ({
-    at: e.createdAt ?? null,
-    severity: e.severity ?? "info",
-    reason: scrub(e.reason ?? ""),
-    stage: e.stage ?? "",
-  }));
+  // Safety events scoped to this engagement: only high/critical signals
+  // from the last 14 days. The full audit log is informational and would
+  // otherwise drown the brief's safety section in routine "allow" rows.
+  const SAFETY_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+  const safetyCutoff = Date.now() - SAFETY_WINDOW_MS;
+  const safetyRows = await listSafetyEventsByEngagement(engagementId, 50);
+  const openSafetyEvents = safetyRows
+    .filter((e) => {
+      const sev = (e.severity ?? "").toLowerCase();
+      if (sev !== "high" && sev !== "critical") return false;
+      const at = e.createdAt ? new Date(e.createdAt).getTime() : 0;
+      return Number.isFinite(at) && at >= safetyCutoff;
+    })
+    .slice(0, 10)
+    .map((e) => ({
+      at: e.createdAt ?? null,
+      severity: e.severity ?? "info",
+      reason: scrub(e.reason ?? ""),
+      stage: e.stage ?? "",
+    }));
 
   // Open (unread) alerts for this provider, filtered to this engagement.
   const allAlerts = engagement.providerId

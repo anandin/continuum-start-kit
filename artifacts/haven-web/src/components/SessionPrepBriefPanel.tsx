@@ -202,14 +202,15 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
                   </>
                 )}
               </Button>
-              {brief && !brief.usedAt && brief.status !== "failed" && (
+              {brief && !brief.usedAt && (
                 <Button
                   variant="outline"
                   onClick={() => markUsedMut.mutate(brief.id)}
                   disabled={markUsedMut.isPending}
                   data-testid="button-mark-brief-used"
                 >
-                  <CheckCircle2 className="h-4 w-4 mr-2" /> Mark used
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {brief.status === "failed" ? "Archive" : "Mark used"}
                 </Button>
               )}
             </div>
