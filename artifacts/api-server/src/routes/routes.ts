@@ -1463,10 +1463,12 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     if (req.path === "/api/calibration/start" && req.method === "POST") {
       req.url = `/api/twin/calibration${qs}`;
     } else if (req.path.startsWith("/api/calibration/")) {
-      const m = req.path.match(/^\/api\/calibration\/([^/]+)\/(turn|correct)$/);
+      // /turn keeps simple alias; /correct has dedicated semantics (always
+      // persists "this_is_me") so it gets its own handler below — do NOT
+      // rewrite to /approve here.
+      const m = req.path.match(/^\/api\/calibration\/([^/]+)\/(turn)$/);
       if (m) {
-        const action = m[2] === "correct" ? "approve" : m[2];
-        req.url = `/api/twin/calibration/${m[1]}/${action}${qs}`;
+        req.url = `/api/twin/calibration/${m[1]}/${m[2]}${qs}`;
       }
     }
 
@@ -1617,21 +1619,32 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         approvedEdit: approvedEdit || turn.draft,
       };
 
-      // Promote into persona_examples if it's an approved/edited example
-      if (label === "this_is_me" || label === "needs_edit") {
-        const finalText = approvedEdit || turn.draft;
-        const embedding = await embed(`${turn.client}\n${finalText}`);
+      // Persist EVERY label as a persona_examples row so calibration always
+      // produces L2 training artifacts (positives indexed for retrieval,
+      // negatives stored inactive for audit + future contrastive use).
+      // Mirrors the review-queue label endpoint's semantics.
+      if (label) {
+        const isPositive = label === "this_is_me" || label === "needs_edit";
+        const finalApproved = isPositive ? (approvedEdit || turn.draft) : null;
+        const embedding = isPositive && finalApproved
+          ? await embed(`${turn.client}\n${finalApproved}`)
+          : null;
+        const labelTag = `label:${label}`;
+        const userTags = Array.isArray(tags) ? tags : [];
         await createPersonaExample(
           {
             providerId: req.user!.id,
             source: "calibration",
+            label,
             scenario: turn.client,
-            approvedResponse: finalText,
-            rejectedResponse: label === "needs_edit" ? turn.draft : null,
+            approvedResponse: finalApproved,
+            rejectedResponse: isPositive
+              ? (label === "needs_edit" ? turn.draft : null)
+              : turn.draft,
             notes: null,
-            tags: Array.isArray(tags) ? tags : [],
-            weight: 1.0,
-            isActive: true,
+            tags: userTags.includes(labelTag) ? userTags : [...userTags, labelTag],
+            weight: isPositive ? 1.0 : 0,
+            isActive: isPositive,
           },
           embedding,
         );
@@ -1659,6 +1672,74 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       const updated = await updateCalibrationSession(calib.id, { transcript });
       res.json(updated);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  /**
+   * Spec contract: POST /api/calibration/:id/correct
+   * Body: { turnIndex: number, approvedEdit?: string, tags?: string[] }
+   *
+   * Saves the therapist's edit (or, if no edit supplied, the AI's draft) as
+   * a "this_is_me" persona_example so the corrected response becomes L2
+   * training data. Returns the updated calibration record.
+   *
+   * Distinct from /approve: /approve accepts arbitrary labels (including
+   * negatives); /correct is the dedicated "yes, save this as me" entry
+   * point and ALWAYS writes a persona_example.
+   */
+  app.post("/api/calibration/:id/correct", requireProvider, async (req, res) => {
+    try {
+      const calib = await getCalibrationSession(req.params.id);
+      if (!calib || calib.providerId !== req.user!.id) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const { turnIndex, approvedEdit, tags } = req.body as {
+        turnIndex?: number;
+        approvedEdit?: string;
+        tags?: string[];
+      };
+      const transcript: CalibrationTurn[] =
+        (calib.transcript as CalibrationTurn[] | null) ?? [];
+      if (typeof turnIndex !== "number" || !transcript[turnIndex]) {
+        return res.status(400).json({ error: "Invalid turnIndex" });
+      }
+      const turn = transcript[turnIndex];
+      const finalText = (typeof approvedEdit === "string" && approvedEdit.length > 0)
+        ? approvedEdit
+        : turn.draft;
+
+      // Mark the turn in the transcript so the UI shows it as corrected.
+      transcript[turnIndex] = {
+        ...turn,
+        label: "this_is_me",
+        approvedEdit: finalText,
+      };
+
+      // Always persist as a persona_example labeled "this_is_me" — this is
+      // the contract this endpoint exists to fulfill.
+      const userTags = Array.isArray(tags) ? tags : [];
+      const labelTag = "label:this_is_me";
+      const embedding = await embed(`${turn.client}\n${finalText}`);
+      await createPersonaExample(
+        {
+          providerId: req.user!.id,
+          source: "calibration",
+          label: "this_is_me",
+          scenario: turn.client,
+          approvedResponse: finalText,
+          rejectedResponse: finalText !== turn.draft ? turn.draft : null,
+          notes: null,
+          tags: userTags.includes(labelTag) ? userTags : [...userTags, labelTag],
+          weight: 1.0,
+          isActive: true,
+        },
+        embedding,
+      );
+
+      const updated = await updateCalibrationSession(calib.id, { transcript });
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post("/api/twin/calibration/:id/complete", requireProvider, async (req, res) => {
