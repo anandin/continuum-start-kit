@@ -145,15 +145,20 @@ export async function topPersonaExamples(
 ): Promise<PersonaExample[]> {
   if (queryEmbedding) {
     const literal = `[${queryEmbedding.join(",")}]`;
-    const rows = await db.execute(sql`
-      SELECT * FROM ${personaExamples}
+    // Vector search picks the IDs; Drizzle loads the typed rows in proper order.
+    const ranked = await db.execute<{ id: string }>(sql`
+      SELECT id FROM ${personaExamples}
       WHERE ${personaExamples.providerId} = ${providerId}
         AND ${personaExamples.isActive} = true
         AND ${personaExamples.embedding} IS NOT NULL
       ORDER BY ${personaExamples.embedding} <=> ${literal}::vector
       LIMIT ${k}
     `);
-    return (rows.rows as PersonaExample[]) ?? [];
+    const ids = (ranked.rows as { id: string }[]).map((r) => r.id);
+    if (ids.length === 0) return [];
+    const rows = await db.select().from(personaExamples).where(inArray(personaExamples.id, ids));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return ids.map((id) => byId.get(id)).filter((r): r is PersonaExample => Boolean(r));
   }
   const all = await listPersonaExamplesByProvider(providerId);
   if (all.length === 0) return [];
@@ -234,15 +239,20 @@ export async function topClientMemory(
 ): Promise<ClientMemory[]> {
   if (queryEmbedding) {
     const literal = `[${queryEmbedding.join(",")}]`;
-    const rows = await db.execute(sql`
-      SELECT * FROM ${clientMemory}
+    // Vector search picks the IDs; Drizzle loads the typed rows in proper order.
+    const ranked = await db.execute<{ id: string }>(sql`
+      SELECT id FROM ${clientMemory}
       WHERE ${clientMemory.engagementId} = ${engagementId}
         AND ${clientMemory.redactedAt} IS NULL
         AND ${clientMemory.embedding} IS NOT NULL
       ORDER BY ${clientMemory.embedding} <=> ${literal}::vector
       LIMIT ${k}
     `);
-    return (rows.rows as ClientMemory[]) ?? [];
+    const ids = (ranked.rows as { id: string }[]).map((r) => r.id);
+    if (ids.length === 0) return [];
+    const rows = await db.select().from(clientMemory).where(inArray(clientMemory.id, ids));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return ids.map((id) => byId.get(id)).filter((r): r is ClientMemory => Boolean(r));
   }
   const all = await listClientMemoryByEngagement(engagementId);
   if (all.length === 0) return [];
