@@ -1574,28 +1574,38 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       }
       const transcript: CalibrationTurn[] = (calib.transcript as CalibrationTurn[] | null) ?? [];
 
-      // 1. Synthetic client speaks
+      // 1. Determine the client utterance for this turn.
+      // The therapist may author the next client message directly by posting
+      // { clientMessage: "..." } — useful for probing specific scenarios.
+      // If omitted, we fall back to the synthetic client simulator so the
+      // "Next turn" UI button still produces a self-driving conversation.
       const profile = calib.syntheticClientProfile as SyntheticClientProfile;
-      const clientHistory = transcript
-        .map((t) => `Client: ${t.client}\nTherapist Twin: ${t.draft}${t.approvedEdit ? ` (therapist approved as: ${t.approvedEdit})` : ""}`)
-        .join("\n\n");
-      const clientPrompt = `You are role-playing a synthetic client for a therapist's AI calibration.\n\nClient profile: ${JSON.stringify(profile)}\n\nConversation so far:\n${clientHistory || "(none)"}\n\nSpeak the client's NEXT message in 1-3 sentences. Stay in character. Output only the message text.`;
-      // Synthetic-client utterance — safety-wrapped (full L1 in/out + audit).
+      const therapistAuthored = typeof req.body?.clientMessage === "string"
+        ? req.body.clientMessage.trim()
+        : "";
       let clientUtterance: string;
-      try {
-        const simGuarded = await runGuardedLLM({
-          purpose: "internal_calibration",
-          kind: "synthetic_client_utterance",
-          ctx: { providerId: req.user!.id, userId: req.user!.id },
-          temperature: 0.8,
-          messages: [
-            { role: "system", content: "You are a research-grade client simulator. Be realistic, not theatrical." },
-            { role: "user", content: clientPrompt },
-          ],
-        });
-        clientUtterance = simGuarded.content.trim();
-      } catch {
-        return res.status(503).json({ error: "Safety audit unavailable; please retry" });
+      if (therapistAuthored.length > 0) {
+        clientUtterance = therapistAuthored.slice(0, 4000);
+      } else {
+        const clientHistory = transcript
+          .map((t) => `Client: ${t.client}\nTherapist Twin: ${t.draft}${t.approvedEdit ? ` (therapist approved as: ${t.approvedEdit})` : ""}`)
+          .join("\n\n");
+        const clientPrompt = `You are role-playing a synthetic client for a therapist's AI calibration.\n\nClient profile: ${JSON.stringify(profile)}\n\nConversation so far:\n${clientHistory || "(none)"}\n\nSpeak the client's NEXT message in 1-3 sentences. Stay in character. Output only the message text.`;
+        try {
+          const simGuarded = await runGuardedLLM({
+            purpose: "internal_calibration",
+            kind: "synthetic_client_utterance",
+            ctx: { providerId: req.user!.id, userId: req.user!.id },
+            temperature: 0.8,
+            messages: [
+              { role: "system", content: "You are a research-grade client simulator. Be realistic, not theatrical." },
+              { role: "user", content: clientPrompt },
+            ],
+          });
+          clientUtterance = simGuarded.content.trim();
+        } catch {
+          return res.status(503).json({ error: "Safety audit unavailable; please retry" });
+        }
       }
 
       // 2. The Twin drafts a response (using the same persona path as production).
