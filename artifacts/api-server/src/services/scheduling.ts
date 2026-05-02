@@ -305,17 +305,25 @@ export async function maybeFireReminderForSeeker(seekerUserId: string): Promise<
         1,
         Math.round((row.confirmedAt.getTime() - Date.now()) / 60_000),
       );
+      // Only mark the reminder as sent when the push delivery
+      // succeeds. Otherwise we leave reminderSentAt null so the next
+      // poll (or any future scheduled job) retries delivery instead
+      // of silently swallowing transient failures.
+      let pushOk = false;
       try {
         await sendPushToUser(seekerUserId, {
           title: "Your session starts soon",
           body: `${row.title} in ${minutes} minute${minutes === 1 ? "" : "s"}`,
           data: { kind: "scheduled_session_reminder", scheduledSessionId: row.id },
         });
+        pushOk = true;
       } catch (err) {
-        logger.warn({ err }, "scheduling: reminder push failed");
+        logger.warn({ err }, "scheduling: reminder push failed; will retry");
       }
-      await scheduledSessionStorage.markReminderSent(row.id);
-      fired += 1;
+      if (pushOk) {
+        await scheduledSessionStorage.markReminderSent(row.id);
+        fired += 1;
+      }
     }
   } catch (err) {
     logger.warn({ err }, "scheduling: reminder check failed");

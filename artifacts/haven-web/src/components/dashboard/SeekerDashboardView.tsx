@@ -17,6 +17,7 @@ import {
 import { useEngagements } from '@/hooks/useEngagements';
 import { TrajectoryChip } from '@/components/TrajectoryChip';
 import { SeekerProgressCard } from '@/components/dashboard/SeekerProgressCard';
+import { SeekerScheduledSessionsCard } from '@/components/SeekerScheduledSessionsCard';
 import { apiRequest } from '@/lib/queryClient';
 import { toast } from 'sonner';
 
@@ -186,6 +187,8 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
           </CardContent>
         </Card>
       </div>
+
+      <SeekerScheduledSessionsCard />
 
       <SeekerProgressCard onTileNavigate={handleProgressTileNav} />
 

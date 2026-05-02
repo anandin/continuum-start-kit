@@ -113,6 +113,59 @@ export function ScheduledSessionsCard() {
     },
   });
 
+  const cancelMut = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api<{ scheduledSession: ScheduledSession }>(
+        `/api/scheduled-sessions/${id}/cancel`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduled-sessions", "me"] });
+    },
+    onError: (e: Error) => Alert.alert("Could not cancel", e.message),
+  });
+
+  // Native uses Alert.prompt for the reason; Android falls back to a
+  // generic reason so the cancel still works without a custom modal.
+  const handleCancel = (id: string, label: string) => {
+    if (Platform.OS === "ios" && (Alert as any).prompt) {
+      (Alert as any).prompt(
+        label,
+        "Tell your coach why (they'll see this)",
+        [
+          { text: "Keep it", style: "cancel" },
+          {
+            text: "Cancel session",
+            style: "destructive",
+            onPress: (reason?: string) => {
+              const trimmed = (reason ?? "").trim();
+              if (!trimmed) return;
+              cancelMut.mutate({ id, reason: trimmed });
+            },
+          },
+        ],
+        "plain-text",
+      );
+    } else {
+      Alert.alert(
+        label,
+        "Cancel this session? Your coach will be notified.",
+        [
+          { text: "Keep it", style: "cancel" },
+          {
+            text: "Cancel session",
+            style: "destructive",
+            onPress: () =>
+              cancelMut.mutate({
+                id,
+                reason: "Cancelled by client from mobile",
+              }),
+          },
+        ],
+      );
+    }
+  };
+
   const rows = sessionsQ.data?.scheduledSessions ?? [];
   const proposed = useMemo(
     () => rows.find((r) => r.status === "proposed"),
@@ -220,6 +273,33 @@ export function ScheduledSessionsCard() {
             {confirmed.durationMinutes} min
           </Text>
         )}
+        <Pressable
+          testID={`cancel-confirmed-${confirmed.id}`}
+          onPress={() => handleCancel(confirmed.id, "Cancel session?")}
+          disabled={cancelMut.isPending}
+          style={({ pressed }) => [
+            styles.cancelBtn,
+            {
+              borderColor: imminent
+                ? colors.primaryForeground
+                : colors.border,
+              opacity: pressed || cancelMut.isPending ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.cancelText,
+              {
+                color: imminent
+                  ? colors.primaryForeground
+                  : colors.mutedForeground,
+              },
+            ]}
+          >
+            Cancel
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -281,6 +361,26 @@ export function ScheduledSessionsCard() {
         <Text style={[styles.helper, { color: colors.mutedForeground }]}>
           Tap a time to confirm. We&apos;ll email both of you a calendar invite.
         </Text>
+        <Pressable
+          testID={`decline-proposed-${proposed.id}`}
+          onPress={() =>
+            handleCancel(proposed.id, "None of these times work?")
+          }
+          disabled={cancelMut.isPending}
+          style={({ pressed }) => [
+            styles.cancelBtn,
+            {
+              borderColor: colors.border,
+              opacity: pressed || cancelMut.isPending ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Text
+            style={[styles.cancelText, { color: colors.mutedForeground }]}
+          >
+            None of these work — decline
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -343,5 +443,17 @@ const styles = StyleSheet.create({
   helper: {
     fontSize: 11,
     marginTop: 8,
+  },
+  cancelBtn: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  cancelText: {
+    fontSize: 12,
+    fontWeight: "500",
   },
 });
