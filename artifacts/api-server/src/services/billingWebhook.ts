@@ -4,24 +4,12 @@ import { logger } from "../lib/logger";
 import { getStripe, stripeWebhookSecret } from "../lib/stripe";
 import { billingStorage } from "./billingStorage";
 
-// Minimal Stripe webhook handler. We intentionally only listen for the
-// few events we actually mirror locally:
-//   - account.updated                  → coach Connect status flags
-//   - payment_intent.succeeded         → mark engagement active
-//   - payment_intent.payment_failed    → mark engagement past_due
-//   - invoice.paid                     → ledger entry for monthly subs
-//   - invoice.payment_failed           → mark engagement past_due
-//   - customer.subscription.deleted    → mark engagement canceled
-//
-// Every event id is claimed via `billingStorage.claimStripeEvent` BEFORE
-// we mutate any local state. Stripe retries the same event id on
-// non-2xx responses (and sometimes after timeouts even on 2xx), so the
-// claim step is what guarantees ledger rows and status writes are not
-// applied twice.
+// Stripe webhook handler. Listens only for events we mirror locally;
+// every event id is claimed via `billingStorage.claimStripeEvent`
+// before any state mutation, so retries are no-ops.
 
-// stripe-node v18+ removed `subscription` from the typed Invoice surface
-// even though the API still returns it. Use a precise intersection so
-// the access stays type-safe.
+// stripe-node v18+ omits `subscription` from the typed Invoice surface
+// even though the API still returns it.
 type InvoiceWithSub = Stripe.Invoice & {
   subscription?: string | Stripe.Subscription | null;
 };

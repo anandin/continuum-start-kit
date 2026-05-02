@@ -259,11 +259,9 @@ export const billingStorage = {
       .limit(limit);
   },
 
-  // Update an existing pending ledger row (matched by stripePaymentIntentId)
-  // so a webhook arriving after the initial charge attempt reconciles
-  // the row instead of inserting a duplicate. Falls back to inserting
-  // a new row when no pending row exists (e.g. the initial create wasn't
-  // reached because chargePerSession ran on an instance that crashed).
+  // Update an existing pending ledger row matched by PI id, or insert
+  // one if none exists. Webhook retries can't duplicate rows because of
+  // the unique index on stripePaymentIntentId.
   async reconcilePaymentByPI(input: {
     engagementId: string;
     stripePaymentIntentId: string;
@@ -297,10 +295,7 @@ export const billingStorage = {
     });
   },
 
-  // ---------------- webhook idempotency ----------------
-  // Returns true if this is the first time we've seen the event id.
-  // Uses INSERT ... ON CONFLICT DO NOTHING so concurrent webhook
-  // retries can race safely — only one claims the event.
+  // Returns true on first claim of this event id; false on retries.
   async claimStripeEvent(eventId: string, eventType: string): Promise<boolean> {
     const result = await db
       .insert(billingProcessedEvents)

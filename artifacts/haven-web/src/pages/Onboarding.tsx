@@ -162,14 +162,25 @@ export default function Onboarding() {
       });
       const engagement = await engagementRes.json();
 
-      // Persist the tier selection (if the seeker picked one) BEFORE
-      // creating the first session — that way per-session billing for
-      // session #1 has a tier to charge against.
+      // Persist the tier selection so per-session billing for session
+      // #1 has a tier to charge against. For monthly tiers the server
+      // returns a subscription clientSecret if Stripe needs the first
+      // invoice confirmed (SCA / 3DS); we surface a friendly toast and
+      // defer the actual card-confirm step to the Payment page rather
+      // than blocking onboarding on a Stripe modal.
       if (selectedTierId) {
         try {
-          await apiRequest('POST', `/api/engagements/${engagement.id}/billing/select-tier`, {
-            tierId: selectedTierId,
-          });
+          const r = await apiRequest(
+            'POST',
+            `/api/engagements/${engagement.id}/billing/select-tier`,
+            { tierId: selectedTierId },
+          );
+          const body = await r.json().catch(() => ({}));
+          if (body?.subscription?.clientSecret) {
+            toast.message(
+              'Add a card on the Payment page to finish your subscription.',
+            );
+          }
         } catch (err) {
           console.warn('select-tier failed in onboarding', err);
         }

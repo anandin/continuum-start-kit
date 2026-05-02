@@ -29,6 +29,7 @@ import { MoodPanel } from '@/components/MoodPanel';
 import { JournalPanel } from '@/components/JournalPanel';
 import { SessionPrepBriefPanel } from '@/components/SessionPrepBriefPanel';
 import { SchedulePanel } from '@/components/SchedulePanel';
+import { CoachBillingSummary } from '@/components/CoachBillingSummary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -323,6 +324,9 @@ export default function ClientSessionSummary() {
 
           <TabsContent value="schedule" className="mt-6">
             <SchedulePanel engagementId={engagement.id} />
+            <div className="mt-6">
+              <CoachBillingSummary engagementId={engagement.id} />
+            </div>
           </TabsContent>
 
           <TabsContent value="sessions" className="mt-6">

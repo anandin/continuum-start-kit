@@ -204,7 +204,12 @@ export default function ProviderBilling() {
                     </div>
                     <div className="space-y-1.5 sm:col-span-2">
                       <Label htmlFor="tier-cadence">Cadence</Label>
-                      <Select value={newCadence} onValueChange={(v) => setNewCadence(v as any)}>
+                      <Select
+                        value={newCadence}
+                        onValueChange={(v) => {
+                          if (v === "per_session" || v === "monthly") setNewCadence(v);
+                        }}
+                      >
                         <SelectTrigger id="tier-cadence" data-testid="select-tier-cadence"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="per_session">Per session</SelectItem>

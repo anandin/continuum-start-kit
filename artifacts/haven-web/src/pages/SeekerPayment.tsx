@@ -245,6 +245,18 @@ export default function SeekerPayment() {
 
   async function selectTier(tierId: string) {
     if (!engagementId) return;
+    const target = summary?.tiers.find((t) => t.id === tierId);
+    const current = summary?.tier;
+    // Confirm before changing tiers so a stray click doesn't restart a
+    // subscription or change the per-session amount silently.
+    if (current && current.id !== tierId && target) {
+      const ok = window.confirm(
+        `Change your tier to ${target.label} (${fmtUsd(target.amountCents)} ${
+          target.billingCadence === "monthly" ? "/ month" : "/ session"
+        })?`,
+      );
+      if (!ok) return;
+    }
     setPicking(tierId);
     try {
       const res = await apiRequest(

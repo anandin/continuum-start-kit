@@ -171,18 +171,9 @@ export async function chargePerSession(opts: {
   if (!cust.ok) return { ok: false, error: cust.error };
 
   try {
-    // off_session=true requires a saved payment method. For v1 we set
-    // confirm=false and return the client_secret to the seeker UI when
-    // no default payment method exists. Here the simplest happy path
-    // assumes the seeker has set up a card during tier selection — if
-    // not, the PI will require_payment_method and the UI will surface
-    // it on the Payment tab.
-    // Look up the customer's default payment method. If they have one
-    // we attempt an off_session, immediate confirm — that's the happy
-    // path where the charge actually settles before the response. If
-    // they don't, we still create the PI (returns requires_payment_method
-    // + a client_secret); the seeker UI then prompts them via Stripe
-    // Elements to add a card and confirm it explicitly.
+    // If the customer has a default PM, off_session-confirm so the
+    // charge actually settles. Otherwise create an unconfirmed PI; the
+    // UI will prompt the seeker to save a card.
     const customer = (await stripe.customers.retrieve(cust.customerId)) as Stripe.Customer;
     const defaultPm =
       customer.invoice_settings?.default_payment_method ??
@@ -463,10 +454,8 @@ export async function subscribeMonthly(opts: {
         haven_tier_id: tier.id,
       },
     });
-    // `latest_invoice.payment_intent` was removed from the typed Invoice
-    // surface in stripe-node v18+, but the field is still returned by
-    // the API when expanded. Narrow with an explicit intersection so we
-    // don't reach for `any`.
+    // `latest_invoice.payment_intent` is omitted from the typed Invoice
+    // in stripe-node v18+ but still returned by the API when expanded.
     type InvoiceWithPI = Stripe.Invoice & {
       payment_intent?: string | Stripe.PaymentIntent | null;
     };
