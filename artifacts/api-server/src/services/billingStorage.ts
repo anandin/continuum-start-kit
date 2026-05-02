@@ -295,14 +295,23 @@ export const billingStorage = {
     });
   },
 
-  // Returns true on first claim of this event id; false on retries.
-  async claimStripeEvent(eventId: string, eventType: string): Promise<boolean> {
-    const result = await db
+  // True if this event id has already been fully processed.
+  async isStripeEventProcessed(eventId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: billingProcessedEvents.eventId })
+      .from(billingProcessedEvents)
+      .where(eq(billingProcessedEvents.eventId, eventId))
+      .limit(1);
+    return !!row;
+  },
+
+  // Record an event as processed AFTER the handler has succeeded.
+  // Conflict (concurrent retry) is fine — the other request finished it.
+  async markStripeEventProcessed(eventId: string, eventType: string): Promise<void> {
+    await db
       .insert(billingProcessedEvents)
       .values({ eventId, eventType })
-      .onConflictDoNothing({ target: billingProcessedEvents.eventId })
-      .returning({ eventId: billingProcessedEvents.eventId });
-    return result.length > 0;
+      .onConflictDoNothing({ target: billingProcessedEvents.eventId });
   },
 };
 // Silence unused-imports warning when only used inside template strings.

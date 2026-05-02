@@ -3347,12 +3347,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
           // ignore invalid zones from the client
         }
       }
-      // Block confirm if billing is past_due — failed payment must be
-      // resolved before any new sessions can be locked in. We check
-      // BEFORE the confirm to avoid a confirmed session that can't be
-      // billed; the per-session charge below could also fail, but at
-      // least we catch the obvious "card was declined last time"
-      // case up-front with a clearer error.
+      // Pre-confirm billing gate: block when payment needs attention,
+      // and (when the coach has tiers) require a selected tier first.
       try {
         const { billingStorage } = await import("../services/billingStorage");
         const eb = await billingStorage.getEngagementBilling(row.engagementId);
@@ -3362,9 +3358,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
               "Payment needs attention. Please add or update your payment method on the Payment tab before booking new sessions.",
           });
         }
-        // If the coach has published any active tiers, require the
-        // seeker to have selected one before sessions can be booked.
-        // Coaches who haven't set up billing at all skip this check.
+        // If the coach has any active tiers, require a selection.
         if (!eb?.tierId) {
           const tiers = await billingStorage.listTiersForProvider(row.providerId, { activeOnly: true });
           if (tiers.length > 0) {
@@ -3388,18 +3382,10 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
             "Could not confirm — the session may have been rescheduled, cancelled, or just confirmed by someone else. Please refresh.",
         });
       }
-      // Per-session charge fires after a successful confirm. Failures
-      // are non-fatal here: the session is already booked; the seeker
-      // sees the failure on their Payment tab (engagementBilling.status
-      // → past_due) and the next confirm will be blocked until they
-      // resolve it.
-      // Per-session charge fires after the atomic confirm. If it fails
-      // (no card on file, declined, requires_action, etc.) chargePerSession
-      // already flips engagementBilling.status → past_due so the NEXT
-      // confirm is blocked. We surface the warning to the client so the
-      // UI can prompt the seeker to fix payment on their Payment tab,
-      // but we don't roll back the booked session — the coach has their
-      // confirmed slot and the seeker can resolve billing async.
+      // Per-session charge fires after the atomic confirm. Failures
+      // flip engagement → past_due (blocking the next confirm) and
+      // surface as a billingWarning; the booked session is not rolled
+      // back — the seeker resolves payment async on the Payment tab.
       let billingWarning: string | null = null;
       try {
         const { chargePerSession } = await import("../services/billing");

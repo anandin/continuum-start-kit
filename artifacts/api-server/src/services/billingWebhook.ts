@@ -4,9 +4,10 @@ import { logger } from "../lib/logger";
 import { getStripe, stripeWebhookSecret } from "../lib/stripe";
 import { billingStorage } from "./billingStorage";
 
-// Stripe webhook handler. Listens only for events we mirror locally;
-// every event id is claimed via `billingStorage.claimStripeEvent`
-// before any state mutation, so retries are no-ops.
+// Stripe webhook handler. Idempotent: events already marked processed
+// are acked without re-running the handler; new events are only
+// recorded as processed AFTER mutations succeed, so handler errors
+// return 500 and Stripe retries them.
 
 // stripe-node v18+ omits `subscription` from the typed Invoice surface
 // even though the API still returns it.
@@ -50,9 +51,7 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     return;
   }
 
-  // Idempotency gate. If we've seen this event id before, ack and bail.
-  const claimed = await billingStorage.claimStripeEvent(event.id, event.type);
-  if (!claimed) {
+  if (await billingStorage.isStripeEventProcessed(event.id)) {
     logger.debug({ eventId: event.id, type: event.type }, "stripe webhook: duplicate, skipped");
     res.status(200).json({ received: true, duplicate: true });
     return;
@@ -191,10 +190,15 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         const sub = event.data.object as Stripe.Subscription;
         const eb = await billingStorage.getEngagementBillingBySubscriptionId(sub.id);
         if (eb) {
+          // Clear tierId too: with no tier, the confirm route's
+          // tier-required gate blocks new sessions until the seeker
+          // picks an active tier again.
           await billingStorage.upsertEngagementBilling({
             engagementId: eb.engagementId,
             status: "canceled",
+            tierId: null,
             stripeSubscriptionId: null,
+            lastPaymentIntentId: null,
           });
         }
         break;
@@ -203,11 +207,12 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         logger.debug({ type: event.type }, "stripe webhook: unhandled event");
       }
     }
+    // Only mark processed after every mutation has succeeded.
+    await billingStorage.markStripeEventProcessed(event.id, event.type);
     res.status(200).json({ received: true });
   } catch (err: any) {
     logger.error({ err: err?.message, type: event.type }, "stripe webhook: handler error");
-    // Return 200 anyway so Stripe doesn't infinitely retry application
-    // bugs — the event id is logged for manual replay if needed.
-    res.status(200).json({ received: true, errored: true });
+    // Return 500 so Stripe retries; the event is NOT marked processed.
+    res.status(500).json({ received: false, error: err?.message ?? "handler error" });
   }
 }
