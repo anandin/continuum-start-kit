@@ -387,10 +387,7 @@ export function registerRoutes(app: Express) {
         ? String(req.body.reason).slice(0, 500)
         : null;
 
-      // All five writes (message overwrite, cascade overwrite, parent
-      // redactions row, child redactions rows, safety_events rows) commit
-      // or roll back together so the audit trail can never be missing for
-      // content that was actually erased.
+      // Atomic: overwrite + cascade + redactions rows + safety_events.
       const userId = req.user!.id;
       const sessionId = msg.sessionId;
       const engagementId = m.engagement.id;
@@ -455,7 +452,6 @@ export function registerRoutes(app: Express) {
           );
         }
 
-        // Per-target safety_events audit (one row per redacted target).
         await tx.insert(safetyEventsTable).values({
           providerId,
           engagementId,
@@ -522,8 +518,7 @@ export function registerRoutes(app: Express) {
         ? String(req.body.reason).slice(0, 500)
         : null;
       const userId = req.user!.id;
-      // Single transaction: overwrite + redactions row + safety_events row
-      // commit together so the audit trail can never trail the deletion.
+      // Atomic: overwrite + redactions row + safety_events row.
       await db.transaction(async (tx) => {
         await tx
           .update(clientMemoryTable)
@@ -2657,9 +2652,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (!mem) return res.status(404).json({ error: "Not found" });
       const ownerCheck = await assertProviderOwnsEngagement(req, mem.engagementId);
       if (!ownerCheck.ok) return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
-      // Redaction is one-way: once a seeker has forgotten an entry, the
-      // provider can't re-redact, edit, or otherwise touch it. 410 Gone
-      // makes the contract explicit.
+      // Redaction is one-way; provider can't mutate forgotten rows.
       if (mem.redactedAt) return res.status(410).json({ error: "Memory entry already redacted" });
       await redactClientMemory(req.params.id, req.user!.id);
       res.json({ ok: true });

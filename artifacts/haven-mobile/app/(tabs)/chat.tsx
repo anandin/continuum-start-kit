@@ -842,18 +842,9 @@ export default function ChatScreen() {
           renderItem={({ item }) => {
             const isSeeker = item.role === "seeker";
             const redactedAt = item.redactedAt ?? item.redacted_at ?? null;
-            const isRedacted = !!redactedAt;
-            // Mobile chat is seeker-only: redacted messages are hidden
-            // entirely from the seeker's view (the coach's web transcript
-            // still shows the "redacted at HH:MM" placeholder).
-            if (isRedacted) return null;
-            const redactedTime = redactedAt
-              ? new Date(redactedAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : null;
-            const canRedact = isSeeker && !isRedacted;
+            // Seeker view hides redacted messages entirely; the coach's
+            // web transcript still renders a placeholder for the gap.
+            if (redactedAt) return null;
             return (
               <View
                 style={[
@@ -880,7 +871,7 @@ export default function ChatScreen() {
                 ) : null}
                 <Pressable
                   onLongPress={
-                    canRedact
+                    isSeeker
                       ? () => {
                           void Haptics.selectionAsync();
                           setRedactTarget(item);
@@ -891,18 +882,11 @@ export default function ChatScreen() {
                   style={[
                     styles.bubble,
                     {
-                      backgroundColor: isRedacted
-                        ? colors.muted
-                        : isSeeker
-                          ? colors.primary
-                          : colors.card,
-                      borderColor: isRedacted
-                        ? colors.border
-                        : isSeeker
-                          ? "transparent"
-                          : colors.border,
+                      backgroundColor: isSeeker
+                        ? colors.primary
+                        : colors.card,
+                      borderColor: isSeeker ? "transparent" : colors.border,
                       borderRadius: 18,
-                      borderStyle: isRedacted ? "dashed" : "solid",
                     },
                   ]}
                   testID={`bubble-${item.role}-${item.id}`}
@@ -911,18 +895,13 @@ export default function ChatScreen() {
                     style={[
                       styles.bubbleText,
                       {
-                        color: isRedacted
-                          ? colors.mutedForeground
-                          : isSeeker
-                            ? colors.primaryForeground
-                            : colors.foreground,
-                        fontStyle: isRedacted ? "italic" : "normal",
+                        color: isSeeker
+                          ? colors.primaryForeground
+                          : colors.foreground,
                       },
                     ]}
                   >
-                    {isRedacted
-                      ? `Message redacted${redactedTime ? ` at ${redactedTime}` : ""}`
-                      : item.content}
+                    {item.content}
                   </Text>
                 </Pressable>
               </View>

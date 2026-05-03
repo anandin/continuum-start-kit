@@ -331,9 +331,7 @@ export async function listClientMemoryForSeekerOwner(
   ownerUserId: string,
 ): Promise<SeekerMemoryRow[]> {
   return db
-    // Seeker-facing contract only: never expose internal fields like the
-    // pgvector embedding or the source-message attribution array — the
-    // "Manage memory" UI just needs to render and forget entries.
+    // Seeker-facing shape only — never expose embedding or attribution.
     .select({
       id: clientMemory.id,
       engagementId: clientMemory.engagementId,
