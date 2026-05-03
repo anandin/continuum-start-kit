@@ -597,18 +597,37 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // Schema for attachment payloads passed to /api/chat. We accept the
-  // canonical `/objects/<id>` path that ObjectStorageService produced when
-  // the seeker requested an upload URL — never a raw GCS URL — so the
-  // client can't trick us into reading a different bucket. MIME is the
-  // browser/Expo-reported type; we don't enforce a content-type list
-  // beyond the kind=image/audio split.
+  // Server-enforced limits and allowlists. Anything outside these is
+  // rejected before we read a single byte from GCS.
+  const ALLOWED_IMAGE_MIME = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+  ]);
+  const ALLOWED_AUDIO_MIME = new Set([
+    "audio/m4a",
+    "audio/mp4",
+    "audio/aac",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/webm",
+    "audio/ogg",
+  ]);
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+  const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+  const MAX_AUDIO_DURATION_S = 120;
+
   const attachmentSchema = z.object({
     kind: z.enum(["image", "audio"]),
     objectPath: z.string().min(1).startsWith("/objects/"),
     mime: z.string().min(1).max(120),
     sizeBytes: z.number().int().nonnegative().optional(),
-    durationS: z.number().int().nonnegative().max(600).optional(),
+    durationS: z.number().int().nonnegative().max(MAX_AUDIO_DURATION_S).optional(),
   });
   const attachmentArraySchema = z.array(attachmentSchema).max(8);
 
@@ -650,10 +669,15 @@ export function registerRoutes(app: Express) {
         });
       }
 
-      // STEP 1a: Authorize every attachment grant BEFORE any side
-      // effects (no object reads, no transcription, no DB writes). If a
-      // single grant is invalid we 403 immediately — this is what blocks
-      // unauthorized private-object reads via guessed/leaked /objects/<id>.
+      // Reject unsupported MIMEs before any I/O.
+      for (const a of attachmentInput) {
+        const allowed = a.kind === "image" ? ALLOWED_IMAGE_MIME : ALLOWED_AUDIO_MIME;
+        if (!allowed.has(a.mime.toLowerCase())) {
+          return res.status(415).json({ error: `Unsupported ${a.kind} type: ${a.mime}` });
+        }
+      }
+
+      // Authorize every grant before any side effects.
       for (const a of attachmentInput) {
         const grant = await storage.getValidAttachmentGrant({
           objectPath: a.objectPath,
@@ -671,30 +695,33 @@ export function registerRoutes(app: Express) {
         }
       }
 
-      // STEP 1b: Confirm each blob was actually uploaded to GCS before
-      // we consume the grant or persist any DB row. A grant alone proves
-      // the seeker requested a PUT URL — not that they finished the
-      // upload. Without this check we'd link rows to missing blobs and
-      // mint signed GETs that 404. Fail closed if any blob is missing.
+      // Stat every blob: confirms the upload completed and enforces
+      // per-kind size limits before we read anything into memory.
+      const stats = new Map<string, { sizeBytes: number; contentType: string | null }>();
       for (const a of attachmentInput) {
         const stat = await objectStorageService.statObjectEntity(a.objectPath);
         if (!stat.exists || !stat.sizeBytes || stat.sizeBytes <= 0) {
-          req.log.warn(
-            { sessionId, objectPath: a.objectPath, kind: a.kind, stat },
-            "attachment finalize: object missing or empty",
-          );
           return res.status(400).json({ error: "Upload not found or empty; please re-upload the attachment" });
         }
+        const limit = a.kind === "image" ? MAX_IMAGE_BYTES : MAX_AUDIO_BYTES;
+        if (stat.sizeBytes > limit) {
+          return res.status(413).json({
+            error: `${a.kind === "image" ? "Photo" : "Voice memo"} too large (max ${Math.round(limit / 1024 / 1024)} MB)`,
+          });
+        }
+        if (stat.contentType && a.kind === "image" && !ALLOWED_IMAGE_MIME.has(stat.contentType.toLowerCase())) {
+          return res.status(415).json({ error: `Uploaded blob content-type ${stat.contentType} not allowed for image` });
+        }
+        if (stat.contentType && a.kind === "audio" && !ALLOWED_AUDIO_MIME.has(stat.contentType.toLowerCase())) {
+          return res.status(415).json({ error: `Uploaded blob content-type ${stat.contentType} not allowed for audio` });
+        }
+        stats.set(a.objectPath, { sizeBytes: stat.sizeBytes, contentType: stat.contentType });
       }
 
-      // STEP 2: Audio attachments MUST be transcribed before we can run
-      // L1 safety over their content. If transcription is unconfigured
-      // or the blob can't be fetched/transcribed, fail closed — never
-      // persist an audio attachment whose spoken content has not been
-      // safety-reviewed. This is the L1 bypass the prior code allowed.
+      // Audio MUST be transcribed before L1; fail closed otherwise so
+      // spoken content never bypasses safety review.
       const hasAudio = attachmentInput.some((a) => a.kind === "audio");
       if (hasAudio && !transcriptionConfigured()) {
-        req.log.warn({ sessionId }, "audio attachment rejected: transcription not configured");
         return res.status(503).json({
           error: "Voice memo transcription is currently unavailable. Please send your message as text.",
         });
@@ -739,13 +766,9 @@ export function registerRoutes(app: Express) {
       }
       const composedMessage = composedParts.join("\n\n");
 
-      // STEP 3: Atomically persist the message, attachment rows, and the
-      // grant consumption in a single SQL transaction. The grant
-      // UPDATE...WHERE consumedAt IS NULL acts as our race detector — if
-      // a concurrent /api/chat consumed the same grant between our
-      // pre-validate and now, the UPDATE returns zero rows, we throw,
-      // and the entire transaction rolls back so no orphan message,
-      // attachment row, or transcript content survives.
+      // Atomic finalize: insert message, attachment rows, and consume
+      // grants in one tx. Grant UPDATE WHERE consumedAt IS NULL detects
+      // concurrent consumers and rolls back the whole tx.
       const seekerMsg = await db.transaction(async (tx) => {
         const [insertedMsg] = await tx
           .insert(messagesTable)
