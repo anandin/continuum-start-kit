@@ -55,12 +55,139 @@ interface MessageAttachment {
   transcript?: string | null;
 }
 
-/**
- * Renders a single attachment inside a chat bubble. Resolves a fresh
- * signed GCS URL on mount (the API issues 1h URLs and verifies session
- * membership), then either shows the image inline or exposes a play /
- * pause control for audio with the transcript displayed beneath.
- */
+// expo-audio player methods throw if invoked after the player has been
+// released; swallow those specific errors without masking real bugs.
+function safeAudio<T>(fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch {
+    return undefined;
+  }
+}
+
+function formatDuration(s: number): string {
+  if (!Number.isFinite(s) || s <= 0) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+// Local-file preview player shown inside the voice-memo confirmation
+// sheet so the seeker can hear the recording (and see its duration +
+// a faux waveform) before deciding to send.
+function VoicePreviewPlayer({
+  uri,
+  durationS,
+  color,
+  tintBg,
+  fg,
+  muted,
+}: {
+  uri: string;
+  durationS: number;
+  color: string;
+  tintBg: string;
+  fg: string;
+  muted: string;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [elapsedS, setElapsedS] = useState(0);
+  const playerRef = useRef<AudioPlayer | null>(null);
+
+  useEffect(() => {
+    return () => {
+      safeAudio(() => playerRef.current?.remove());
+      playerRef.current = null;
+    };
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (playerRef.current && isPlaying) {
+      safeAudio(() => playerRef.current?.pause());
+      setIsPlaying(false);
+      return;
+    }
+    if (!playerRef.current) {
+      const player = createAudioPlayer({ uri }, { updateInterval: 200 });
+      playerRef.current = player;
+      const sub = player.addListener("playbackStatusUpdate", (status) => {
+        if (typeof status.currentTime === "number") {
+          setElapsedS(status.currentTime);
+        }
+        if (status.didJustFinish) {
+          setIsPlaying(false);
+          setElapsedS(0);
+          safeAudio(() => sub.remove());
+          safeAudio(() => player.remove());
+          playerRef.current = null;
+        }
+      });
+    }
+    safeAudio(() => playerRef.current?.play());
+    setIsPlaying(true);
+  }, [isPlaying, uri]);
+
+  const bars = useMemo(() => {
+    const seed = Math.max(uri.length, 1);
+    return Array.from({ length: 28 }, (_, i) => {
+      const v = Math.abs(Math.sin((i + 1) * (seed % 7) * 0.31));
+      return 6 + Math.round(v * 22);
+    });
+  }, [uri]);
+
+  const progress = durationS > 0 ? Math.min(1, elapsedS / durationS) : 0;
+  const activeIdx = Math.floor(progress * bars.length);
+
+  return (
+    <View style={{ width: "100%", gap: 10, marginTop: 4 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          backgroundColor: tintBg,
+          borderRadius: 16,
+        }}
+      >
+        <Pressable
+          onPress={toggle}
+          accessibilityLabel={isPlaying ? "Pause preview" : "Play preview"}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: color,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          testID="voice-preview-toggle"
+        >
+          <Feather name={isPlaying ? "pause" : "play"} size={16} color="#fff" />
+        </Pressable>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 2, height: 28 }}>
+          {bars.map((h, i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1,
+                height: h,
+                borderRadius: 1.5,
+                backgroundColor: i <= activeIdx ? color : muted,
+                opacity: i <= activeIdx ? 1 : 0.45,
+              }}
+            />
+          ))}
+        </View>
+        <Text style={{ color: fg, fontSize: 12, fontFamily: "Inter_500Medium", minWidth: 40, textAlign: "right" }}>
+          {formatDuration(isPlaying || elapsedS > 0 ? elapsedS : durationS)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function AttachmentView({
   att,
   isSeeker,
@@ -88,11 +215,7 @@ function AttachmentView({
       });
     return () => {
       cancelled = true;
-      try {
-        playerRef.current?.remove();
-      } catch {
-        /* noop */
-      }
+      safeAudio(() => playerRef.current?.remove());
       playerRef.current = null;
     };
   }, [att.id]);
@@ -100,11 +223,7 @@ function AttachmentView({
   const togglePlay = useCallback(() => {
     if (!url) return;
     if (playerRef.current && isPlaying) {
-      try {
-        playerRef.current.pause();
-      } catch {
-        /* noop */
-      }
+      safeAudio(() => playerRef.current?.pause());
       setIsPlaying(false);
       return;
     }
@@ -114,16 +233,8 @@ function AttachmentView({
       const sub = player.addListener("playbackStatusUpdate", (status) => {
         if (status.didJustFinish) {
           setIsPlaying(false);
-          try {
-            sub.remove();
-          } catch {
-            /* noop */
-          }
-          try {
-            player.remove();
-          } catch {
-            /* noop */
-          }
+          safeAudio(() => sub.remove());
+          safeAudio(() => player.remove());
           playerRef.current = null;
         }
       });
@@ -371,16 +482,8 @@ export default function ChatScreen() {
     ttsPlayerRef.current = null;
     setIsSpeakingMessageId(null);
     if (player) {
-      try {
-        player.pause();
-      } catch {
-        /* ignore */
-      }
-      try {
-        player.remove();
-      } catch {
-        /* ignore */
-      }
+      safeAudio(() => player.pause());
+      safeAudio(() => player.remove());
     }
   }, []);
 
@@ -497,36 +600,90 @@ export default function ChatScreen() {
     },
   });
 
-  // Pick a photo from the library and send it. Photos are uploaded
-  // straight to GCS via a signed URL, then attached to a message — the
-  // typed input is sent along as an optional caption if present.
+  // Photo flow: paperclip opens an action sheet (camera vs. library);
+  // the chosen asset goes to a preview sheet where the seeker writes an
+  // optional caption and confirms before any upload happens.
+  const [attachSheetOpen, setAttachSheetOpen] = useState(false);
   const [isAttaching, setIsAttaching] = useState(false);
-  const handlePickImage = useCallback(async () => {
+  const [pendingPhoto, setPendingPhoto] = useState<{
+    uri: string;
+    mime: string;
+    width?: number;
+    height?: number;
+  } | null>(null);
+  const [photoCaption, setPhotoCaption] = useState("");
+
+  const handleAttachPress = useCallback(() => {
     if (!session?.id || session.status === "ended") return;
     if (sendMutation.isPending || isAttaching) return;
     setVoiceError(null);
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        setVoiceError("Haven needs photo library access to share images.");
-        return;
+    setAttachSheetOpen(true);
+  }, [isAttaching, sendMutation.isPending, session?.id, session?.status]);
+
+  const pickPhoto = useCallback(
+    async (source: "camera" | "library") => {
+      setAttachSheetOpen(false);
+      try {
+        const perm =
+          source === "camera"
+            ? await ImagePicker.requestCameraPermissionsAsync()
+            : await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          setVoiceError(
+            source === "camera"
+              ? "Haven needs camera access to take a photo."
+              : "Haven needs photo library access to share images.",
+          );
+          return;
+        }
+        const result =
+          source === "camera"
+            ? await ImagePicker.launchCameraAsync({
+                mediaTypes: ["images"],
+                quality: 0.85,
+              })
+            : await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ["images"],
+                quality: 0.85,
+                allowsMultipleSelection: false,
+              });
+        if (result.canceled || result.assets.length === 0) return;
+        const asset = result.assets[0];
+        setPhotoCaption(input.trim());
+        setPendingPhoto({
+          uri: asset.uri,
+          mime: asset.mimeType || "image/jpeg",
+          width: asset.width,
+          height: asset.height,
+        });
+      } catch (err) {
+        setVoiceError(
+          err instanceof Error ? err.message : "Couldn't open the photo picker.",
+        );
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        quality: 0.85,
-        allowsMultipleSelection: false,
-      });
-      if (result.canceled || result.assets.length === 0) return;
-      const asset = result.assets[0];
-      const mime = asset.mimeType || "image/jpeg";
-      setIsAttaching(true);
+    },
+    [input],
+  );
+
+  const cancelPhoto = useCallback(() => {
+    setPendingPhoto(null);
+    setPhotoCaption("");
+  }, []);
+
+  const confirmSendPhoto = useCallback(async () => {
+    if (!pendingPhoto || !session?.id) return;
+    if (isAttaching) return;
+    setIsAttaching(true);
+    try {
       const uploaded = await uploadAttachment({
         sessionId: session.id,
         kind: "image",
-        uri: asset.uri,
-        mime,
+        uri: pendingPhoto.uri,
+        mime: pendingPhoto.mime,
       });
-      const caption = input.trim();
+      const caption = photoCaption.trim();
+      setPendingPhoto(null);
+      setPhotoCaption("");
       setInput("");
       sendMutation.mutate({ message: caption, attachments: [uploaded] });
     } catch (err) {
@@ -536,13 +693,7 @@ export default function ChatScreen() {
     } finally {
       setIsAttaching(false);
     }
-  }, [
-    input,
-    isAttaching,
-    sendMutation,
-    session?.id,
-    session?.status,
-  ]);
+  }, [pendingPhoto, photoCaption, sendMutation, session?.id, isAttaching]);
 
   // Ends the current session and shows the LLM-generated summary
   // (POST /api/sessions/:id/finish — same endpoint used by the web app).
@@ -581,6 +732,10 @@ export default function ChatScreen() {
       );
     },
   });
+
+  const audioInFlight =
+    sendMutation.isPending &&
+    !!sendMutation.variables?.attachments?.some((a) => a.kind === "audio");
 
   const handleSend = () => {
     const text = input.trim();
@@ -650,17 +805,21 @@ export default function ChatScreen() {
     }
   }, [recorder, session?.id, session?.status, stopAndReleaseTts]);
 
+  const [pendingVoice, setPendingVoice] = useState<{
+    uri: string;
+    mime: string;
+    durationS: number;
+  } | null>(null);
+
   const finishRecording = useCallback(
     async (cancelled: boolean) => {
-      // Hold-to-talk fires `onPressIn` (kicks off async startRecording) and
-      // `onPressOut` (calls finishRecording). For brief taps or when iOS
-      // shows a permission prompt on first use, onPressOut can land before
-      // recordingActiveRef has flipped. Treat the recorder's own state as
-      // authoritative so we still stop it cleanly in those races.
+      // onPressOut may fire before recordingActiveRef flips on iOS first-
+      // permission prompts; treat the recorder's own state as authoritative.
       const recorderIsLive =
         recorderState.isRecording || recorder.isRecording === true;
       if (!recordingActiveRef.current && !recorderIsLive) return;
       recordingActiveRef.current = false;
+      const durationMs = recorderState.durationMillis ?? 0;
       let uri: string | null = null;
       try {
         await recorder.stop();
@@ -680,42 +839,52 @@ export default function ChatScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      setIsTranscribing(true);
-      try {
-        // Voice memos are uploaded as audio attachments; the server
-        // transcribes them server-side via Whisper and folds the
-        // transcript into the message body that L1/L2/L3 evaluate. The
-        // coach gets to hear the original audio + read the transcript.
-        const mime = uri.toLowerCase().endsWith(".m4a")
-          ? "audio/m4a"
-          : uri.toLowerCase().endsWith(".mp4")
-            ? "audio/mp4"
-            : uri.toLowerCase().endsWith(".webm")
-              ? "audio/webm"
-              : uri.toLowerCase().endsWith(".wav")
-                ? "audio/wav"
-                : "audio/m4a";
-        const durationMs = recorderState.durationMillis ?? 0;
-        const uploaded = await uploadAttachment({
-          sessionId: session.id,
-          kind: "audio",
-          uri,
-          mime,
-          durationS: durationMs > 0 ? Math.round(durationMs / 1000) : undefined,
-        });
-        sendMutation.mutate({ attachments: [uploaded] });
-      } catch (err) {
-        setVoiceError(
-          err instanceof Error
-            ? err.message
-            : "We couldn't send that recording. Please try again.",
-        );
-      } finally {
-        setIsTranscribing(false);
-      }
+      const mime = uri.toLowerCase().endsWith(".m4a")
+        ? "audio/m4a"
+        : uri.toLowerCase().endsWith(".mp4")
+          ? "audio/mp4"
+          : uri.toLowerCase().endsWith(".webm")
+            ? "audio/webm"
+            : uri.toLowerCase().endsWith(".wav")
+              ? "audio/wav"
+              : "audio/m4a";
+      setPendingVoice({
+        uri,
+        mime,
+        durationS: durationMs > 0 ? Math.max(1, Math.round(durationMs / 1000)) : 0,
+      });
     },
-    [recorder, recorderState.durationMillis, recorderState.isRecording, sendMutation, session?.id],
+    [recorder, recorderState.durationMillis, recorderState.isRecording, session?.id],
   );
+
+  const cancelPendingVoice = useCallback(() => {
+    setPendingVoice(null);
+  }, []);
+
+  const sendPendingVoice = useCallback(async () => {
+    if (!pendingVoice || !session?.id) return;
+    const voice = pendingVoice;
+    setPendingVoice(null);
+    setIsTranscribing(true);
+    try {
+      const uploaded = await uploadAttachment({
+        sessionId: session.id,
+        kind: "audio",
+        uri: voice.uri,
+        mime: voice.mime,
+        durationS: voice.durationS > 0 ? voice.durationS : undefined,
+      });
+      sendMutation.mutate({ attachments: [uploaded] });
+    } catch (err) {
+      setVoiceError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't send that recording. Please try again.",
+      );
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [pendingVoice, sendMutation, session?.id]);
   useEffect(() => {
     finishRecordingRef.current = finishRecording;
   }, [finishRecording]);
@@ -1031,7 +1200,33 @@ export default function ChatScreen() {
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
-            sendMutation.isPending ? (
+            isTranscribing || audioInFlight ? (
+              <View style={[styles.bubbleRow, { justifyContent: "flex-end" }]}>
+                <View
+                  style={[
+                    styles.bubble,
+                    {
+                      backgroundColor: colors.primary,
+                      borderColor: "transparent",
+                      borderRadius: 18,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    },
+                  ]}
+                >
+                  <ActivityIndicator color={colors.primaryForeground} size="small" />
+                  <Text
+                    style={[
+                      styles.bubbleText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    Transcribing voice memo…
+                  </Text>
+                </View>
+              </View>
+            ) : sendMutation.isPending ? (
               <View
                 style={[styles.bubbleRow, { justifyContent: "flex-start" }]}
               >
@@ -1278,7 +1473,7 @@ export default function ChatScreen() {
           ]}
         >
           <Pressable
-            onPress={handlePickImage}
+            onPress={handleAttachPress}
             disabled={
               !session?.id ||
               session?.status === "ended" ||
@@ -1438,6 +1633,265 @@ export default function ChatScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={attachSheetOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAttachSheetOpen(false)}
+      >
+        <Pressable
+          onPress={() => setAttachSheetOpen(false)}
+          style={[styles.modalBackdrop, { backgroundColor: "rgba(20,16,12,0.55)", justifyContent: "flex-end", padding: 16 }]}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: "hidden",
+              marginBottom: insets.bottom + 8,
+            }}
+          >
+            <Pressable
+              onPress={() => void pickPhoto("camera")}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingVertical: 16,
+                paddingHorizontal: 18,
+                opacity: pressed ? 0.6 : 1,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              })}
+              testID="attach-camera"
+            >
+              <Feather name="camera" size={18} color={colors.primary} />
+              <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: "Inter_500Medium" }}>
+                Take a photo
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void pickPhoto("library")}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingVertical: 16,
+                paddingHorizontal: 18,
+                opacity: pressed ? 0.6 : 1,
+              })}
+              testID="attach-library"
+            >
+              <Feather name="image" size={18} color={colors.primary} />
+              <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: "Inter_500Medium" }}>
+                Choose from library
+              </Text>
+            </Pressable>
+          </Pressable>
+          <Pressable
+            onPress={() => setAttachSheetOpen(false)}
+            style={({ pressed }) => ({
+              backgroundColor: colors.card,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingVertical: 14,
+              alignItems: "center",
+              marginBottom: insets.bottom,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: "Inter_600SemiBold" }}>
+              Cancel
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={!!pendingPhoto}
+        transparent
+        animationType="slide"
+        onRequestClose={cancelPhoto}
+      >
+        <View style={[styles.summaryBackdrop, { backgroundColor: "rgba(20,16,12,0.75)" }]}>
+          <View
+            style={[
+              styles.summarySheet,
+              {
+                backgroundColor: colors.background,
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                paddingBottom: insets.bottom + 16,
+              },
+            ]}
+          >
+            <View style={styles.summaryHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
+                  Share this photo?
+                </Text>
+                <Text style={[styles.summarySub, { color: colors.mutedForeground }]}>
+                  Add a note for your coach if you'd like.
+                </Text>
+              </View>
+              <Pressable
+                onPress={cancelPhoto}
+                hitSlop={10}
+                style={[styles.summaryClose, { backgroundColor: colors.muted }]}
+              >
+                <Feather name="x" size={18} color={colors.foreground} />
+              </Pressable>
+            </View>
+
+            {pendingPhoto ? (
+              <ExpoImage
+                source={{ uri: pendingPhoto.uri }}
+                style={{
+                  width: "100%",
+                  aspectRatio:
+                    pendingPhoto.width && pendingPhoto.height
+                      ? pendingPhoto.width / pendingPhoto.height
+                      : 1,
+                  maxHeight: 360,
+                  borderRadius: 16,
+                  marginTop: 14,
+                  backgroundColor: colors.muted,
+                }}
+                contentFit="contain"
+              />
+            ) : null}
+
+            <TextInput
+              value={photoCaption}
+              onChangeText={setPhotoCaption}
+              placeholder="Add a caption (optional)"
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  color: colors.foreground,
+                  borderRadius: 14,
+                  marginTop: 14,
+                  minHeight: 60,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                },
+              ]}
+              testID="photo-caption-input"
+            />
+
+            <View style={[styles.modalActions, { marginTop: 14 }]}>
+              <Pressable
+                onPress={cancelPhoto}
+                disabled={isAttaching}
+                style={({ pressed }) => [
+                  styles.modalBtnSecondary,
+                  { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void confirmSendPhoto()}
+                disabled={isAttaching}
+                style={({ pressed }) => [
+                  styles.modalBtnPrimary,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed || isAttaching ? 0.8 : 1,
+                  },
+                ]}
+                testID="photo-confirm-send"
+              >
+                {isAttaching ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>
+                    Send
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!pendingVoice}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelPendingVoice}
+      >
+        <Pressable
+          onPress={cancelPendingVoice}
+          style={[styles.modalBackdrop, { backgroundColor: "rgba(20,16,12,0.55)" }]}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: 22,
+              },
+            ]}
+          >
+            <View style={[styles.modalIcon, { backgroundColor: colors.gradientHeroMid }]}>
+              <Feather name="mic" size={22} color={colors.primary} />
+            </View>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              Send this voice memo?
+            </Text>
+            {pendingVoice ? (
+              <VoicePreviewPlayer
+                uri={pendingVoice.uri}
+                durationS={pendingVoice.durationS}
+                color={colors.primary}
+                tintBg={colors.gradientHeroMid}
+                fg={colors.foreground}
+                muted={colors.mutedForeground}
+              />
+            ) : null}
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={cancelPendingVoice}
+                style={({ pressed }) => [
+                  styles.modalBtnSecondary,
+                  { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+                ]}
+                testID="voice-cancel"
+              >
+                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>
+                  Discard
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void sendPendingVoice()}
+                style={({ pressed }) => [
+                  styles.modalBtnPrimary,
+                  { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+                ]}
+                testID="voice-confirm-send"
+              >
+                <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>
+                  Send
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={!!redactTarget}

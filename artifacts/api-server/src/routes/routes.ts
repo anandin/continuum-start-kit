@@ -718,21 +718,32 @@ export function registerRoutes(app: Express) {
         stats.set(a.objectPath, { sizeBytes: stat.sizeBytes, contentType: stat.contentType });
       }
 
-      // Audio MUST be transcribed before L1; fail closed otherwise so
-      // spoken content never bypasses safety review.
+      // Audio MUST be transcribed before L1; fail closed otherwise.
       const hasAudio = attachmentInput.some((a) => a.kind === "audio");
       if (hasAudio && !transcriptionConfigured()) {
         return res.status(503).json({
           error: "Voice memo transcription is currently unavailable. Please send your message as text.",
         });
       }
-      const transcripts: Array<{ idx: number; text: string }> = [];
+      const transcripts: Array<{ idx: number; text: string; durationS: number | null }> = [];
       for (let i = 0; i < attachmentInput.length; i++) {
         const a = attachmentInput[i];
         if (a.kind !== "audio") continue;
         let text = "";
+        let probedDurationS: number | null = null;
         try {
           const { buffer, contentType } = await objectStorageService.readObjectEntityBuffer(a.objectPath);
+          const { parseBuffer } = await import("music-metadata");
+          const meta = await parseBuffer(buffer, { mimeType: a.mime || contentType, size: buffer.length });
+          const dur = meta.format.duration;
+          if (typeof dur === "number" && Number.isFinite(dur) && dur > 0) {
+            probedDurationS = Math.round(dur);
+            if (dur > MAX_AUDIO_DURATION_S + 2) {
+              return res.status(413).json({
+                error: `Voice memo too long (max ${MAX_AUDIO_DURATION_S}s)`,
+              });
+            }
+          }
           const raw = await transcribeAudio({
             audioBase64: buffer.toString("base64"),
             mimeType: a.mime || contentType,
@@ -746,12 +757,11 @@ export function registerRoutes(app: Express) {
           });
         }
         if (!text) {
-          req.log.warn({ sessionId, objectPath: a.objectPath }, "voice memo transcription returned empty");
           return res.status(422).json({
             error: "We couldn't make out any speech in that recording. Please try again.",
           });
         }
-        transcripts.push({ idx: i, text });
+        transcripts.push({ idx: i, text, durationS: probedDurationS });
       }
 
       // Compose the seeker-visible content. Photo-only sends get a stable
@@ -802,7 +812,9 @@ export function registerRoutes(app: Express) {
             storageKey: a.objectPath,
             mime: a.mime,
             sizeBytes: a.sizeBytes ?? null,
-            durationS: a.kind === "audio" ? (a.durationS ?? null) : null,
+            durationS: a.kind === "audio"
+              ? (transcripts.find((t) => t.idx === i)?.durationS ?? a.durationS ?? null)
+              : null,
             transcript: a.kind === "audio"
               ? (transcripts.find((t) => t.idx === i)?.text ?? "")
               : null,
