@@ -811,7 +811,7 @@ export function registerRoutes(app: Express) {
             kind: a.kind,
             storageKey: a.objectPath,
             mime: a.mime,
-            sizeBytes: a.sizeBytes ?? null,
+            sizeBytes: stats.get(a.objectPath)?.sizeBytes ?? a.sizeBytes ?? null,
             durationS: a.kind === "audio"
               ? (transcripts.find((t) => t.idx === i)?.durationS ?? a.durationS ?? null)
               : null,
@@ -926,6 +926,11 @@ export function registerRoutes(app: Express) {
       }
       if (seekerUserId !== req.user!.id) {
         return res.status(403).json({ error: "Only the seeker may upload attachments" });
+      }
+
+      const allowed = body.data.kind === "image" ? ALLOWED_IMAGE_MIME : ALLOWED_AUDIO_MIME;
+      if (!allowed.has(body.data.mime.toLowerCase())) {
+        return res.status(415).json({ error: `Unsupported ${body.data.kind} type: ${body.data.mime}` });
       }
 
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();

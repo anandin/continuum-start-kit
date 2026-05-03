@@ -116,13 +116,9 @@ function AttachmentView({ att }: { att: MessageAttachment }) {
       ) : (
         <div className="h-10 w-full max-w-xs rounded-full bg-muted animate-pulse" />
       )}
-      {att.transcript ? (
-        <p className="text-xs italic opacity-80 leading-relaxed whitespace-pre-wrap">
-          “{att.transcript}”
-        </p>
-      ) : (
+      {!att.transcript ? (
         <p className="text-xs italic opacity-60">Voice memo (no transcript)</p>
-      )}
+      ) : null}
     </div>
   );
 }
