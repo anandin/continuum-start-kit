@@ -308,7 +308,12 @@ export default function Chat() {
             </div>
           ) : (
             <>
-              {messages.map((message) => {
+              {messages
+                // Spec: redacted messages disappear entirely from the
+                // seeker's transcript; only the coach sees the
+                // "redacted at HH:MM" placeholder as a transcript gap.
+                .filter((message) => isProviderViewing || !message.redactedAt)
+                .map((message) => {
                 const isOwnSeekerMsg =
                   message.role === 'seeker' && !isProviderViewing && !message.redactedAt;
                 const redactedTime = message.redactedAt

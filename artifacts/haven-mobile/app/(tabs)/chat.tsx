@@ -843,6 +843,10 @@ export default function ChatScreen() {
             const isSeeker = item.role === "seeker";
             const redactedAt = item.redactedAt ?? item.redacted_at ?? null;
             const isRedacted = !!redactedAt;
+            // Mobile chat is seeker-only: redacted messages are hidden
+            // entirely from the seeker's view (the coach's web transcript
+            // still shows the "redacted at HH:MM" placeholder).
+            if (isRedacted) return null;
             const redactedTime = redactedAt
               ? new Date(redactedAt).toLocaleTimeString([], {
                   hour: "2-digit",
