@@ -319,22 +319,26 @@ export async function redactClientMemoryBySourceMessage(
 // Seeker-facing list: every non-redacted L3 entry across all engagements
 // the seeker owns. Used by the "Manage memory" page so seekers can see
 // (and forget) anything the twin remembers about them.
+export interface SeekerMemoryRow {
+  id: string;
+  engagementId: string;
+  kind: string;
+  content: string;
+  createdAt: Date | null;
+}
+
 export async function listClientMemoryForSeekerOwner(
   ownerUserId: string,
-): Promise<ClientMemory[]> {
+): Promise<SeekerMemoryRow[]> {
   return db
+    // Seeker-facing contract only: never expose internal fields like the
+    // pgvector embedding or the source-message attribution array — the
+    // "Manage memory" UI just needs to render and forget entries.
     .select({
       id: clientMemory.id,
       engagementId: clientMemory.engagementId,
-      sessionId: clientMemory.sessionId,
-      sourceMessageIds: clientMemory.sourceMessageIds,
       kind: clientMemory.kind,
       content: clientMemory.content,
-      tags: clientMemory.tags,
-      importance: clientMemory.importance,
-      embedding: clientMemory.embedding,
-      redactedAt: clientMemory.redactedAt,
-      redactedBy: clientMemory.redactedBy,
       createdAt: clientMemory.createdAt,
     })
     .from(clientMemory)

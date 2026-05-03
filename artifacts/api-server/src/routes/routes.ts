@@ -1,6 +1,14 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createHash } from "crypto";
 import { storage } from "../storage";
+import { db } from "../db";
+import {
+  messages as messagesTable,
+  clientMemory as clientMemoryTable,
+  redactions as redactionsTable,
+  safetyEvents as safetyEventsTable,
+} from "@workspace/db";
+import { eq, and, isNull, sql as dsql } from "drizzle-orm";
 import { registerBillingRoutes } from "./billing";
 
 /**
@@ -379,63 +387,105 @@ export function registerRoutes(app: Express) {
         ? String(req.body.reason).slice(0, 500)
         : null;
 
-      const updated = await storage.redactMessage(messageId, req.user!.id);
-      const cascadedIds = await redactClientMemoryBySourceMessage(
-        messageId,
-        msg.sessionId,
-        req.user!.id,
-      );
+      // All five writes (message overwrite, cascade overwrite, parent
+      // redactions row, child redactions rows, safety_events rows) commit
+      // or roll back together so the audit trail can never be missing for
+      // content that was actually erased.
+      const userId = req.user!.id;
+      const sessionId = msg.sessionId;
+      const engagementId = m.engagement.id;
+      const providerId = m.engagement.providerId;
+      const { updated, cascadedIds } = await db.transaction(async (tx) => {
+        const [updatedRow] = await tx
+          .update(messagesTable)
+          .set({ content: "", redactedAt: new Date(), redactedBy: userId })
+          .where(eq(messagesTable.id, messageId))
+          .returning();
 
-      // Structured redactions log: one parent row for the message, one
-      // child row per cascaded memory entry (linked via parentId).
-      const parentRedaction = await logRedaction({
-        scope: "message",
-        targetId: msg.id,
-        seekerUserId: req.user!.id,
-        engagementId: m.engagement.id,
-        sessionId: msg.sessionId,
-        parentId: null,
-        reason,
-      });
-      for (const memId of cascadedIds) {
-        await logRedaction({
-          scope: "memory",
-          targetId: memId,
-          seekerUserId: req.user!.id,
-          engagementId: m.engagement.id,
-          sessionId: msg.sessionId,
-          parentId: parentRedaction.id,
-          reason: null,
-        });
-      }
+        const cascadeRows = await tx
+          .update(clientMemoryTable)
+          .set({
+            content: "",
+            tags: [],
+            embedding: null,
+            redactedAt: new Date(),
+            redactedBy: userId,
+          })
+          .where(
+            and(
+              isNull(clientMemoryTable.redactedAt),
+              dsql`(
+                ${clientMemoryTable.sourceMessageIds} ? ${messageId}
+                OR (
+                  ${clientMemoryTable.sessionId} = ${sessionId}
+                  AND (
+                    ${clientMemoryTable.sourceMessageIds} IS NULL
+                    OR jsonb_array_length(${clientMemoryTable.sourceMessageIds}) = 0
+                  )
+                )
+              )`,
+            ),
+          )
+          .returning({ id: clientMemoryTable.id });
+        const cIds = cascadeRows.map((r) => r.id);
 
-      // Parallel L1 safety_events audit -- one row per redacted target so
-      // the existing safety log carries an explicit, queryable record of
-      // every message and memory that was forgotten.
-      await logSafetyEvent({
-        providerId: m.engagement.providerId,
-        engagementId: m.engagement.id,
-        sessionId: msg.sessionId,
-        userId: req.user!.id,
-        stage: "redaction",
-        decision: "redact",
-        severity: "info",
-        reason: `Seeker redacted message ${msg.id}`,
-      });
-      for (const memId of cascadedIds) {
-        await logSafetyEvent({
-          providerId: m.engagement.providerId,
-          engagementId: m.engagement.id,
-          sessionId: msg.sessionId,
-          userId: req.user!.id,
+        const [parent] = await tx
+          .insert(redactionsTable)
+          .values({
+            scope: "message",
+            targetId: messageId,
+            seekerUserId: userId,
+            engagementId,
+            sessionId,
+            parentId: null,
+            reason,
+          })
+          .returning();
+        if (cIds.length > 0) {
+          await tx.insert(redactionsTable).values(
+            cIds.map((memId) => ({
+              scope: "memory" as const,
+              targetId: memId,
+              seekerUserId: userId,
+              engagementId,
+              sessionId,
+              parentId: parent.id,
+              reason: null,
+            })),
+          );
+        }
+
+        // Per-target safety_events audit (one row per redacted target).
+        await tx.insert(safetyEventsTable).values({
+          providerId,
+          engagementId,
+          sessionId,
+          userId,
           stage: "redaction",
           decision: "redact",
           severity: "info",
-          reason: `Cascade-redacted client_memory ${memId} from message ${msg.id}`,
+          reason: `Seeker redacted message ${messageId}`,
         });
-      }
+        if (cIds.length > 0) {
+          await tx.insert(safetyEventsTable).values(
+            cIds.map((memId) => ({
+              providerId,
+              engagementId,
+              sessionId,
+              userId,
+              stage: "redaction",
+              decision: "redact" as const,
+              severity: "info" as const,
+              reason: `Cascade-redacted client_memory ${memId} from message ${messageId}`,
+            })),
+          );
+        }
+
+        return { updated: updatedRow, cascadedIds: cIds };
+      });
+
       req.log.info(
-        { messageId: msg.id, cascadedMemoryCount: cascadedIds.length },
+        { messageId, cascadedMemoryCount: cascadedIds.length },
         "seeker redacted message",
       );
       res.json({ ok: true, message: updated, cascadedMemoryIds: cascadedIds });
@@ -471,25 +521,39 @@ export function registerRoutes(app: Express) {
       const reason = typeof req.body?.reason === "string"
         ? String(req.body.reason).slice(0, 500)
         : null;
-      await redactClientMemory(memId, req.user!.id);
-      await logRedaction({
-        scope: "memory",
-        targetId: mem.id,
-        seekerUserId: req.user!.id,
-        engagementId: engagement.id,
-        sessionId: mem.sessionId,
-        parentId: null,
-        reason,
-      });
-      await logSafetyEvent({
-        providerId: engagement.providerId,
-        engagementId: engagement.id,
-        sessionId: mem.sessionId,
-        userId: req.user!.id,
-        stage: "redaction",
-        decision: "redact",
-        severity: "info",
-        reason: `Seeker forgot memory entry ${mem.id}`,
+      const userId = req.user!.id;
+      // Single transaction: overwrite + redactions row + safety_events row
+      // commit together so the audit trail can never trail the deletion.
+      await db.transaction(async (tx) => {
+        await tx
+          .update(clientMemoryTable)
+          .set({
+            content: "",
+            tags: [],
+            embedding: null,
+            redactedAt: new Date(),
+            redactedBy: userId,
+          })
+          .where(eq(clientMemoryTable.id, memId));
+        await tx.insert(redactionsTable).values({
+          scope: "memory",
+          targetId: mem.id,
+          seekerUserId: userId,
+          engagementId: engagement.id,
+          sessionId: mem.sessionId,
+          parentId: null,
+          reason,
+        });
+        await tx.insert(safetyEventsTable).values({
+          providerId: engagement.providerId,
+          engagementId: engagement.id,
+          sessionId: mem.sessionId,
+          userId,
+          stage: "redaction",
+          decision: "redact",
+          severity: "info",
+          reason: `Seeker forgot memory entry ${mem.id}`,
+        });
       });
       req.log.info({ memoryId: mem.id }, "seeker redacted memory entry");
       res.json({ ok: true });
@@ -2593,6 +2657,10 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (!mem) return res.status(404).json({ error: "Not found" });
       const ownerCheck = await assertProviderOwnsEngagement(req, mem.engagementId);
       if (!ownerCheck.ok) return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
+      // Redaction is one-way: once a seeker has forgotten an entry, the
+      // provider can't re-redact, edit, or otherwise touch it. 410 Gone
+      // makes the contract explicit.
+      if (mem.redactedAt) return res.status(410).json({ error: "Memory entry already redacted" });
       await redactClientMemory(req.params.id, req.user!.id);
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -2605,6 +2673,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (!mem) return res.status(404).json({ error: "Not found" });
       const ownerCheck = await assertProviderOwnsEngagement(req, mem.engagementId);
       if (!ownerCheck.ok) return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
+      if (mem.redactedAt) return res.status(410).json({ error: "Memory entry already redacted" });
       const { content, tags, importance, kind } = req.body as {
         content?: string;
         tags?: string[];
