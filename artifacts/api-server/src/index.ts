@@ -1,6 +1,7 @@
 import { createApp } from "./app";
 import { ensureExtensions } from "./db";
 import { logger } from "./lib/logger";
+import { startNudgeCron } from "./services/nudgeCron";
 import { startReminderCron } from "./services/scheduling";
 import { loadStripeCredentialsFromConnector } from "./lib/stripe";
 
@@ -34,6 +35,10 @@ ensureExtensions()
       // Start the 1h-before scheduled-session reminder cron once the
       // server is accepting connections. Runs every 60s; idempotent.
       startReminderCron();
+      // Daily inter-session AI nudge sweep. Runs every 10 min so that
+      // every eligible seeker gets a nudge during their configured
+      // local-time window without needing to open the app first.
+      startNudgeCron();
     });
   })
   .catch((err) => {
