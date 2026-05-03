@@ -358,9 +358,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async redactMessage(id: string, redactedBy: string): Promise<Message | undefined> {
+    // Hard-overwrite the message body in place so the original text is gone
+    // from the database, not just hidden by an API filter. The redactedAt
+    // tombstone keeps the row so coaches still see a placeholder.
     const [row] = await db
       .update(messages)
-      .set({ redactedAt: new Date(), redactedBy })
+      .set({ content: "", redactedAt: new Date(), redactedBy })
       .where(eq(messages.id, id))
       .returning();
     return row;

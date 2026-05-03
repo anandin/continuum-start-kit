@@ -302,6 +302,26 @@ export const userSessions = pgTable(
 // Therapist Twin tables (L1 / L2 / L3)
 // ============================================================
 
+// Structured "right-to-be-forgotten" log. One row per seeker-initiated
+// redaction (message or memory). The corresponding messages / client_memory
+// row is also overwritten in place — sensitive content is NOT preserved at
+// rest; this table only records that a redaction happened, by whom, and an
+// optional user-supplied reason. safety_events still carries an additional
+// audit row for the L1 trail.
+export const redactions = pgTable("redactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  scope: text("scope").notNull(), // "message" | "memory"
+  targetId: uuid("target_id").notNull(),
+  seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+  engagementId: uuid("engagement_id").references(() => engagements.id),
+  sessionId: uuid("session_id").references(() => sessions.id),
+  // Optional: cascaded child redactions get a back-reference so a message
+  // redaction can be linked to the memory rows it forgot.
+  parentId: uuid("parent_id"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // L1 — every safety-relevant decision (input check, output check, escalation)
 export const safetyEvents = pgTable("safety_events", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -475,11 +495,12 @@ export const clientMemory = pgTable("client_memory", {
   id: uuid("id").primaryKey().defaultRandom(),
   engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
   sessionId: uuid("session_id").references(() => sessions.id),
-  // Best-effort attribution: the seeker message that most directly produced
-  // this memory (today, the latest seeker turn in the reflected batch).
-  // Used to cascade redactions: forgetting a message also forgets the L3
-  // entries derived from it.
-  sourceMessageId: uuid("source_message_id").references(() => messages.id),
+  // Every seeker message that contributed to this memory entry. Stored as
+  // a jsonb array of message UUIDs so a single redaction can cascade to
+  // every memory derived from any contributing seeker turn (not just the
+  // last one in the reflected batch). FK is not enforced because jsonb
+  // can't carry one; orphaned IDs are harmless to lookup.
+  sourceMessageIds: jsonb("source_message_ids").$type<string[]>().default([]),
   kind: text("kind").notNull(), // "preference" | "boundary" | "fact" | "trigger" | "goal_progress" | "rapport"
   content: text("content").notNull(),
   tags: jsonb("tags").default([]),
@@ -739,6 +760,9 @@ export const insertAgentVersionSchema = createInsertSchema(agentVersions).omit({
 export const insertPersonaExampleSchema = createInsertSchema(personaExamples).omit({ id: true, createdAt: true, embedding: true });
 export const insertCalibrationSessionSchema = createInsertSchema(calibrationSessions).omit({ id: true, createdAt: true, completedAt: true });
 export const insertClientMemorySchema = createInsertSchema(clientMemory).omit({ id: true, createdAt: true, redactedAt: true, redactedBy: true, embedding: true });
+export const insertRedactionSchema = createInsertSchema(redactions).omit({ id: true, createdAt: true });
+export type InsertRedaction = z.infer<typeof insertRedactionSchema>;
+export type Redaction = typeof redactions.$inferSelect;
 export const insertMoodEntrySchema = createInsertSchema(moodEntries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertJournalPromptSchema = createInsertSchema(journalPrompts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true, updatedAt: true, sharedAt: true });

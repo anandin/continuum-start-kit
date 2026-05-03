@@ -10,18 +10,40 @@ import {
   seekers,
   sessions,
   messages,
+  redactions,
   type InsertSafetyEvent,
   type InsertAgentVersion,
   type InsertPersonaExample,
   type InsertCalibrationSession,
   type InsertClientMemory,
+  type InsertRedaction,
   type SafetyEvent,
   type AgentVersion,
   type PersonaExample,
   type CalibrationSession,
   type ClientMemory,
+  type Redaction,
   type Message,
 } from "@workspace/db";
+
+// ============ Redactions (right-to-be-forgotten log) ============
+// One structured row per seeker-initiated redaction. The corresponding
+// content is overwritten in place — this table records only that a
+// redaction happened, not what was forgotten. safety_events still gets a
+// parallel L1 audit row for the safety trail.
+export async function logRedaction(data: InsertRedaction): Promise<Redaction> {
+  const [row] = await db.insert(redactions).values(data).returning();
+  return row;
+}
+
+export async function listRedactionsForSeeker(seekerUserId: string, limit = 200): Promise<Redaction[]> {
+  return db
+    .select()
+    .from(redactions)
+    .where(eq(redactions.seekerUserId, seekerUserId))
+    .orderBy(desc(redactions.createdAt))
+    .limit(limit);
+}
 
 // ============ Safety events (L1 audit log) ============
 export async function logSafetyEvent(data: InsertSafetyEvent): Promise<SafetyEvent> {
@@ -237,26 +259,44 @@ export async function listClientMemoryByEngagement(engagementId: string): Promis
     .orderBy(desc(clientMemory.createdAt));
 }
 
+// Hard-overwrite a single L3 memory row: zero out content, tags, and
+// embedding so the sensitive material is gone from the database. The row
+// itself is kept (with redactedAt set) so the cascade audit + UI hiding
+// still work, and so the seeker's own "forgotten items" list can show that
+// something was removed without storing what it was.
 export async function redactClientMemory(id: string, redactedBy: string): Promise<void> {
   await db
     .update(clientMemory)
-    .set({ redactedAt: new Date(), redactedBy })
+    .set({
+      content: "",
+      tags: [],
+      embedding: null,
+      redactedAt: new Date(),
+      redactedBy,
+    })
     .where(eq(clientMemory.id, id));
 }
 
-// Cascade: when a seeker redacts a message, soft-redact every L3 memory row
-// that was attributed to it. Returns the affected ids so the caller can
-// audit each one in safety_events.
+// Cascade: when a seeker redacts a message, hard-overwrite every L3 memory
+// row that lists it as a contributing source. Returns the affected ids so
+// the caller can write structured `redactions` rows + audit events.
 export async function redactClientMemoryBySourceMessage(
   sourceMessageId: string,
   redactedBy: string,
 ): Promise<string[]> {
   const rows = await db
     .update(clientMemory)
-    .set({ redactedAt: new Date(), redactedBy })
+    .set({
+      content: "",
+      tags: [],
+      embedding: null,
+      redactedAt: new Date(),
+      redactedBy,
+    })
     .where(
       and(
-        eq(clientMemory.sourceMessageId, sourceMessageId),
+        // jsonb `?` operator: true when the array contains the given string.
+        sql`${clientMemory.sourceMessageIds} ? ${sourceMessageId}`,
         isNull(clientMemory.redactedAt),
       ),
     )
@@ -275,7 +315,7 @@ export async function listClientMemoryForSeekerOwner(
       id: clientMemory.id,
       engagementId: clientMemory.engagementId,
       sessionId: clientMemory.sessionId,
-      sourceMessageId: clientMemory.sourceMessageId,
+      sourceMessageIds: clientMemory.sourceMessageIds,
       kind: clientMemory.kind,
       content: clientMemory.content,
       tags: clientMemory.tags,

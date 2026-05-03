@@ -46,11 +46,14 @@ export async function reflectAndWrite(opts: {
 }): Promise<ClientMemory[]> {
   if (opts.messages.length < 2) return [];
 
-  // Best-effort attribution for cascade-on-redact: tie the batch's memory
-  // entries to the latest seeker turn in the transcript so "Forget this"
-  // on that message also forgets the memory it most likely produced.
-  const lastSeekerMessageId =
-    [...opts.messages].reverse().find((m) => m.role === "seeker")?.id ?? null;
+  // Conservative cascade attribution: every seeker message in the
+  // reflected batch is recorded as a contributing source. Forgetting any
+  // of them will then cascade-forget every memory derived from this
+  // session, since we can't reliably tell post-hoc which seeker turn
+  // produced which entry.
+  const sourceMessageIds = opts.messages
+    .filter((m) => m.role === "seeker")
+    .map((m) => m.id);
 
   const transcript = opts.messages
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
@@ -103,7 +106,7 @@ export async function reflectAndWrite(opts: {
         {
           engagementId: opts.engagementId,
           sessionId: opts.sessionId,
-          sourceMessageId: lastSeekerMessageId,
+          sourceMessageIds,
           kind: trimmed.kind,
           content: trimmed.content,
           tags: trimmed.tags,

@@ -46,6 +46,7 @@ import {
   getClientMemoryById,
   listClientMemoryForSeekerOwner,
   redactClientMemoryBySourceMessage,
+  logRedaction,
   createCalibrationSession,
   getCalibrationSession,
   listCalibrationSessionsByProvider,
@@ -374,9 +375,38 @@ export function registerRoutes(app: Express) {
       }
       if (msg.redactedAt) { res.json({ ok: true, alreadyRedacted: true }); return; }
 
+      const reason = typeof req.body?.reason === "string"
+        ? String(req.body.reason).slice(0, 500)
+        : null;
+
       const updated = await storage.redactMessage(messageId, req.user!.id);
       const cascadedIds = await redactClientMemoryBySourceMessage(messageId, req.user!.id);
 
+      // Structured redactions log: one parent row for the message, one
+      // child row per cascaded memory entry (linked via parentId). The
+      // content itself was already overwritten in storage.
+      const parentRedaction = await logRedaction({
+        scope: "message",
+        targetId: msg.id,
+        seekerUserId: req.user!.id,
+        engagementId: m.engagement.id,
+        sessionId: msg.sessionId,
+        parentId: null,
+        reason,
+      });
+      for (const memId of cascadedIds) {
+        await logRedaction({
+          scope: "memory",
+          targetId: memId,
+          seekerUserId: req.user!.id,
+          engagementId: m.engagement.id,
+          sessionId: msg.sessionId,
+          parentId: parentRedaction.id,
+          reason: null,
+        });
+      }
+
+      // Parallel L1 safety audit row(s) for the safety trail.
       await logSafetyEvent({
         providerId: m.engagement.providerId,
         engagementId: m.engagement.id,
@@ -387,18 +417,6 @@ export function registerRoutes(app: Express) {
         severity: "info",
         reason: `Seeker redacted message ${msg.id}; cascaded ${cascadedIds.length} memory entries`,
       });
-      for (const memId of cascadedIds) {
-        await logSafetyEvent({
-          providerId: m.engagement.providerId,
-          engagementId: m.engagement.id,
-          sessionId: msg.sessionId,
-          userId: req.user!.id,
-          stage: "redaction",
-          decision: "redact",
-          severity: "info",
-          reason: `Cascade-redacted client_memory ${memId} from message ${msg.id}`,
-        });
-      }
       req.log.info(
         { messageId: msg.id, cascadedMemoryCount: cascadedIds.length },
         "seeker redacted message",
@@ -433,7 +451,19 @@ export function registerRoutes(app: Express) {
         return;
       }
       if (mem.redactedAt) { res.json({ ok: true, alreadyRedacted: true }); return; }
+      const reason = typeof req.body?.reason === "string"
+        ? String(req.body.reason).slice(0, 500)
+        : null;
       await redactClientMemory(memId, req.user!.id);
+      await logRedaction({
+        scope: "memory",
+        targetId: mem.id,
+        seekerUserId: req.user!.id,
+        engagementId: engagement.id,
+        sessionId: mem.sessionId,
+        parentId: null,
+        reason,
+      });
       await logSafetyEvent({
         providerId: engagement.providerId,
         engagementId: engagement.id,
