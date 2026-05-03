@@ -210,6 +210,21 @@ export class ObjectStorageService {
     return signObjectURL({ bucketName, objectName, method: "GET", ttlSec });
   }
 
+  // Best-effort delete of a private object. Used by the redaction flow
+  // to ensure attachment blobs are physically removed from GCS so a
+  // signed URL minted before the redact can no longer return content
+  // (the file is gone). Missing objects are treated as success.
+  async deleteObjectEntity(objectPath: string): Promise<void> {
+    if (!objectPath.startsWith("/objects/")) return;
+    try {
+      const file = await this.getObjectEntityFile(objectPath);
+      await file.delete({ ignoreNotFound: true });
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) return;
+      throw err;
+    }
+  }
+
   // Stream the raw bytes of a private object into a Buffer. Used by the
   // server-side transcription job to feed the audio blob to Whisper
   // without round-tripping through the client.

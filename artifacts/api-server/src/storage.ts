@@ -401,6 +401,30 @@ export class DatabaseStorage implements IStorage {
     // Hard-overwrite the message body in place so the original text is gone
     // from the database, not just hidden by an API filter. The redactedAt
     // tombstone keeps the row so coaches still see a placeholder.
+    //
+    // Attachments piggy-back on the same forget operation: we delete every
+    // blob from object storage (best-effort) AND drop the attachment rows
+    // so any signed URL the client still has in flight stops working at
+    // the storage layer, not just at our API. Without this, a download
+    // URL minted seconds before the redact would keep working until its
+    // 1h TTL expired.
+    const atts = await db
+      .select()
+      .from(messageAttachments)
+      .where(eq(messageAttachments.messageId, id));
+    if (atts.length > 0) {
+      // Lazy import to avoid a top-level cycle (storage <-> objectStorage).
+      const { ObjectStorageService } = await import("./lib/objectStorage");
+      const svc = new ObjectStorageService();
+      await Promise.all(
+        atts.map((a) =>
+          svc.deleteObjectEntity(a.storageKey).catch(() => {
+            /* best-effort: row deletion below still proceeds */
+          }),
+        ),
+      );
+      await db.delete(messageAttachments).where(eq(messageAttachments.messageId, id));
+    }
     const [row] = await db
       .update(messages)
       .set({ content: "", redactedAt: new Date(), redactedBy })

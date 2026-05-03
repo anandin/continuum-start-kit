@@ -590,6 +590,40 @@ export default function ChatScreen() {
   };
 
   // ---- Voice recording (hold-to-talk) --------------------------------------
+  // Hard cap voice memos at 2 minutes — matches the spec and keeps
+  // Whisper round-trips bounded. We snapshot the duration in a ref
+  // because the auto-stop runs from a setInterval where state would be
+  // stale, and trip an auto-stop the moment the recorder crosses the
+  // limit.
+  const VOICE_MEMO_MAX_MS = 120_000;
+  const autoStopTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!recorderState.isRecording) {
+      if (autoStopTimerRef.current) {
+        clearInterval(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
+      }
+      return;
+    }
+    if (autoStopTimerRef.current) return;
+    autoStopTimerRef.current = setInterval(() => {
+      const ms = recorder.getStatus?.()?.durationMillis ?? 0;
+      if (ms >= VOICE_MEMO_MAX_MS && recordingActiveRef.current) {
+        void finishRecordingRef.current?.(false);
+      }
+    }, 250);
+    return () => {
+      if (autoStopTimerRef.current) {
+        clearInterval(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
+      }
+    };
+  }, [recorder, recorderState.isRecording]);
+
+  // Forward ref to finishRecording so the auto-stop timer can call it
+  // before finishRecording is declared.
+  const finishRecordingRef = useRef<((cancelled: boolean) => Promise<void>) | null>(null);
+
   const startRecording = useCallback(async () => {
     if (!session?.id || session.status === "ended") return;
     if (recordingActiveRef.current) return;
@@ -682,6 +716,9 @@ export default function ChatScreen() {
     },
     [recorder, recorderState.durationMillis, recorderState.isRecording, sendMutation, session?.id],
   );
+  useEffect(() => {
+    finishRecordingRef.current = finishRecording;
+  }, [finishRecording]);
 
   // ---- TTS auto-play of new agent replies -----------------------------------
   const speakAgentMessage = useCallback(
