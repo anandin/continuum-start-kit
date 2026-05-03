@@ -92,6 +92,7 @@ export interface IStorage {
   getAttachmentById(id: string): Promise<MessageAttachment | undefined>;
   updateAttachmentTranscript(id: string, transcript: string): Promise<void>;
   createAttachmentGrant(data: { objectPath: string; userId: string; sessionId: string; kind: "image" | "audio"; mime: string; ttlSec: number }): Promise<AttachmentGrant>;
+  getValidAttachmentGrant(args: { objectPath: string; userId: string; sessionId: string; kind: "image" | "audio"; mime: string }): Promise<AttachmentGrant | null>;
   consumeAttachmentGrant(args: { objectPath: string; userId: string; sessionId: string; kind: "image" | "audio"; mime: string; messageId: string }): Promise<AttachmentGrant | null>;
   
   createSummary(data: InsertSummary): Promise<Summary>;
@@ -421,6 +422,42 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return row;
+  }
+
+  // Read-only check: does a matching, unconsumed, unexpired grant exist
+  // for this (objectPath, user, session, kind, mime)? Used by /api/chat
+  // to authorize the object-storage read + transcription BEFORE any side
+  // effects are committed. Final consumption still happens atomically
+  // inside the persistence transaction via consumeAttachmentGrant, so a
+  // racing consumer between the peek and the commit is safely detected.
+  async getValidAttachmentGrant({
+    objectPath,
+    userId,
+    sessionId,
+    kind,
+    mime,
+  }: {
+    objectPath: string;
+    userId: string;
+    sessionId: string;
+    kind: "image" | "audio";
+    mime: string;
+  }): Promise<AttachmentGrant | null> {
+    const [row] = await db
+      .select()
+      .from(attachmentGrants)
+      .where(
+        and(
+          eq(attachmentGrants.objectPath, objectPath),
+          eq(attachmentGrants.userId, userId),
+          eq(attachmentGrants.sessionId, sessionId),
+          eq(attachmentGrants.kind, kind),
+          eq(attachmentGrants.mime, mime),
+          isNull(attachmentGrants.consumedAt),
+          gte(attachmentGrants.expiresAt, new Date()),
+        ),
+      );
+    return row ?? null;
   }
 
   // Atomically validate + consume an upload grant. Returns the grant row

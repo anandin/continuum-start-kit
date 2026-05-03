@@ -5,6 +5,7 @@ import { db } from "../db";
 import {
   messages as messagesTable,
   messageAttachments as messageAttachmentsTable,
+  attachmentGrants as attachmentGrantsTable,
   clientMemory as clientMemoryTable,
   redactions as redactionsTable,
   safetyEvents as safetyEventsTable,
@@ -649,10 +650,32 @@ export function registerRoutes(app: Express) {
         });
       }
 
-      // Transcribe audio attachments BEFORE persisting the message, so the
-      // composed text (typed caption + every voice transcript) is what
-      // gets safety-scanned and what the twin sees as user input. If
-      // transcription fails for an audio blob we still keep the audio
+      // STEP 1: Authorize every attachment BEFORE any side effects (no
+      // object reads, no transcription, no DB writes). If a single grant
+      // is invalid we 403 immediately with zero state changes — this is
+      // what blocks unauthorized private-object reads via guessed or
+      // leaked /objects/<id> paths.
+      for (const a of attachmentInput) {
+        const grant = await storage.getValidAttachmentGrant({
+          objectPath: a.objectPath,
+          userId: req.user!.id,
+          sessionId,
+          kind: a.kind,
+          mime: a.mime,
+        });
+        if (!grant) {
+          req.log.warn(
+            { sessionId, objectPath: a.objectPath, kind: a.kind },
+            "rejected attachment without valid upload grant (pre-validate)",
+          );
+          return res.status(403).json({ error: "Attachment grant invalid or already consumed" });
+        }
+      }
+
+      // STEP 2: Now that we've proven this seeker owns each grant for
+      // this session, transcribe audio attachments. We trust the bytes
+      // because the prior loop confirmed the grant binding. If
+      // transcription fails for a blob we still keep the audio
       // attachment but its transcript stays empty — the coach will at
       // least be able to play it.
       const transcripts: Array<{ idx: number; text: string }> = [];
@@ -689,35 +712,42 @@ export function registerRoutes(app: Express) {
       }
       const composedMessage = composedParts.join("\n\n");
 
-      // Persist the seeker message first so it appears even if the model fails
-      const seekerMsg = await storage.createMessage({ sessionId, role: "seeker", content: composedMessage });
-      // Link the uploaded blobs. Audio rows include the transcript we
-      // produced above; photo rows just carry the storage key + mime.
-      // Every attachment must consume a matching upload grant — otherwise
-      // a client could pass an arbitrary /objects/<id> path (leaked, guessed,
-      // or stolen from another session) and the API would happily mint
-      // signed GETs for it later. Failures abort the whole batch and the
-      // seeker message stays text-only so we don't leave half-attached state.
-      if (attachmentInput.length > 0) {
-        const consumedGrants: Array<{ objectPath: string; idx: number }> = [];
-        const items: Array<Omit<InsertMessageAttachment, "messageId">> = [];
-        let rejected: { objectPath: string; reason: string } | null = null;
-        for (let i = 0; i < attachmentInput.length; i++) {
-          const a = attachmentInput[i];
-          const grant = await storage.consumeAttachmentGrant({
-            objectPath: a.objectPath,
-            userId: req.user!.id,
-            sessionId,
-            kind: a.kind,
-            mime: a.mime,
-            messageId: seekerMsg.id,
-          });
-          if (!grant) {
-            rejected = { objectPath: a.objectPath, reason: "no matching upload grant" };
-            break;
+      // STEP 3: Atomically persist the message, attachment rows, and the
+      // grant consumption in a single SQL transaction. The grant
+      // UPDATE...WHERE consumedAt IS NULL acts as our race detector — if
+      // a concurrent /api/chat consumed the same grant between our
+      // pre-validate and now, the UPDATE returns zero rows, we throw,
+      // and the entire transaction rolls back so no orphan message,
+      // attachment row, or transcript content survives.
+      const seekerMsg = await db.transaction(async (tx) => {
+        const [insertedMsg] = await tx
+          .insert(messagesTable)
+          .values({ sessionId, role: "seeker", content: composedMessage })
+          .returning();
+        if (attachmentInput.length > 0) {
+          for (let i = 0; i < attachmentInput.length; i++) {
+            const a = attachmentInput[i];
+            const [grantRow] = await tx
+              .update(attachmentGrantsTable)
+              .set({ consumedAt: new Date(), messageId: insertedMsg.id })
+              .where(
+                and(
+                  eq(attachmentGrantsTable.objectPath, a.objectPath),
+                  eq(attachmentGrantsTable.userId, req.user!.id),
+                  eq(attachmentGrantsTable.sessionId, sessionId),
+                  eq(attachmentGrantsTable.kind, a.kind),
+                  eq(attachmentGrantsTable.mime, a.mime),
+                  isNull(attachmentGrantsTable.consumedAt),
+                  dsql`${attachmentGrantsTable.expiresAt} >= now()`,
+                ),
+              )
+              .returning();
+            if (!grantRow) {
+              throw new Error("ATTACHMENT_GRANT_RACE");
+            }
           }
-          consumedGrants.push({ objectPath: a.objectPath, idx: i });
-          items.push({
+          const items: InsertMessageAttachment[] = attachmentInput.map((a, i) => ({
+            messageId: insertedMsg.id,
             kind: a.kind,
             storageKey: a.objectPath,
             mime: a.mime,
@@ -726,13 +756,17 @@ export function registerRoutes(app: Express) {
             transcript: a.kind === "audio"
               ? (transcripts.find((t) => t.idx === i)?.text ?? "")
               : null,
-          });
+          }));
+          await tx.insert(messageAttachmentsTable).values(items);
         }
-        if (rejected) {
-          req.log.warn({ sessionId, rejected }, "rejected attachment without valid upload grant");
-          return res.status(403).json({ error: "Attachment grant invalid or already consumed" });
-        }
-        await storage.createMessageAttachments(seekerMsg.id, items);
+        return insertedMsg;
+      }).catch((err) => {
+        if (err?.message === "ATTACHMENT_GRANT_RACE") return null;
+        throw err;
+      });
+      if (!seekerMsg) {
+        req.log.warn({ sessionId }, "attachment grant race lost — no state persisted");
+        return res.status(409).json({ error: "Attachment grant was consumed concurrently; please retry" });
       }
       const recentMessages = await storage.getMessagesBySessionId(sessionId);
 
