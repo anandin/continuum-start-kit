@@ -126,9 +126,9 @@ export const messages = pgTable("messages", {
   role: msgRoleEnum("role").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-  // Seeker-initiated "Forget this". When set, content is preserved at-rest
-  // but the API zeroes it out before returning to either side; coaches see a
-  // placeholder so transcript gaps are visible without leaking the original.
+  // Seeker-initiated "Forget this". When set, the row's content has been
+  // hard-overwritten in place (see storage.redactMessage) and the
+  // tombstone is kept so coaches see a placeholder for transcript gaps.
   redactedAt: timestamp("redacted_at"),
   redactedBy: uuid("redacted_by").references(() => users.id),
 });

@@ -380,11 +380,14 @@ export function registerRoutes(app: Express) {
         : null;
 
       const updated = await storage.redactMessage(messageId, req.user!.id);
-      const cascadedIds = await redactClientMemoryBySourceMessage(messageId, req.user!.id);
+      const cascadedIds = await redactClientMemoryBySourceMessage(
+        messageId,
+        msg.sessionId,
+        req.user!.id,
+      );
 
       // Structured redactions log: one parent row for the message, one
-      // child row per cascaded memory entry (linked via parentId). The
-      // content itself was already overwritten in storage.
+      // child row per cascaded memory entry (linked via parentId).
       const parentRedaction = await logRedaction({
         scope: "message",
         targetId: msg.id,
@@ -406,7 +409,9 @@ export function registerRoutes(app: Express) {
         });
       }
 
-      // Parallel L1 safety audit row(s) for the safety trail.
+      // Parallel L1 safety_events audit -- one row per redacted target so
+      // the existing safety log carries an explicit, queryable record of
+      // every message and memory that was forgotten.
       await logSafetyEvent({
         providerId: m.engagement.providerId,
         engagementId: m.engagement.id,
@@ -415,8 +420,20 @@ export function registerRoutes(app: Express) {
         stage: "redaction",
         decision: "redact",
         severity: "info",
-        reason: `Seeker redacted message ${msg.id}; cascaded ${cascadedIds.length} memory entries`,
+        reason: `Seeker redacted message ${msg.id}`,
       });
+      for (const memId of cascadedIds) {
+        await logSafetyEvent({
+          providerId: m.engagement.providerId,
+          engagementId: m.engagement.id,
+          sessionId: msg.sessionId,
+          userId: req.user!.id,
+          stage: "redaction",
+          decision: "redact",
+          severity: "info",
+          reason: `Cascade-redacted client_memory ${memId} from message ${msg.id}`,
+        });
+      }
       req.log.info(
         { messageId: msg.id, cascadedMemoryCount: cascadedIds.length },
         "seeker redacted message",

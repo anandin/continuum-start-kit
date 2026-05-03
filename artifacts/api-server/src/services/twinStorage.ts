@@ -278,10 +278,14 @@ export async function redactClientMemory(id: string, redactedBy: string): Promis
 }
 
 // Cascade: when a seeker redacts a message, hard-overwrite every L3 memory
-// row that lists it as a contributing source. Returns the affected ids so
-// the caller can write structured `redactions` rows + audit events.
+// row that lists it as a contributing source. Also catches legacy rows
+// (written before per-message attribution existed) by falling back to a
+// session-scoped match: any unredacted memory in the same session whose
+// sourceMessageIds is empty/null is conservatively forgotten too, so old
+// memory derived from a now-redacted past message can't survive.
 export async function redactClientMemoryBySourceMessage(
   sourceMessageId: string,
+  sourceSessionId: string,
   redactedBy: string,
 ): Promise<string[]> {
   const rows = await db
@@ -295,9 +299,17 @@ export async function redactClientMemoryBySourceMessage(
     })
     .where(
       and(
-        // jsonb `?` operator: true when the array contains the given string.
-        sql`${clientMemory.sourceMessageIds} ? ${sourceMessageId}`,
         isNull(clientMemory.redactedAt),
+        sql`(
+          ${clientMemory.sourceMessageIds} ? ${sourceMessageId}
+          OR (
+            ${clientMemory.sessionId} = ${sourceSessionId}
+            AND (
+              ${clientMemory.sourceMessageIds} IS NULL
+              OR jsonb_array_length(${clientMemory.sourceMessageIds}) = 0
+            )
+          )
+        )`,
       ),
     )
     .returning({ id: clientMemory.id });
