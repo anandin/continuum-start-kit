@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HavenLogo } from "@/components/HavenLogo";
+import { InlineStatusStrip } from "@/components/InlineStatusStrip";
 import { MoodSummaryRow } from "@/components/MoodSummaryRow";
 import { ScheduledSessionsCard } from "@/components/ScheduledSessionsCard";
 import { useAuth } from "@/contexts/AuthContext";
@@ -744,24 +745,13 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Demoted status strip — facts + today's check-in folded inline */}
+        {/* Demoted status strip — sparkline + facts + today's check-in inline */}
         {activeEngagement ? (
-          <View style={styles.demotedStrip}>
-            <View
-              style={[styles.factsRow, { borderColor: colors.border }]}
-            >
-              <Text style={[styles.factText, { color: colors.mutedForeground }]}>
-                <Text style={styles.factLabel}>SESSIONS </Text>
-                <Text style={{ color: colors.foreground }}>
-                  {completedSessions}
-                </Text>
-                <Text>   ·   </Text>
-                <Text style={styles.factLabel}>STAGE </Text>
-                <Text style={{ color: colors.foreground }}>{currentStage}</Text>
-              </Text>
-            </View>
-            <MoodSummaryRow engagementId={activeEngagement?.id ?? null} />
-          </View>
+          <InlineStatusStrip
+            engagementId={activeEngagement.id ?? null}
+            sessionsCompleted={completedSessions}
+            stage={currentStage}
+          />
         ) : (
           <MoodSummaryRow engagementId={null} />
         )}

@@ -1,98 +1,99 @@
 /**
- * Haven brand palette.
+ * Haven brand palette — "Clinical Companion" theme.
  *
- * Mirrors artifacts/haven-web/src/index.css :root tokens (warm IDEO palette,
- * teal primary + warm amber accent on a cream canvas) so the mobile app
- * shares the exact same visual identity as the web app.
+ * Deep forest-green primary on a near-white canvas, intentionally austere
+ * to feel like a quiet companion-led space. Mirrored 1:1 in
+ * artifacts/haven-web/src/index.css :root tokens so mobile and web share
+ * the same visual identity.
  */
 
 const colors = {
   light: {
-    text: "#3A322B",
-    tint: "#298E89",
+    text: "#1A1A1A",
+    tint: "#164E36",
 
-    background: "#FBF9F4",
-    foreground: "#3A322B",
+    background: "#FAFAF7",
+    foreground: "#1A1A1A",
 
-    card: "#FCFAF6",
-    cardForeground: "#3A322B",
+    card: "#FFFFFF",
+    cardForeground: "#1A1A1A",
 
-    primary: "#298E89",
+    primary: "#164E36",
     primaryForeground: "#FFFFFF",
 
-    secondary: "#F4F0E8",
-    secondaryForeground: "#574B40",
+    secondary: "#F1F1EC",
+    secondaryForeground: "#1A1A1A",
 
-    muted: "#EDE8DD",
-    mutedForeground: "#847C72",
+    muted: "#EFEFEA",
+    mutedForeground: "#666666",
 
-    accent: "#EAB04A",
-    accentForeground: "#3A2F26",
+    accent: "#164E36",
+    accentForeground: "#FFFFFF",
 
-    destructive: "#D1503F",
+    destructive: "#B23A2A",
     destructiveForeground: "#FFFFFF",
 
-    success: "#3B9D7A",
+    success: "#164E36",
     successForeground: "#FFFFFF",
 
-    warning: "#E5A93D",
-    warningForeground: "#3A2F26",
+    warning: "#B5832B",
+    warningForeground: "#FFFFFF",
 
-    border: "#E2DBD0",
-    input: "#E2DBD0",
+    border: "#E5E5E0",
+    input: "#E5E5E0",
 
-    crisis: "#D1503F",
-    crisisSoft: "#F8E4E0",
+    crisis: "#B23A2A",
+    crisisSoft: "#F4E4E0",
 
-    gradientWarmStart: "#FBF9F4",
-    gradientWarmEnd: "#F4EFE3",
-    gradientHeroStart: "#FCFBF6",
-    gradientHeroMid: "#E5F0EF",
-    gradientHeroEnd: "#FBF9F4",
+    gradientWarmStart: "#FAFAF7",
+    gradientWarmEnd: "#F1F1EC",
+    gradientHeroStart: "#FAFAF7",
+    gradientHeroMid: "#FAFAF7",
+    gradientHeroEnd: "#FAFAF7",
   },
 
   dark: {
-    text: "#ECE7DC",
-    tint: "#2EA59F",
+    text: "#ECECE6",
+    tint: "#3FA37C",
 
-    background: "#1E1A16",
-    foreground: "#ECE7DC",
+    background: "#0F1411",
+    foreground: "#ECECE6",
 
-    card: "#241F1A",
-    cardForeground: "#ECE7DC",
+    card: "#161C18",
+    cardForeground: "#ECECE6",
 
-    primary: "#2EA59F",
-    primaryForeground: "#FFFFFF",
+    primary: "#3FA37C",
+    primaryForeground: "#0F1411",
 
-    secondary: "#2F2924",
-    secondaryForeground: "#ECE7DC",
+    secondary: "#1C231F",
+    secondaryForeground: "#ECECE6",
 
-    muted: "#34302B",
-    mutedForeground: "#A39A8E",
+    muted: "#1C231F",
+    mutedForeground: "#9EA59E",
 
-    accent: "#E5A93D",
-    accentForeground: "#ECE7DC",
+    accent: "#3FA37C",
+    accentForeground: "#0F1411",
 
-    destructive: "#B84638",
-    destructiveForeground: "#ECE7DC",
+    destructive: "#B23A2A",
+    destructiveForeground: "#FFFFFF",
 
-    success: "#3B9D7A",
-    successForeground: "#FFFFFF",
+    success: "#3FA37C",
+    successForeground: "#0F1411",
 
-    warning: "#E5A93D",
-    warningForeground: "#3A2F26",
+    warning: "#D9A24A",
+    warningForeground: "#0F1411",
 
-    border: "#3A352F",
-    input: "#3A352F",
+    border: "#252C27",
+    input: "#252C27",
 
-    crisis: "#E76A58",
-    crisisSoft: "#3A1F1A",
+    crisis: "#D9533F",
+    crisisSoft: "#2A1814",
 
-    gradientWarmStart: "#1E1A16",
-    gradientWarmEnd: "#241F1A",
-    gradientHeroStart: "#1E1A16",
-    gradientHeroMid: "#1F2A29",
-    gradientHeroEnd: "#1E1A16",
+    gradientWarmStart: "#0F1411",
+    gradientWarmEnd: "#161C18",
+    gradientHeroStart: "#0F1411",
+    gradientHeroMid: "#0F1411",
+    gradientHeroEnd: "#0F1411",
   },
 
   radius: 16,
