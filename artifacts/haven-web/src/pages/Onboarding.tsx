@@ -170,24 +170,35 @@ export default function Onboarding() {
       // than blocking onboarding on a Stripe modal.
       let needsPaymentSetup = false;
       if (selectedTierId) {
-        try {
-          const r = await apiRequest(
-            'POST',
-            `/api/engagements/${engagement.id}/billing/select-tier`,
-            { tierId: selectedTierId },
+        const selectedTier = tiers.find((t) => t.id === selectedTierId);
+        if (selectedTier?.billingCadence === 'monthly') {
+          // Monthly tiers need a saved card before the subscription can
+          // be created — defer tier selection to the Payment page where
+          // the seeker can save a card first, then pick the tier.
+          toast.message(
+            'Save a card on the Payment page first, then pick your monthly tier.',
           );
-          const body = await r.json().catch(() => ({}));
-          if (body?.subscription?.clientSecret) {
-            toast.message(
-              'Add a card on the Payment page to start your subscription.',
+          needsPaymentSetup = true;
+        } else {
+          try {
+            const r = await apiRequest(
+              'POST',
+              `/api/engagements/${engagement.id}/billing/select-tier`,
+              { tierId: selectedTierId },
+            );
+            const body = await r.json().catch(() => ({}));
+            if (body?.subscription?.clientSecret) {
+              toast.message(
+                'Add a card on the Payment page to start your subscription.',
+              );
+              needsPaymentSetup = true;
+            }
+          } catch (err: any) {
+            toast.error(
+              'Could not save your payment tier. Please choose it on the Payment page.',
             );
             needsPaymentSetup = true;
           }
-        } catch (err: any) {
-          toast.error(
-            'Could not save your payment tier. Please choose it on the Payment page.',
-          );
-          needsPaymentSetup = true;
         }
         if (needsPaymentSetup) {
           try {
