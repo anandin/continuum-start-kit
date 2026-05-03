@@ -100,11 +100,19 @@ export async function setupAuth(app: Express): Promise<void> {
 
   app.post("/api/auth/register", async (req, res, next) => {
     try {
-      const { email, password } = req.body;
+      const { email, password, role } = req.body ?? {};
 
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password are required" });
       }
+
+      // Role defaults to "seeker" so a fresh signup lands in a fully usable
+      // state (journal, progress, chat empty-states all work) instead of
+      // hitting cryptic 403s from seeker-only endpoints. Clients that need
+      // the provider path (web /auth/role, future provider invite flow)
+      // pass role explicitly.
+      const normalizedRole: "seeker" | "provider" =
+        role === "provider" ? "provider" : "seeker";
 
       const existingUser = await storage.getUserByEmail(email);
       if (existingUser) {
@@ -113,12 +121,26 @@ export async function setupAuth(app: Express): Promise<void> {
 
       const hashedPassword = await bcrypt.hash(password, 10);
       const user = await storage.createUser({ email, password: hashedPassword });
-      
+
       await storage.createProfile({ userId: user.id, email: user.email });
+      try {
+        await storage.createUserRole({ userId: user.id, role: normalizedRole });
+        if (normalizedRole === "seeker") {
+          await storage.createSeeker({ ownerId: user.id });
+        }
+      } catch (roleErr) {
+        // Don't fail the registration over role bootstrap issues — the user
+        // can still pick/repair their role via /auth/role on the web.
+        // eslint-disable-next-line no-console
+        console.warn("register: role bootstrap failed", roleErr);
+      }
 
       req.login({ id: user.id, email: user.email }, (err) => {
         if (err) return next(err);
-        res.status(201).json({ user: { id: user.id, email: user.email } });
+        res.status(201).json({
+          user: { id: user.id, email: user.email },
+          role: normalizedRole,
+        });
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Registration failed" });

@@ -76,8 +76,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await apiRequest('POST', '/api/auth/login', { email, password });
       const data = await res.json();
-      setUser(data.user);
+      // Fetch the profile (which sets role) BEFORE flipping user → null
+      // to authenticated. Otherwise downstream redirect effects fire on a
+      // (user-set, role-still-null) state and bounce to /auth/role even
+      // for users who already have a role.
       await fetchProfile();
+      setUser(data.user);
       return {};
     } catch (error: any) {
       return { error: error.message || 'Login failed' };
@@ -88,8 +92,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await apiRequest('POST', '/api/auth/register', { email, password });
       const data = await res.json();
-      setUser(data.user);
+      // Server now creates a default seeker role on register, so the
+      // profile fetch returns role:'seeker' — settle that before we
+      // mark the user as authenticated to avoid the same redirect race
+      // described in signIn().
       await fetchProfile();
+      if (data.role) setRole(data.role);
+      setUser(data.user);
       return {};
     } catch (error: any) {
       return { error: error.message || 'Registration failed' };

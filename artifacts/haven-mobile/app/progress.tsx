@@ -92,8 +92,37 @@ export default function ProgressScreen() {
             ]}
           >
             <Text style={[styles.errorText, { color: colors.destructive }]}>
-              Couldn't load your progress. Pull down or come back in a moment.
+              {(progressQ.error as Error & { status?: number }).status === 401
+                ? "Please sign in to see your progress."
+                : "Couldn't load your progress. Pull down or come back in a moment."}
             </Text>
+            {(progressQ.error as Error & { status?: number }).status === 401 ? (
+              <Pressable
+                onPress={() => router.replace("/auth")}
+                style={({ pressed }) => [
+                  styles.errorCta,
+                  { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+                testID="progress-signin"
+              >
+                <Text style={[styles.errorCtaLabel, { color: colors.primaryForeground }]}>
+                  Sign in
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => void progressQ.refetch()}
+                style={({ pressed }) => [
+                  styles.errorCta,
+                  { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+                testID="progress-retry"
+              >
+                <Text style={[styles.errorCtaLabel, { color: colors.primaryForeground }]}>
+                  Try again
+                </Text>
+              </Pressable>
+            )}
           </View>
         ) : null}
 
@@ -497,6 +526,17 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
+  },
+  errorCta: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  errorCtaLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
   tilesGrid: {
     flexDirection: "row",
