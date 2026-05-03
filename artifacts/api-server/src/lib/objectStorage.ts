@@ -169,6 +169,43 @@ export class ObjectStorageService {
     return signObjectURL({ bucketName, objectName, method: "GET", ttlSec });
   }
 
+  // Confirm a private object actually exists in GCS and return its
+  // server-side metadata (size + content-type). Used by the attachment
+  // finalize path to fail closed if the seeker requested an upload URL
+  // but never actually uploaded the blob (or uploaded with the wrong
+  // content type), so we never persist a row pointing at a missing or
+  // mismatched object.
+  async statObjectEntity(objectPath: string): Promise<{
+    exists: boolean;
+    sizeBytes: number | null;
+    contentType: string | null;
+  }> {
+    if (!objectPath.startsWith("/objects/")) {
+      return { exists: false, sizeBytes: null, contentType: null };
+    }
+    try {
+      const file = await this.getObjectEntityFile(objectPath);
+      const [metadata] = await file.getMetadata();
+      const sizeRaw = metadata.size;
+      const sizeBytes =
+        typeof sizeRaw === "number"
+          ? sizeRaw
+          : typeof sizeRaw === "string"
+            ? Number.parseInt(sizeRaw, 10) || null
+            : null;
+      return {
+        exists: true,
+        sizeBytes,
+        contentType: (metadata.contentType as string) ?? null,
+      };
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) {
+        return { exists: false, sizeBytes: null, contentType: null };
+      }
+      throw err;
+    }
+  }
+
   // Best-effort delete of a private object. Used by the redaction flow
   // to ensure attachment blobs are physically removed from GCS so a
   // signed URL minted before the redact can no longer return content

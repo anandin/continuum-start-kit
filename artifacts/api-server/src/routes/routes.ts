@@ -650,11 +650,10 @@ export function registerRoutes(app: Express) {
         });
       }
 
-      // STEP 1: Authorize every attachment BEFORE any side effects (no
-      // object reads, no transcription, no DB writes). If a single grant
-      // is invalid we 403 immediately with zero state changes — this is
-      // what blocks unauthorized private-object reads via guessed or
-      // leaked /objects/<id> paths.
+      // STEP 1a: Authorize every attachment grant BEFORE any side
+      // effects (no object reads, no transcription, no DB writes). If a
+      // single grant is invalid we 403 immediately — this is what blocks
+      // unauthorized private-object reads via guessed/leaked /objects/<id>.
       for (const a of attachmentInput) {
         const grant = await storage.getValidAttachmentGrant({
           objectPath: a.objectPath,
@@ -672,32 +671,60 @@ export function registerRoutes(app: Express) {
         }
       }
 
-      // STEP 2: Now that we've proven this seeker owns each grant for
-      // this session, transcribe audio attachments. We trust the bytes
-      // because the prior loop confirmed the grant binding. If
-      // transcription fails for a blob we still keep the audio
-      // attachment but its transcript stays empty — the coach will at
-      // least be able to play it.
+      // STEP 1b: Confirm each blob was actually uploaded to GCS before
+      // we consume the grant or persist any DB row. A grant alone proves
+      // the seeker requested a PUT URL — not that they finished the
+      // upload. Without this check we'd link rows to missing blobs and
+      // mint signed GETs that 404. Fail closed if any blob is missing.
+      for (const a of attachmentInput) {
+        const stat = await objectStorageService.statObjectEntity(a.objectPath);
+        if (!stat.exists || !stat.sizeBytes || stat.sizeBytes <= 0) {
+          req.log.warn(
+            { sessionId, objectPath: a.objectPath, kind: a.kind, stat },
+            "attachment finalize: object missing or empty",
+          );
+          return res.status(400).json({ error: "Upload not found or empty; please re-upload the attachment" });
+        }
+      }
+
+      // STEP 2: Audio attachments MUST be transcribed before we can run
+      // L1 safety over their content. If transcription is unconfigured
+      // or the blob can't be fetched/transcribed, fail closed — never
+      // persist an audio attachment whose spoken content has not been
+      // safety-reviewed. This is the L1 bypass the prior code allowed.
+      const hasAudio = attachmentInput.some((a) => a.kind === "audio");
+      if (hasAudio && !transcriptionConfigured()) {
+        req.log.warn({ sessionId }, "audio attachment rejected: transcription not configured");
+        return res.status(503).json({
+          error: "Voice memo transcription is currently unavailable. Please send your message as text.",
+        });
+      }
       const transcripts: Array<{ idx: number; text: string }> = [];
       for (let i = 0; i < attachmentInput.length; i++) {
         const a = attachmentInput[i];
         if (a.kind !== "audio") continue;
-        if (!transcriptionConfigured()) {
-          transcripts.push({ idx: i, text: "" });
-          continue;
-        }
+        let text = "";
         try {
           const { buffer, contentType } = await objectStorageService.readObjectEntityBuffer(a.objectPath);
-          const text = await transcribeAudio({
+          const raw = await transcribeAudio({
             audioBase64: buffer.toString("base64"),
             mimeType: a.mime || contentType,
             filename: `voice-memo.${(a.mime || contentType).split("/")[1]?.split(";")[0] || "m4a"}`,
           });
-          transcripts.push({ idx: i, text: (text ?? "").trim() });
+          text = (raw ?? "").trim();
         } catch (err) {
           req.log.warn({ err, sessionId, objectPath: a.objectPath }, "voice memo transcription failed");
-          transcripts.push({ idx: i, text: "" });
+          return res.status(422).json({
+            error: "We couldn't transcribe that voice memo. Please try again or type your message.",
+          });
         }
+        if (!text) {
+          req.log.warn({ sessionId, objectPath: a.objectPath }, "voice memo transcription returned empty");
+          return res.status(422).json({
+            error: "We couldn't make out any speech in that recording. Please try again.",
+          });
+        }
+        transcripts.push({ idx: i, text });
       }
 
       // Compose the seeker-visible content. Photo-only sends get a stable
