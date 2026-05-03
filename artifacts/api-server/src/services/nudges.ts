@@ -5,6 +5,8 @@ import { checkOutput } from "./safety";
 import { sendPushToUser } from "../lib/push";
 import {
   createOrGetTodaysNudge,
+  DEFAULT_NUDGE_PREFS,
+  getNudgePrefs,
   getTodaysNudgeForSeeker,
   hasRecentHighSeveritySafetyEvent,
   markNudgeSent,
@@ -15,6 +17,35 @@ import type { Engagement, Goal, Nudge, Session, Summary } from "@workspace/db";
 
 function todayYmdUtc(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Returns the user's current local hour-of-day (0-23) in the given IANA
+// timezone, or the UTC hour as a safe fallback if the zone is invalid.
+function localHourInZone(zone: string | null | undefined): number {
+  const tz = zone && zone.length > 0 ? zone : "UTC";
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+    const hourPart = parts.find((p) => p.type === "hour")?.value ?? "0";
+    // "24" can occur in some browsers — normalize to 0.
+    const h = parseInt(hourPart, 10) % 24;
+    return Number.isFinite(h) ? h : new Date().getUTCHours();
+  } catch {
+    return new Date().getUTCHours();
+  }
+}
+
+// Window predicate that handles wrap-around (e.g. start=22, end=2 means
+// 22:00-02:00 local). When start === end, treat as "always within window"
+// so an explicit equal-bounds setting doesn't silently disable nudges.
+function isHourInWindow(hour: number, startHour: number, endHour: number): boolean {
+  if (startHour === endHour) return true;
+  if (startHour < endHour) return hour >= startHour && hour < endHour;
+  // Wrap-around overnight window.
+  return hour >= startHour || hour < endHour;
 }
 
 function getStartedAt(s: Session): number {
@@ -136,6 +167,20 @@ export async function generateOrFetchTodaysNudge(seekerUserId: string): Promise<
 
   const existing = await getTodaysNudgeForSeeker(seekerUserId, today);
   if (existing) return existing;
+
+  // Honor per-seeker prefs: disabled => never generate; otherwise gate on
+  // whether the user's local hour is in their configured window.
+  const prefs = (await getNudgePrefs(seekerUserId)) ?? null;
+  const enabled = prefs?.enabled ?? DEFAULT_NUDGE_PREFS.enabled;
+  if (!enabled) return null;
+
+  const user = await storage.getUserById(seekerUserId);
+  const localHour = localHourInZone(user?.timezone);
+  const windowStart = prefs?.windowStartHour ?? DEFAULT_NUDGE_PREFS.windowStartHour;
+  const windowEnd = prefs?.windowEndHour ?? DEFAULT_NUDGE_PREFS.windowEndHour;
+  if (!isHourInWindow(localHour, windowStart, windowEnd)) {
+    return null;
+  }
 
   // Crisis suppression — never push small "try this" prompts in a crisis.
   const inCrisis = await hasRecentHighSeveritySafetyEvent(seekerUserId);

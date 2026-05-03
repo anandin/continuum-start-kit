@@ -3234,6 +3234,44 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     }
   });
 
+  // Seeker-only nudge preferences (on/off + local hour-of-day window).
+  // GET creates an implicit defaults-row response so the mobile app can
+  // render the toggle without requiring a prior write.
+  app.get("/api/seeker/nudge-prefs", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const seeker = await storage.getSeekerByOwnerId(req.user!.id);
+      if (!seeker) return res.status(403).json({ error: "Seekers only" });
+      const { getNudgePrefs, DEFAULT_NUDGE_PREFS } = await import("../services/nudgeStorage");
+      const prefs = await getNudgePrefs(req.user!.id);
+      return res.json(prefs ?? { userId: req.user!.id, ...DEFAULT_NUDGE_PREFS });
+    } catch (error: any) {
+      req.log.error({ err: error }, "GET /api/seeker/nudge-prefs failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/seeker/nudge-prefs", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const seeker = await storage.getSeekerByOwnerId(req.user!.id);
+      if (!seeker) return res.status(403).json({ error: "Seekers only" });
+      const schema = z.object({
+        enabled: z.boolean().optional(),
+        windowStartHour: z.number().int().min(0).max(23).optional(),
+        windowEndHour: z.number().int().min(0).max(23).optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid prefs", details: parsed.error.flatten() });
+      }
+      const { upsertNudgePrefs } = await import("../services/nudgeStorage");
+      const updated = await upsertNudgePrefs(req.user!.id, parsed.data);
+      return res.json(updated);
+    } catch (error: any) {
+      req.log.error({ err: error }, "PATCH /api/seeker/nudge-prefs failed");
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/nudges/:id/respond", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.user!.id;

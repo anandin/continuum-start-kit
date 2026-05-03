@@ -540,6 +540,21 @@ export const nudges = pgTable(
   }),
 );
 
+// Per-seeker nudge preferences. One row per user (seeker) — providers
+// don't receive nudges so they never get a row. Window is expressed as
+// hours-of-day in the user's timezone (users.timezone). The generator
+// only fires when the user's local hour is within [startHour, endHour).
+// Defaults: enabled=true, 7:00-11:00 local time (morning).
+export const nudgePrefs = pgTable("nudge_prefs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id).notNull().unique(),
+  enabled: boolean("enabled").notNull().default(true),
+  windowStartHour: integer("window_start_hour").notNull().default(7),
+  windowEndHour: integer("window_end_hour").notNull().default(11),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // AI-generated session prep briefs the coach reads before a session.
 // Briefs are saved (not regenerated per view); the coach explicitly
 // triggers a refresh and can mark the brief as "used in session".
@@ -769,6 +784,9 @@ export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit(
 export const insertCoachInboxDismissalSchema = createInsertSchema(coachInboxDismissals).omit({ id: true, dismissedAt: true });
 export const insertPlaybookSchema = createInsertSchema(playbooks).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertNudgeSchema = createInsertSchema(nudges).omit({ id: true, createdAt: true, sentAt: true, respondedAt: true });
+export const insertNudgePrefsSchema = createInsertSchema(nudgePrefs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertNudgePrefs = z.infer<typeof insertNudgePrefsSchema>;
+export type NudgePrefs = typeof nudgePrefs.$inferSelect;
 export const insertSessionBriefSchema = createInsertSchema(sessionBriefs).omit({ id: true, createdAt: true, generatedAt: true, usedAt: true, usedInSessionId: true });
 export const insertScheduledSessionSchema = createInsertSchema(scheduledSessions).omit({ id: true, createdAt: true, updatedAt: true, reminderSentAt: true, icsSeq: true });
 

@@ -2,11 +2,55 @@ import { db } from "../db";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   nudges,
+  nudgePrefs,
   safetyEvents,
   type InsertNudge,
   type Nudge,
+  type NudgePrefs,
   type SafetyEvent,
 } from "@workspace/db";
+
+// ============ Nudge prefs (per-seeker on/off + time window) ============
+
+export const DEFAULT_NUDGE_PREFS = {
+  enabled: true,
+  windowStartHour: 7,
+  windowEndHour: 11,
+} as const;
+
+export async function getNudgePrefs(userId: string): Promise<NudgePrefs | undefined> {
+  const [row] = await db
+    .select()
+    .from(nudgePrefs)
+    .where(eq(nudgePrefs.userId, userId))
+    .limit(1);
+  return row;
+}
+
+export async function upsertNudgePrefs(
+  userId: string,
+  patch: Partial<{ enabled: boolean; windowStartHour: number; windowEndHour: number }>,
+): Promise<NudgePrefs> {
+  const existing = await getNudgePrefs(userId);
+  if (!existing) {
+    const [row] = await db
+      .insert(nudgePrefs)
+      .values({
+        userId,
+        enabled: patch.enabled ?? DEFAULT_NUDGE_PREFS.enabled,
+        windowStartHour: patch.windowStartHour ?? DEFAULT_NUDGE_PREFS.windowStartHour,
+        windowEndHour: patch.windowEndHour ?? DEFAULT_NUDGE_PREFS.windowEndHour,
+      })
+      .returning();
+    return row;
+  }
+  const [row] = await db
+    .update(nudgePrefs)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(nudgePrefs.userId, userId))
+    .returning();
+  return row;
+}
 
 // ============ Nudges (daily inter-session AI micro-nudges) ============
 

@@ -23,10 +23,23 @@ import { HavenLogo } from "@/components/HavenLogo";
 import { useCrisis } from "@/components/Crisis";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { api } from "@/lib/api";
 import {
   getPushPreference,
   setPushPreference,
 } from "@/lib/notifications";
+
+interface NudgePrefs {
+  enabled: boolean;
+  windowStartHour: number;
+  windowEndHour: number;
+}
+
+function formatHour(h: number): string {
+  const suffix = h < 12 ? "am" : "pm";
+  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${display}${suffix}`;
+}
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -83,6 +96,71 @@ export default function ProfileScreen() {
       cancelled = true;
     };
   }, [user]);
+
+  const [nudgePrefs, setNudgePrefs] = React.useState<NudgePrefs | null>(null);
+  const [nudgeLoading, setNudgeLoading] = React.useState(true);
+  const [nudgeSaving, setNudgeSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!user) {
+      setNudgeLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setNudgeLoading(true);
+    api<NudgePrefs>("/api/seeker/nudge-prefs")
+      .then((p) => {
+        if (!cancelled) setNudgePrefs(p);
+      })
+      .catch(() => {
+        if (!cancelled) setNudgePrefs(null);
+      })
+      .finally(() => {
+        if (!cancelled) setNudgeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const saveNudgePrefs = React.useCallback(
+    async (patch: Partial<NudgePrefs>) => {
+      if (!nudgePrefs || nudgeSaving) return;
+      const prev = nudgePrefs;
+      const next = { ...nudgePrefs, ...patch };
+      setNudgePrefs(next);
+      setNudgeSaving(true);
+      try {
+        const result = await api<NudgePrefs>("/api/seeker/nudge-prefs", {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        });
+        setNudgePrefs(result);
+      } catch {
+        setNudgePrefs(prev);
+      } finally {
+        setNudgeSaving(false);
+      }
+    },
+    [nudgePrefs, nudgeSaving],
+  );
+
+  const cycleNudgeWindow = React.useCallback(() => {
+    if (!nudgePrefs) return;
+    // Simple 4-preset rotation: morning(7-11), midday(11-14),
+    // evening(17-21), night(21-23).
+    const presets: Array<[number, number]> = [
+      [7, 11],
+      [11, 14],
+      [17, 21],
+      [21, 23],
+    ];
+    const currentIdx = presets.findIndex(
+      ([s, e]) => s === nudgePrefs.windowStartHour && e === nudgePrefs.windowEndHour,
+    );
+    const next = presets[(currentIdx + 1) % presets.length];
+    void saveNudgePrefs({ windowStartHour: next[0], windowEndHour: next[1] });
+  }, [nudgePrefs, saveNudgePrefs]);
 
   const handleNotifToggle = React.useCallback(
     async (next: boolean) => {
@@ -302,6 +380,34 @@ export default function ProfileScreen() {
           }
           testID="profile-open-memory"
         />
+        <ToggleRow
+          icon="sun"
+          label="Daily nudges"
+          subtitle={
+            nudgeLoading
+              ? "Loading…"
+              : nudgePrefs?.enabled
+                ? `On — one prompt between ${formatHour(nudgePrefs.windowStartHour)} and ${formatHour(nudgePrefs.windowEndHour)}`
+                : "Off — no between-session prompts"
+          }
+          colors={colors}
+          value={nudgePrefs?.enabled ?? false}
+          onValueChange={(next) => saveNudgePrefs({ enabled: next })}
+          disabled={nudgeLoading || nudgeSaving || !nudgePrefs}
+          testID="profile-toggle-nudges"
+        />
+        {nudgePrefs?.enabled ? (
+          <Row
+            icon="clock"
+            label="Nudge time window"
+            subtitle={`${formatHour(nudgePrefs.windowStartHour)} – ${formatHour(nudgePrefs.windowEndHour)} · tap to change`}
+            colors={colors}
+            onPress={cycleNudgeWindow}
+            disabled={nudgeSaving}
+            testID="profile-nudge-window"
+          />
+        ) : null}
+
         <ToggleRow
           icon="bell"
           label="Push notifications"

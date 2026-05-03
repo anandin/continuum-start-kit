@@ -77,6 +77,11 @@ result through L1 `checkOutput` defense-in-depth before persisting. Suppressed e
 seeker has any high/critical safety_event in the last 24h. Best-effort push delivery; in-app card
 on the mobile Home tab is the source of truth. Tri-action response (`POST /api/nudges/:id/respond`
 with `done|skip|snooze`) — only the owning seeker can respond.
+Per-seeker prefs in `nudge_prefs` (enabled, windowStartHour, windowEndHour) gate the lazy
+generator: skips entirely when disabled, and only fires when the user's local hour (computed
+from `users.timezone`) falls within `[start, end)`. Wrap-around windows (e.g. 22→2) are
+supported. GET/PATCH `/api/seeker/nudge-prefs` (seeker-only) backs the Profile screen toggle
+and time-window cycler. Defaults: enabled, 7am-11am local.
 
 Therapist control tower pages in `artifacts/haven-web/src/pages/twin/`: Calibration.tsx,
 PersonaLibrary.tsx, MemoryInspector.tsx, AuditLog.tsx — linked from ProviderDashboardView.
