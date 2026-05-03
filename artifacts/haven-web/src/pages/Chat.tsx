@@ -35,6 +35,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+interface MessageAttachment {
+  id: string;
+  kind: 'image' | 'audio';
+  mime: string;
+  durationS?: number | null;
+  transcript?: string | null;
+}
+
 interface Message {
   id: string;
   role: 'seeker' | 'agent' | 'provider';
@@ -42,6 +50,81 @@ interface Message {
   createdAt: string;
   created_at?: string;
   redactedAt?: string | null;
+  attachments?: MessageAttachment[];
+}
+
+/**
+ * Resolves a short-lived signed GCS URL for a single attachment and
+ * renders it inline. Coaches viewing the conversation on web see photos
+ * full-bleed and can play voice memos with the auto-generated
+ * transcript shown beneath the player.
+ */
+function AttachmentView({ att }: { att: MessageAttachment }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/attachments/${att.id}/url`, { credentials: 'include' })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Failed (${r.status})`);
+        return r.json();
+      })
+      .then((data: { url: string }) => {
+        if (!cancelled) setUrl(data.url);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err?.message ?? 'Failed to load attachment');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [att.id]);
+
+  if (error) {
+    return <p className="text-xs italic opacity-70 mt-2">{error}</p>;
+  }
+
+  if (att.kind === 'image') {
+    return (
+      <a
+        href={url ?? undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block mt-2"
+        data-testid={`attachment-image-${att.id}`}
+      >
+        {url ? (
+          <img
+            src={url}
+            alt="Shared photo"
+            className="max-h-72 max-w-full rounded-lg border border-border object-cover"
+          />
+        ) : (
+          <div className="w-48 h-48 rounded-lg bg-muted animate-pulse" />
+        )}
+      </a>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-1" data-testid={`attachment-audio-${att.id}`}>
+      {url ? (
+        <audio controls preload="none" src={url} className="w-full max-w-xs">
+          Your browser does not support audio playback.
+        </audio>
+      ) : (
+        <div className="h-10 w-full max-w-xs rounded-full bg-muted animate-pulse" />
+      )}
+      {att.transcript ? (
+        <p className="text-xs italic opacity-80 leading-relaxed whitespace-pre-wrap">
+          “{att.transcript}”
+        </p>
+      ) : (
+        <p className="text-xs italic opacity-60">Voice memo (no transcript)</p>
+      )}
+    </div>
+  );
 }
 
 export default function Chat() {
@@ -358,7 +441,12 @@ export default function Chat() {
                         </p>
                       ) : (
                         <>
-                          <p className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
+                          {message.content ? (
+                            <p className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
+                          ) : null}
+                          {message.attachments?.map((att) => (
+                            <AttachmentView key={att.id} att={att} />
+                          ))}
                           <p className={`text-xs mt-2 ${message.role === 'seeker' ? 'opacity-70' : 'text-muted-foreground'}`}>
                             {getMessageTime(message)}
                             {isOwnSeekerMsg ? ' · right-click to forget' : ''}

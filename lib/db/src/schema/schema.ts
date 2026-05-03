@@ -29,6 +29,7 @@ export const safetySeverityEnum = pgEnum("safety_severity", ["info", "low", "med
 export const calibrationStatusEnum = pgEnum("calibration_status", ["in_progress", "completed", "abandoned"]);
 export const reviewLabelEnum = pgEnum("review_label", ["this_is_me", "not_me", "never_say_this", "needs_edit"]);
 export const personaExampleSourceEnum = pgEnum("persona_example_source", ["calibration", "review_queue", "manual"]);
+export const attachmentKindEnum = pgEnum("attachment_kind", ["image", "audio"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -131,6 +132,29 @@ export const messages = pgTable("messages", {
   // tombstone is kept so coaches see a placeholder for transcript gaps.
   redactedAt: timestamp("redacted_at"),
   redactedBy: uuid("redacted_by").references(() => users.id),
+});
+
+// Per-message attachments (photos and voice memos). A seeker message may
+// have any number of attachments. For voice memos, `transcript` is filled
+// in server-side after Whisper runs over the uploaded blob, and that
+// transcript is also folded into the parent message's `content` so the
+// L1/L2/L3 pipeline and twin context see the spoken text.
+export const messageAttachments = pgTable("message_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  messageId: uuid("message_id")
+    .references(() => messages.id, { onDelete: "cascade" })
+    .notNull(),
+  kind: attachmentKindEnum("kind").notNull(),
+  // Canonical `/objects/...` path returned by ObjectStorageService when the
+  // upload is normalized. Used both for serving (signed GET) and ACL.
+  storageKey: text("storage_key").notNull(),
+  mime: text("mime").notNull(),
+  sizeBytes: integer("size_bytes"),
+  durationS: integer("duration_s"),
+  // Audio-only: filled in once transcription completes. Null while the
+  // job is in flight; empty string if Whisper returned nothing usable.
+  transcript: text("transcript"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const summaries = pgTable("summaries", {
@@ -833,6 +857,9 @@ export type ProviderAgentConfig = typeof providerAgentConfigs.$inferSelect;
 export type Engagement = typeof engagements.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export const insertMessageAttachmentSchema = createInsertSchema(messageAttachments).omit({ id: true, createdAt: true });
+export type InsertMessageAttachment = z.infer<typeof insertMessageAttachmentSchema>;
+export type MessageAttachment = typeof messageAttachments.$inferSelect;
 export type Summary = typeof summaries.$inferSelect;
 export type ProgressIndicator = typeof progressIndicators.$inferSelect;
 export type ClientNote = typeof clientNotes.$inferSelect;

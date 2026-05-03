@@ -76,6 +76,8 @@ import {
   type ChatMessage,
 } from "../lib/llm";
 import { runGuardedLLM, type SafetyDecision } from "../services/safety";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+const objectStorageService = new ObjectStorageService();
 import { snapshotAgentVersion } from "../services/persona";
 import { sendPushToUser } from "../lib/push";
 import type {
@@ -557,12 +559,36 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // Schema for attachment payloads passed to /api/chat. We accept the
+  // canonical `/objects/<id>` path that ObjectStorageService produced when
+  // the seeker requested an upload URL — never a raw GCS URL — so the
+  // client can't trick us into reading a different bucket. MIME is the
+  // browser/Expo-reported type; we don't enforce a content-type list
+  // beyond the kind=image/audio split.
+  const attachmentSchema = z.object({
+    kind: z.enum(["image", "audio"]),
+    objectPath: z.string().min(1).startsWith("/objects/"),
+    mime: z.string().min(1).max(120),
+    sizeBytes: z.number().int().nonnegative().optional(),
+    durationS: z.number().int().nonnegative().max(600).optional(),
+  });
+  const attachmentArraySchema = z.array(attachmentSchema).max(8);
+
   // /api/chat — Therapist Twin orchestrated turn (L1 in → L2/L3 → LLM → L1 out → persist)
   app.post("/api/chat", requireAuth, async (req, res) => {
     try {
-      const { sessionId, message } = req.body;
-      if (!sessionId || !message) {
-        return res.status(400).json({ error: "sessionId and message are required" });
+      const { sessionId, message, attachments } = req.body ?? {};
+      // Attachments: photos render inline; voice memos are transcribed
+      // server-side and the transcript is folded into `userMessage` so the
+      // L1/L2/L3 safety + persona pipeline applies the same way it does
+      // for typed input. At least one of (text, attachment) is required.
+      const attachmentInput = attachmentArraySchema.parse(attachments ?? []);
+      const typedText = typeof message === "string" ? message.trim() : "";
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId is required" });
+      }
+      if (!typedText && attachmentInput.length === 0) {
+        return res.status(400).json({ error: "message or attachments required" });
       }
 
       const m = await assertSessionMember(req, sessionId);
@@ -586,8 +612,63 @@ export function registerRoutes(app: Express) {
         });
       }
 
+      // Transcribe audio attachments BEFORE persisting the message, so the
+      // composed text (typed caption + every voice transcript) is what
+      // gets safety-scanned and what the twin sees as user input. If
+      // transcription fails for an audio blob we still keep the audio
+      // attachment but its transcript stays empty — the coach will at
+      // least be able to play it.
+      const transcripts: Array<{ idx: number; text: string }> = [];
+      for (let i = 0; i < attachmentInput.length; i++) {
+        const a = attachmentInput[i];
+        if (a.kind !== "audio") continue;
+        if (!transcriptionConfigured()) {
+          transcripts.push({ idx: i, text: "" });
+          continue;
+        }
+        try {
+          const { buffer, contentType } = await objectStorageService.readObjectEntityBuffer(a.objectPath);
+          const text = await transcribeAudio({
+            audioBase64: buffer.toString("base64"),
+            mimeType: a.mime || contentType,
+            filename: `voice-memo.${(a.mime || contentType).split("/")[1]?.split(";")[0] || "m4a"}`,
+          });
+          transcripts.push({ idx: i, text: (text ?? "").trim() });
+        } catch (err) {
+          req.log.warn({ err, sessionId, objectPath: a.objectPath }, "voice memo transcription failed");
+          transcripts.push({ idx: i, text: "" });
+        }
+      }
+
+      // Compose the seeker-visible content. Photo-only sends get a stable
+      // placeholder so the row isn't empty in transcripts/exports.
+      const transcriptParts = transcripts.map((t) => t.text).filter((t) => t.length > 0);
+      const photoCount = attachmentInput.filter((a) => a.kind === "image").length;
+      const composedParts: string[] = [];
+      if (typedText) composedParts.push(typedText);
+      composedParts.push(...transcriptParts);
+      if (composedParts.length === 0 && photoCount > 0) {
+        composedParts.push(photoCount === 1 ? "[shared a photo]" : `[shared ${photoCount} photos]`);
+      }
+      const composedMessage = composedParts.join("\n\n");
+
       // Persist the seeker message first so it appears even if the model fails
-      await storage.createMessage({ sessionId, role: "seeker", content: message });
+      const seekerMsg = await storage.createMessage({ sessionId, role: "seeker", content: composedMessage });
+      // Link the uploaded blobs. Audio rows include the transcript we
+      // produced above; photo rows just carry the storage key + mime.
+      if (attachmentInput.length > 0) {
+        const items = attachmentInput.map((a, i) => ({
+          kind: a.kind,
+          storageKey: a.objectPath,
+          mime: a.mime,
+          sizeBytes: a.sizeBytes ?? null,
+          durationS: a.kind === "audio" ? (a.durationS ?? null) : null,
+          transcript: a.kind === "audio"
+            ? (transcripts.find((t) => t.idx === i)?.text ?? "")
+            : null,
+        }));
+        await storage.createMessageAttachments(seekerMsg.id, items);
+      }
       const recentMessages = await storage.getMessagesBySessionId(sessionId);
 
       const result = await runTwinTurn({
@@ -596,7 +677,7 @@ export function registerRoutes(app: Express) {
         sessionId,
         userId: seekerUserId,
         initialStage: session.initialStage,
-        userMessage: message,
+        userMessage: composedMessage,
         recentMessages: recentMessages.slice(0, -1), // drop the message we just inserted
       });
 
@@ -654,6 +735,70 @@ export function registerRoutes(app: Express) {
         },
       });
     } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // /api/attachments/upload-url — Issue a 15-minute signed PUT URL for the
+  // seeker's client to upload a photo or voice memo blob directly to GCS.
+  // We tie the request to a session the caller belongs to so we never
+  // hand a writable URL to an unrelated third party. The returned
+  // objectPath is what the client must echo back in the next /api/chat
+  // call's `attachments` array.
+  app.post("/api/attachments/upload-url", requireAuth, async (req, res) => {
+    try {
+      const body = z.object({
+        sessionId: z.string().min(1),
+        kind: z.enum(["image", "audio"]),
+        mime: z.string().min(1).max(120),
+      }).safeParse(req.body ?? {});
+      if (!body.success) return res.status(400).json({ error: "Invalid request" });
+
+      const m = await assertSessionMember(req, body.data.sessionId);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+
+      // Seeker-only: only the seeker who owns this engagement can attach.
+      let seekerUserId = req.user!.id;
+      if (m.engagement.seekerId) {
+        const seeker = await storage.getSeekerById(m.engagement.seekerId);
+        if (seeker?.ownerId) seekerUserId = seeker.ownerId;
+      }
+      if (seekerUserId !== req.user!.id) {
+        return res.status(403).json({ error: "Only the seeker may upload attachments" });
+      }
+
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+      res.json({ uploadURL, objectPath });
+    } catch (error: any) {
+      req.log.error({ err: error }, "attachments/upload-url failed");
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // /api/attachments/:id/url — Issue a short-lived signed GET URL for a
+  // specific attachment, gated on session membership (so coaches reading
+  // their inbox can also fetch). Browser/Expo loads the asset directly
+  // from GCS so we don't proxy bytes through the API server.
+  app.get("/api/attachments/:id/url", requireAuth, async (req, res) => {
+    try {
+      const att = await storage.getAttachmentById(req.params.id);
+      if (!att) return res.status(404).json({ error: "Not found" });
+      const parent = await storage.getMessageById(att.messageId);
+      if (!parent?.sessionId) return res.status(404).json({ error: "Not found" });
+      // Once the parent message is redacted, the attachment is dead too —
+      // never mint a fresh signed URL for a forgotten artefact.
+      if (parent.redactedAt) return res.status(410).json({ error: "Redacted" });
+      const m = await assertSessionMember(req, parent.sessionId);
+      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+
+      const url = await objectStorageService.getObjectEntityDownloadURL(att.storageKey, 3600);
+      res.json({ url, mime: att.mime, kind: att.kind });
+    } catch (error: any) {
+      if (error instanceof ObjectNotFoundError) {
+        return res.status(404).json({ error: "Object not found" });
+      }
+      req.log.error({ err: error }, "attachments/:id/url failed");
       res.status(500).json({ error: error.message });
     }
   });

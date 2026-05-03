@@ -11,6 +11,8 @@ import {
   type AudioPlayer,
 } from "expo-audio";
 import * as Haptics from "expo-haptics";
+import { Image as ExpoImage } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import React, {
   useCallback,
   useEffect,
@@ -38,7 +40,162 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
-import { fetchSpokenReplyUri, transcribeRecordingUri } from "@/lib/voice";
+import {
+  fetchAttachmentURL,
+  uploadAttachment,
+  type UploadedAttachment,
+} from "@/lib/attachments";
+import { fetchSpokenReplyUri } from "@/lib/voice";
+
+interface MessageAttachment {
+  id: string;
+  kind: "image" | "audio";
+  mime: string;
+  durationS?: number | null;
+  transcript?: string | null;
+}
+
+/**
+ * Renders a single attachment inside a chat bubble. Resolves a fresh
+ * signed GCS URL on mount (the API issues 1h URLs and verifies session
+ * membership), then either shows the image inline or exposes a play /
+ * pause control for audio with the transcript displayed beneath.
+ */
+function AttachmentView({
+  att,
+  isSeeker,
+  bubbleColors,
+}: {
+  att: MessageAttachment;
+  isSeeker: boolean;
+  bubbleColors: { foreground: string; muted: string };
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playerRef = useRef<AudioPlayer | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAttachmentURL(att.id)
+      .then((res) => {
+        if (!cancelled) setUrl(res.url);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Couldn't load attachment");
+        }
+      });
+    return () => {
+      cancelled = true;
+      try {
+        playerRef.current?.remove();
+      } catch {
+        /* noop */
+      }
+      playerRef.current = null;
+    };
+  }, [att.id]);
+
+  const togglePlay = useCallback(() => {
+    if (!url) return;
+    if (playerRef.current && isPlaying) {
+      try {
+        playerRef.current.pause();
+      } catch {
+        /* noop */
+      }
+      setIsPlaying(false);
+      return;
+    }
+    if (!playerRef.current) {
+      const player = createAudioPlayer({ uri: url }, { updateInterval: 250 });
+      playerRef.current = player;
+      const sub = player.addListener("playbackStatusUpdate", (status) => {
+        if (status.didJustFinish) {
+          setIsPlaying(false);
+          try {
+            sub.remove();
+          } catch {
+            /* noop */
+          }
+          try {
+            player.remove();
+          } catch {
+            /* noop */
+          }
+          playerRef.current = null;
+        }
+      });
+    }
+    try {
+      playerRef.current.play();
+      setIsPlaying(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't play audio");
+    }
+  }, [isPlaying, url]);
+
+  if (att.kind === "image") {
+    if (error) {
+      return (
+        <Text style={{ color: bubbleColors.muted, fontSize: 12, marginTop: 4 }}>
+          {error}
+        </Text>
+      );
+    }
+    return (
+      <ExpoImage
+        source={url ? { uri: url } : undefined}
+        style={{
+          width: 200,
+          height: 200,
+          borderRadius: 12,
+          marginTop: 4,
+          backgroundColor: "rgba(0,0,0,0.05)",
+        }}
+        contentFit="cover"
+        transition={150}
+        accessibilityLabel="Shared photo"
+      />
+    );
+  }
+
+  // audio
+  return (
+    <View style={{ marginTop: 4, gap: 6 }}>
+      <Pressable
+        onPress={togglePlay}
+        disabled={!url}
+        accessibilityLabel={isPlaying ? "Pause voice memo" : "Play voice memo"}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingVertical: 6,
+          paddingHorizontal: 10,
+          borderRadius: 999,
+          backgroundColor: isSeeker ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.06)",
+          alignSelf: "flex-start",
+          opacity: url ? 1 : 0.5,
+        }}
+      >
+        <Feather
+          name={isPlaying ? "pause" : "play"}
+          size={14}
+          color={bubbleColors.foreground}
+        />
+        <Text style={{ color: bubbleColors.foreground, fontSize: 13 }}>
+          Voice memo
+          {att.durationS ? ` · ${att.durationS}s` : ""}
+        </Text>
+      </Pressable>
+      {error ? (
+        <Text style={{ color: bubbleColors.muted, fontSize: 12 }}>{error}</Text>
+      ) : null}
+    </View>
+  );
+}
 
 interface Engagement {
   id: string;
@@ -66,6 +223,7 @@ interface Message {
   created_at?: string;
   redactedAt?: string | null;
   redacted_at?: string | null;
+  attachments?: MessageAttachment[];
 }
 
 interface ProviderConfig {
@@ -321,11 +479,15 @@ export default function ChatScreen() {
   );
 
   const sendMutation = useMutation({
-    mutationFn: async (message: string) => {
+    mutationFn: async (input: { message?: string; attachments?: UploadedAttachment[] }) => {
       if (!session?.id) throw new Error("No active session");
       return api(`/api/chat`, {
         method: "POST",
-        body: JSON.stringify({ sessionId: session.id, message }),
+        body: JSON.stringify({
+          sessionId: session.id,
+          message: input.message ?? "",
+          attachments: input.attachments ?? [],
+        }),
       });
     },
     onSuccess: () => {
@@ -334,6 +496,53 @@ export default function ChatScreen() {
       });
     },
   });
+
+  // Pick a photo from the library and send it. Photos are uploaded
+  // straight to GCS via a signed URL, then attached to a message — the
+  // typed input is sent along as an optional caption if present.
+  const [isAttaching, setIsAttaching] = useState(false);
+  const handlePickImage = useCallback(async () => {
+    if (!session?.id || session.status === "ended") return;
+    if (sendMutation.isPending || isAttaching) return;
+    setVoiceError(null);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setVoiceError("Haven needs photo library access to share images.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.85,
+        allowsMultipleSelection: false,
+      });
+      if (result.canceled || result.assets.length === 0) return;
+      const asset = result.assets[0];
+      const mime = asset.mimeType || "image/jpeg";
+      setIsAttaching(true);
+      const uploaded = await uploadAttachment({
+        sessionId: session.id,
+        kind: "image",
+        uri: asset.uri,
+        mime,
+      });
+      const caption = input.trim();
+      setInput("");
+      sendMutation.mutate({ message: caption, attachments: [uploaded] });
+    } catch (err) {
+      setVoiceError(
+        err instanceof Error ? err.message : "Couldn't share that photo.",
+      );
+    } finally {
+      setIsAttaching(false);
+    }
+  }, [
+    input,
+    isAttaching,
+    sendMutation,
+    session?.id,
+    session?.status,
+  ]);
 
   // Ends the current session and shows the LLM-generated summary
   // (POST /api/sessions/:id/finish — same endpoint used by the web app).
@@ -377,7 +586,7 @@ export default function ChatScreen() {
     const text = input.trim();
     if (!text || sendMutation.isPending || !session?.id) return;
     setInput("");
-    sendMutation.mutate(text);
+    sendMutation.mutate({ message: text });
   };
 
   // ---- Voice recording (hold-to-talk) --------------------------------------
@@ -439,23 +648,39 @@ export default function ChatScreen() {
       );
       setIsTranscribing(true);
       try {
-        const text = await transcribeRecordingUri({ uri });
-        if (!text) {
-          setVoiceError("We couldn't hear you clearly. Try again.");
-          return;
-        }
-        sendMutation.mutate(text);
+        // Voice memos are uploaded as audio attachments; the server
+        // transcribes them server-side via Whisper and folds the
+        // transcript into the message body that L1/L2/L3 evaluate. The
+        // coach gets to hear the original audio + read the transcript.
+        const mime = uri.toLowerCase().endsWith(".m4a")
+          ? "audio/m4a"
+          : uri.toLowerCase().endsWith(".mp4")
+            ? "audio/mp4"
+            : uri.toLowerCase().endsWith(".webm")
+              ? "audio/webm"
+              : uri.toLowerCase().endsWith(".wav")
+                ? "audio/wav"
+                : "audio/m4a";
+        const durationMs = recorderState.durationMillis ?? 0;
+        const uploaded = await uploadAttachment({
+          sessionId: session.id,
+          kind: "audio",
+          uri,
+          mime,
+          durationS: durationMs > 0 ? Math.round(durationMs / 1000) : undefined,
+        });
+        sendMutation.mutate({ attachments: [uploaded] });
       } catch (err) {
         setVoiceError(
           err instanceof Error
             ? err.message
-            : "We couldn't transcribe that recording. Please try again.",
+            : "We couldn't send that recording. Please try again.",
         );
       } finally {
         setIsTranscribing(false);
       }
     },
-    [recorder, recorderState.isRecording, sendMutation, session?.id],
+    [recorder, recorderState.durationMillis, recorderState.isRecording, sendMutation, session?.id],
   );
 
   // ---- TTS auto-play of new agent replies -----------------------------------
@@ -891,18 +1116,35 @@ export default function ChatScreen() {
                   ]}
                   testID={`bubble-${item.role}-${item.id}`}
                 >
-                  <Text
-                    style={[
-                      styles.bubbleText,
-                      {
-                        color: isSeeker
+                  {item.content ? (
+                    <Text
+                      style={[
+                        styles.bubbleText,
+                        {
+                          color: isSeeker
+                            ? colors.primaryForeground
+                            : colors.foreground,
+                        },
+                      ]}
+                    >
+                      {item.content}
+                    </Text>
+                  ) : null}
+                  {item.attachments?.map((att) => (
+                    <AttachmentView
+                      key={att.id}
+                      att={att}
+                      isSeeker={isSeeker}
+                      bubbleColors={{
+                        foreground: isSeeker
                           ? colors.primaryForeground
                           : colors.foreground,
-                      },
-                    ]}
-                  >
-                    {item.content}
-                  </Text>
+                        muted: isSeeker
+                          ? colors.primaryForeground
+                          : colors.mutedForeground,
+                      }}
+                    />
+                  ))}
                 </Pressable>
               </View>
             );
@@ -998,6 +1240,42 @@ export default function ChatScreen() {
             },
           ]}
         >
+          <Pressable
+            onPress={handlePickImage}
+            disabled={
+              !session?.id ||
+              session?.status === "ended" ||
+              sendMutation.isPending ||
+              isAttaching ||
+              recorderState.isRecording ||
+              isTranscribing
+            }
+            accessibilityLabel="Attach a photo"
+            testID="chat-attach-photo"
+            hitSlop={6}
+            style={({ pressed }) => [
+              styles.attachBtn,
+              {
+                backgroundColor: colors.gradientHeroMid,
+                opacity:
+                  !session?.id ||
+                  session?.status === "ended" ||
+                  sendMutation.isPending ||
+                  recorderState.isRecording ||
+                  isTranscribing
+                    ? 0.4
+                    : pressed || isAttaching
+                      ? 0.7
+                      : 1,
+              },
+            ]}
+          >
+            {isAttaching ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <Feather name="paperclip" size={18} color={colors.primary} />
+            )}
+          </Pressable>
           <TextInput
             value={input}
             onChangeText={setInput}
@@ -1007,7 +1285,7 @@ export default function ChatScreen() {
                 : recorderState.isRecording
                   ? "Listening…"
                   : isTranscribing
-                    ? "Transcribing…"
+                    ? "Sending voice memo…"
                     : "Share what's on your mind…"
             }
             placeholderTextColor={colors.mutedForeground}
@@ -1617,6 +1895,14 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
+  },
+  attachBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
   },
   emptyChat: {
     alignItems: "center",

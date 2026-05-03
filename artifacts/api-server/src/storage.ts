@@ -2,13 +2,14 @@ import { db } from "./db";
 import { eq, and, or, desc, asc, sql, isNull, lt, gte, inArray } from "drizzle-orm";
 import {
   users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs,
-  engagements, sessions, messages, summaries, progressIndicators,
+  engagements, sessions, messages, messageAttachments, summaries, progressIndicators,
   clientNotes, goals, goalProgress, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
   moodEntries, journalPrompts, journalEntries,
   safetyEvents, coachInboxDismissals,
   pushTokens,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
+  InsertMessageAttachment, MessageAttachment,
   InsertSummary, InsertProgressIndicator,
   InsertClientNote, InsertGoal, InsertGoalProgress, InsertIntakeForm, InsertIntakeResponse,
   InsertResource, InsertResourceAssignment, InsertAlert, InsertProviderOnboardingChat,
@@ -84,9 +85,12 @@ export interface IStorage {
   updateSession(id: string, data: Partial<{ status: "active" | "ended"; endedAt: Date }>): Promise<Session | undefined>;
   
   createMessage(data: InsertMessage): Promise<Message>;
-  getMessagesBySessionId(sessionId: string): Promise<Message[]>;
+  getMessagesBySessionId(sessionId: string): Promise<Array<Message & { attachments: MessageAttachment[] }>>;
   getMessageById(id: string): Promise<Message | undefined>;
   redactMessage(id: string, redactedBy: string): Promise<Message | undefined>;
+  createMessageAttachments(messageId: string, items: Array<Omit<InsertMessageAttachment, "messageId">>): Promise<MessageAttachment[]>;
+  getAttachmentById(id: string): Promise<MessageAttachment | undefined>;
+  updateAttachmentTranscript(id: string, transcript: string): Promise<void>;
   
   createSummary(data: InsertSummary): Promise<Summary>;
   getSummaryBySessionId(sessionId: string): Promise<Summary | undefined>;
@@ -339,7 +343,7 @@ export class DatabaseStorage implements IStorage {
     return message;
   }
 
-  async getMessagesBySessionId(sessionId: string): Promise<Message[]> {
+  async getMessagesBySessionId(sessionId: string): Promise<Array<Message & { attachments: MessageAttachment[] }>> {
     const rows = await db.select().from(messages)
       .where(eq(messages.sessionId, sessionId))
       .orderBy(asc(messages.createdAt));
@@ -349,7 +353,43 @@ export class DatabaseStorage implements IStorage {
     // "redacted at HH:MM" placeholder via the redactedAt timestamp.
     // Anything that genuinely needs the raw row (e.g. the redact handler
     // itself) must use getMessageById.
-    return rows.map((r) => (r.redactedAt ? { ...r, content: "" } : r));
+    const ids = rows.map((r) => r.id);
+    const atts = ids.length
+      ? await db.select().from(messageAttachments).where(inArray(messageAttachments.messageId, ids))
+      : [];
+    const byMsg = new Map<string, MessageAttachment[]>();
+    for (const a of atts) {
+      const arr = byMsg.get(a.messageId) ?? [];
+      arr.push(a);
+      byMsg.set(a.messageId, arr);
+    }
+    return rows.map((r) => {
+      // Redacted messages also drop their attachments — the storage rows
+      // themselves are kept for audit but we never surface them again.
+      if (r.redactedAt) return { ...r, content: "", attachments: [] };
+      return { ...r, attachments: byMsg.get(r.id) ?? [] };
+    });
+  }
+
+  async createMessageAttachments(
+    messageId: string,
+    items: Array<Omit<InsertMessageAttachment, "messageId">>,
+  ): Promise<MessageAttachment[]> {
+    if (items.length === 0) return [];
+    const rows = await db
+      .insert(messageAttachments)
+      .values(items.map((i) => ({ ...i, messageId })))
+      .returning();
+    return rows;
+  }
+
+  async getAttachmentById(id: string): Promise<MessageAttachment | undefined> {
+    const [row] = await db.select().from(messageAttachments).where(eq(messageAttachments.id, id));
+    return row;
+  }
+
+  async updateAttachmentTranscript(id: string, transcript: string): Promise<void> {
+    await db.update(messageAttachments).set({ transcript }).where(eq(messageAttachments.id, id));
   }
 
   async getMessageById(id: string): Promise<Message | undefined> {
