@@ -162,6 +162,27 @@ export function SeekerDashboardView({ userId }: SeekerDashboardViewProps) {
         </Card>
       )}
 
+      {hasEngagements && (
+        <Card
+          className="shadow-warm cursor-pointer hover-elevate"
+          onClick={() => navigate('/memory')}
+          data-testid="card-memory"
+        >
+          <CardContent className="py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Manage memory</p>
+                <p className="text-xs text-muted-foreground">See and forget what your twin remembers about you</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="shadow-warm" data-testid="card-sessions-completed">
           <CardContent className="pt-6">

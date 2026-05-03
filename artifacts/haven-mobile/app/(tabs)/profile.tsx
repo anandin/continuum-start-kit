@@ -289,6 +289,19 @@ export default function ProfileScreen() {
           }
           testID="profile-open-payment"
         />
+        <Row
+          icon="cpu"
+          label="Manage memory"
+          colors={colors}
+          onPress={() =>
+            Linking.openURL(
+              process.env.EXPO_PUBLIC_DOMAIN
+                ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/memory`
+                : "https://replit.com/",
+            )
+          }
+          testID="profile-open-memory"
+        />
         <ToggleRow
           icon="bell"
           label="Push notifications"

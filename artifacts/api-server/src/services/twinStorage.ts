@@ -7,6 +7,7 @@ import {
   calibrationSessions,
   clientMemory,
   engagements,
+  seekers,
   sessions,
   messages,
   type InsertSafetyEvent,
@@ -243,6 +244,54 @@ export async function redactClientMemory(id: string, redactedBy: string): Promis
     .where(eq(clientMemory.id, id));
 }
 
+// Cascade: when a seeker redacts a message, soft-redact every L3 memory row
+// that was attributed to it. Returns the affected ids so the caller can
+// audit each one in safety_events.
+export async function redactClientMemoryBySourceMessage(
+  sourceMessageId: string,
+  redactedBy: string,
+): Promise<string[]> {
+  const rows = await db
+    .update(clientMemory)
+    .set({ redactedAt: new Date(), redactedBy })
+    .where(
+      and(
+        eq(clientMemory.sourceMessageId, sourceMessageId),
+        isNull(clientMemory.redactedAt),
+      ),
+    )
+    .returning({ id: clientMemory.id });
+  return rows.map((r) => r.id);
+}
+
+// Seeker-facing list: every non-redacted L3 entry across all engagements
+// the seeker owns. Used by the "Manage memory" page so seekers can see
+// (and forget) anything the twin remembers about them.
+export async function listClientMemoryForSeekerOwner(
+  ownerUserId: string,
+): Promise<ClientMemory[]> {
+  return db
+    .select({
+      id: clientMemory.id,
+      engagementId: clientMemory.engagementId,
+      sessionId: clientMemory.sessionId,
+      sourceMessageId: clientMemory.sourceMessageId,
+      kind: clientMemory.kind,
+      content: clientMemory.content,
+      tags: clientMemory.tags,
+      importance: clientMemory.importance,
+      embedding: clientMemory.embedding,
+      redactedAt: clientMemory.redactedAt,
+      redactedBy: clientMemory.redactedBy,
+      createdAt: clientMemory.createdAt,
+    })
+    .from(clientMemory)
+    .innerJoin(engagements, eq(engagements.id, clientMemory.engagementId))
+    .innerJoin(seekers, eq(seekers.id, engagements.seekerId))
+    .where(and(eq(seekers.ownerId, ownerUserId), isNull(clientMemory.redactedAt)))
+    .orderBy(desc(clientMemory.createdAt));
+}
+
 export async function topClientMemory(
   engagementId: string,
   query: string,
@@ -346,11 +395,16 @@ export async function listReviewQueueForProvider(
   const touchedSessIds = agentMsgs
     .map((m) => m.sessionId)
     .filter((s): s is string => !!s);
-  const allMsgs: Message[] = await db
+  const allMsgsRaw: Message[] = await db
     .select()
     .from(messages)
     .where(inArray(messages.sessionId, touchedSessIds))
     .orderBy(messages.createdAt);
+  // Scrub redacted seeker text so it can't surface in the review queue's
+  // scenario field or be re-embedded into persona examples on labeling.
+  const allMsgs: Message[] = allMsgsRaw.map((m) =>
+    m.redactedAt ? { ...m, content: "" } : m,
+  );
 
   const bySession = new Map<string, Message[]>();
   for (const m of allMsgs) {
@@ -505,11 +559,17 @@ export async function getReviewItemForMessage(
     .limit(1);
   if (!sess?.engagementId) return null;
 
-  const sessionMsgs = await db
+  const sessionMsgsRaw = await db
     .select()
     .from(messages)
     .where(eq(messages.sessionId, msg.sessionId))
     .orderBy(messages.createdAt);
+  // Same redaction scrub as the queue listing — keeps redacted seeker
+  // content out of the labeling scenario and out of any downstream
+  // persona example written when a coach labels this draft.
+  const sessionMsgs = sessionMsgsRaw.map((m) =>
+    m.redactedAt ? { ...m, content: "" } : m,
+  );
   const idx = sessionMsgs.findIndex((m) => m.id === msg.id);
   const prior = idx > 0
     ? sessionMsgs.slice(0, idx).reverse().find((m) => m.role === "seeker")

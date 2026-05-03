@@ -64,6 +64,8 @@ interface Message {
   content: string;
   createdAt?: string;
   created_at?: string;
+  redactedAt?: string | null;
+  redacted_at?: string | null;
 }
 
 interface ProviderConfig {
@@ -117,6 +119,33 @@ export default function ChatScreen() {
   const [input, setInput] = useState("");
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [confirmEndOpen, setConfirmEndOpen] = useState(false);
+  const [redactTarget, setRedactTarget] = useState<Message | null>(null);
+  const redactMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      await api(`/api/messages/${messageId}/redact`, { method: "POST" });
+      return messageId;
+    },
+    onSuccess: (messageId) => {
+      setRedactTarget(null);
+      // Optimistic patch; server already strips content + sets redactedAt.
+      const sid = session?.id;
+      if (sid) {
+        queryClient.setQueryData<Message[] | undefined>(
+          ["session-messages", sid],
+          (prev) =>
+            prev?.map((m) =>
+              m.id === messageId
+                ? { ...m, content: "", redactedAt: new Date().toISOString() }
+                : m,
+            ),
+        );
+        void queryClient.invalidateQueries({ queryKey: ["session-messages", sid] });
+      }
+    },
+    onError: () => {
+      setRedactTarget(null);
+    },
+  });
   const [activeSummary, setActiveSummary] = useState<SessionSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
@@ -812,6 +841,15 @@ export default function ChatScreen() {
           }
           renderItem={({ item }) => {
             const isSeeker = item.role === "seeker";
+            const redactedAt = item.redactedAt ?? item.redacted_at ?? null;
+            const isRedacted = !!redactedAt;
+            const redactedTime = redactedAt
+              ? new Date(redactedAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : null;
+            const canRedact = isSeeker && !isRedacted;
             return (
               <View
                 style={[
@@ -836,29 +874,53 @@ export default function ChatScreen() {
                     </Text>
                   </View>
                 ) : null}
-                <View
+                <Pressable
+                  onLongPress={
+                    canRedact
+                      ? () => {
+                          void Haptics.selectionAsync();
+                          setRedactTarget(item);
+                        }
+                      : undefined
+                  }
+                  delayLongPress={350}
                   style={[
                     styles.bubble,
                     {
-                      backgroundColor: isSeeker ? colors.primary : colors.card,
-                      borderColor: isSeeker ? "transparent" : colors.border,
+                      backgroundColor: isRedacted
+                        ? colors.muted
+                        : isSeeker
+                          ? colors.primary
+                          : colors.card,
+                      borderColor: isRedacted
+                        ? colors.border
+                        : isSeeker
+                          ? "transparent"
+                          : colors.border,
                       borderRadius: 18,
+                      borderStyle: isRedacted ? "dashed" : "solid",
                     },
                   ]}
+                  testID={`bubble-${item.role}-${item.id}`}
                 >
                   <Text
                     style={[
                       styles.bubbleText,
                       {
-                        color: isSeeker
-                          ? colors.primaryForeground
-                          : colors.foreground,
+                        color: isRedacted
+                          ? colors.mutedForeground
+                          : isSeeker
+                            ? colors.primaryForeground
+                            : colors.foreground,
+                        fontStyle: isRedacted ? "italic" : "normal",
                       },
                     ]}
                   >
-                    {item.content}
+                    {isRedacted
+                      ? `Message redacted${redactedTime ? ` at ${redactedTime}` : ""}`
+                      : item.content}
                   </Text>
-                </View>
+                </Pressable>
               </View>
             );
           }}
@@ -1078,6 +1140,86 @@ export default function ChatScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={!!redactTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRedactTarget(null)}
+      >
+        <Pressable
+          onPress={() => setRedactTarget(null)}
+          style={[styles.modalBackdrop, { backgroundColor: "rgba(20,16,12,0.55)" }]}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: 22,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.modalIcon,
+                { backgroundColor: colors.gradientHeroMid },
+              ]}
+            >
+              <Feather name="trash-2" size={22} color={colors.primary} />
+            </View>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              Forget this message?
+            </Text>
+            <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
+              Your coach will only see a "redacted" placeholder, and any memory the
+              twin formed from this message will be forgotten too. This can't be undone.
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setRedactTarget(null)}
+                style={({ pressed }) => [
+                  styles.modalBtnSecondary,
+                  { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>
+                  Keep it
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (redactTarget) redactMutation.mutate(redactTarget.id);
+                }}
+                disabled={redactMutation.isPending}
+                style={({ pressed }) => [
+                  styles.modalBtnPrimary,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed || redactMutation.isPending ? 0.8 : 1,
+                  },
+                ]}
+                testID="chat-confirm-redact"
+              >
+                {redactMutation.isPending ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text
+                    style={[
+                      styles.modalBtnText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    Forget
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={confirmEndOpen}

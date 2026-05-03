@@ -24,7 +24,7 @@ export const goalStatusEnum = pgEnum("goal_status", ["active", "completed", "pau
 export const goalProgressStatusEnum = pgEnum("goal_progress_status", ["pending", "confirmed"]);
 export const resourceTypeEnum = pgEnum("resource_type", ["link", "document", "exercise"]);
 export const onboardingChatStatusEnum = pgEnum("onboarding_chat_status", ["in_progress", "completed"]);
-export const safetyDecisionEnum = pgEnum("safety_decision", ["allow", "soften", "block_with_template", "escalate"]);
+export const safetyDecisionEnum = pgEnum("safety_decision", ["allow", "soften", "block_with_template", "escalate", "redact"]);
 export const safetySeverityEnum = pgEnum("safety_severity", ["info", "low", "medium", "high", "critical"]);
 export const calibrationStatusEnum = pgEnum("calibration_status", ["in_progress", "completed", "abandoned"]);
 export const reviewLabelEnum = pgEnum("review_label", ["this_is_me", "not_me", "never_say_this", "needs_edit"]);
@@ -126,6 +126,11 @@ export const messages = pgTable("messages", {
   role: msgRoleEnum("role").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  // Seeker-initiated "Forget this". When set, content is preserved at-rest
+  // but the API zeroes it out before returning to either side; coaches see a
+  // placeholder so transcript gaps are visible without leaking the original.
+  redactedAt: timestamp("redacted_at"),
+  redactedBy: uuid("redacted_by").references(() => users.id),
 });
 
 export const summaries = pgTable("summaries", {
@@ -470,6 +475,11 @@ export const clientMemory = pgTable("client_memory", {
   id: uuid("id").primaryKey().defaultRandom(),
   engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
   sessionId: uuid("session_id").references(() => sessions.id),
+  // Best-effort attribution: the seeker message that most directly produced
+  // this memory (today, the latest seeker turn in the reflected batch).
+  // Used to cascade redactions: forgetting a message also forgets the L3
+  // entries derived from it.
+  sourceMessageId: uuid("source_message_id").references(() => messages.id),
   kind: text("kind").notNull(), // "preference" | "boundary" | "fact" | "trigger" | "goal_progress" | "rapport"
   content: text("content").notNull(),
   tags: jsonb("tags").default([]),
@@ -711,7 +721,7 @@ export const insertProviderConfigSchema = createInsertSchema(providerConfigs).om
 export const insertProviderAgentConfigSchema = createInsertSchema(providerAgentConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEngagementSchema = createInsertSchema(engagements).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSessionSchema = createInsertSchema(sessions).omit({ id: true, startedAt: true, endedAt: true });
-export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
+export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true, redactedAt: true, redactedBy: true });
 export const insertSummarySchema = createInsertSchema(summaries).omit({ id: true, createdAt: true });
 export const insertProgressIndicatorSchema = createInsertSchema(progressIndicators).omit({ id: true, createdAt: true });
 export const insertClientNoteSchema = createInsertSchema(clientNotes).omit({ id: true, createdAt: true, updatedAt: true });

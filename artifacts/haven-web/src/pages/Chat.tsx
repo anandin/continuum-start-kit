@@ -41,6 +41,7 @@ interface Message {
   content: string;
   createdAt: string;
   created_at?: string;
+  redactedAt?: string | null;
 }
 
 export default function Chat() {
@@ -56,6 +57,8 @@ export default function Chat() {
   const [inputMessage, setInputMessage] = useState('');
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [isProviderViewing, setIsProviderViewing] = useState(false);
+  const [redactTarget, setRedactTarget] = useState<Message | null>(null);
+  const [redacting, setRedacting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -305,33 +308,62 @@ export default function Chat() {
             </div>
           ) : (
             <>
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-3 ${message.role === 'seeker' ? 'flex-row-reverse' : 'flex-row'}`}
-                  data-testid={`message-${message.role}-${message.id}`}
-                >
-                  {message.role !== 'seeker' && (
-                    <Avatar className="h-8 w-8 border border-border flex-shrink-0">
-                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
-                        {providerConfig?.title?.charAt(0) || 'C'}
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
+              {messages.map((message) => {
+                const isOwnSeekerMsg =
+                  message.role === 'seeker' && !isProviderViewing && !message.redactedAt;
+                const redactedTime = message.redactedAt
+                  ? new Date(message.redactedAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : null;
+                return (
                   <div
-                    className={`max-w-[78%] rounded-2xl px-4 py-3 ${
-                      message.role === 'seeker'
-                        ? 'bg-primary text-primary-foreground shadow-warm'
-                        : 'bg-card text-card-foreground border border-border shadow-warm'
-                    }`}
+                    key={message.id}
+                    className={`flex gap-3 ${message.role === 'seeker' ? 'flex-row-reverse' : 'flex-row'}`}
+                    data-testid={`message-${message.role}-${message.id}`}
+                    onContextMenu={
+                      isOwnSeekerMsg
+                        ? (e) => {
+                            e.preventDefault();
+                            setRedactTarget(message);
+                          }
+                        : undefined
+                    }
                   >
-                    <p className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
-                    <p className={`text-xs mt-2 ${message.role === 'seeker' ? 'opacity-70' : 'text-muted-foreground'}`}>
-                      {getMessageTime(message)}
-                    </p>
+                    {message.role !== 'seeker' && (
+                      <Avatar className="h-8 w-8 border border-border flex-shrink-0">
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                          {providerConfig?.title?.charAt(0) || 'C'}
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
+                    <div
+                      className={`max-w-[78%] rounded-2xl px-4 py-3 ${
+                        message.redactedAt
+                          ? 'bg-muted text-muted-foreground border border-dashed border-border italic'
+                          : message.role === 'seeker'
+                            ? 'bg-primary text-primary-foreground shadow-warm'
+                            : 'bg-card text-card-foreground border border-border shadow-warm'
+                      }`}
+                    >
+                      {message.redactedAt ? (
+                        <p className="text-sm" data-testid={`message-redacted-${message.id}`}>
+                          Message redacted{redactedTime ? ` at ${redactedTime}` : ''}
+                        </p>
+                      ) : (
+                        <>
+                          <p className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
+                          <p className={`text-xs mt-2 ${message.role === 'seeker' ? 'opacity-70' : 'text-muted-foreground'}`}>
+                            {getMessageTime(message)}
+                            {isOwnSeekerMsg ? ' · right-click to forget' : ''}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {sending && (
                 <div className="flex gap-3" data-testid="typing-indicator">
@@ -399,6 +431,47 @@ export default function Chat() {
           ) : null}
         </form>
       </div>
+
+      <AlertDialog open={!!redactTarget} onOpenChange={(open) => !open && setRedactTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Forget this message?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your coach will only see a "redacted" placeholder, and any memory the twin
+              formed from this message will be forgotten too. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-redact">Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!redactTarget) return;
+                setRedacting(true);
+                try {
+                  await apiRequest('POST', `/api/messages/${redactTarget.id}/redact`);
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === redactTarget.id
+                        ? { ...m, content: '', redactedAt: new Date().toISOString() }
+                        : m,
+                    ),
+                  );
+                  toast.success('Message forgotten');
+                } catch (err: any) {
+                  toast.error(err?.message || 'Could not redact message');
+                } finally {
+                  setRedacting(false);
+                  setRedactTarget(null);
+                }
+              }}
+              disabled={redacting}
+              data-testid="button-confirm-redact"
+            >
+              {redacting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Forget'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showEndDialog} onOpenChange={setShowEndDialog}>
         <AlertDialogContent>

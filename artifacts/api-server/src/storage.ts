@@ -85,6 +85,8 @@ export interface IStorage {
   
   createMessage(data: InsertMessage): Promise<Message>;
   getMessagesBySessionId(sessionId: string): Promise<Message[]>;
+  getMessageById(id: string): Promise<Message | undefined>;
+  redactMessage(id: string, redactedBy: string): Promise<Message | undefined>;
   
   createSummary(data: InsertSummary): Promise<Summary>;
   getSummaryBySessionId(sessionId: string): Promise<Summary | undefined>;
@@ -338,9 +340,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMessagesBySessionId(sessionId: string): Promise<Message[]> {
-    return db.select().from(messages)
+    const rows = await db.select().from(messages)
       .where(eq(messages.sessionId, sessionId))
       .orderBy(asc(messages.createdAt));
+    // Centralized redaction scrub: every caller (transcript endpoint, twin
+    // chat context assembly, session-finish summarizer, etc.) sees an empty
+    // body for redacted messages while still being able to render a
+    // "redacted at HH:MM" placeholder via the redactedAt timestamp.
+    // Anything that genuinely needs the raw row (e.g. the redact handler
+    // itself) must use getMessageById.
+    return rows.map((r) => (r.redactedAt ? { ...r, content: "" } : r));
+  }
+
+  async getMessageById(id: string): Promise<Message | undefined> {
+    const [row] = await db.select().from(messages).where(eq(messages.id, id));
+    return row;
+  }
+
+  async redactMessage(id: string, redactedBy: string): Promise<Message | undefined> {
+    const [row] = await db
+      .update(messages)
+      .set({ redactedAt: new Date(), redactedBy })
+      .where(eq(messages.id, id))
+      .returning();
+    return row;
   }
 
   async createSummary(data: InsertSummary): Promise<Summary> {

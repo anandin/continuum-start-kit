@@ -44,6 +44,8 @@ import {
   deactivatePersonaExample,
   getPersonaExampleById,
   getClientMemoryById,
+  listClientMemoryForSeekerOwner,
+  redactClientMemoryBySourceMessage,
   createCalibrationSession,
   getCalibrationSession,
   listCalibrationSessionsByProvider,
@@ -328,12 +330,122 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/sessions/:id/messages", requireAuth, async (req, res) => {
+  app.get("/api/sessions/:id/messages", requireAuth, async (req, res): Promise<void> => {
     try {
-      const m = await assertSessionMember(req, req.params.id);
-      if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
-      const messages = await storage.getMessagesBySessionId(req.params.id);
-      res.json(messages);
+      const sessionId = String(req.params.id);
+      const m = await assertSessionMember(req, sessionId);
+      if (!m.ok) {
+        res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
+        return;
+      }
+      // Storage layer already strips content for redacted rows; clients get
+      // redactedAt + empty content and render an italic placeholder.
+      const rows = await storage.getMessagesBySessionId(sessionId);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Seeker-only "Forget this": soft-redact a message and cascade to any L3
+  // memory entries that were attributed to it. Audited via safety_events.
+  app.post("/api/messages/:id/redact", requireAuth, async (req, res): Promise<void> => {
+    try {
+      const messageId = String(req.params.id);
+      const msg = await storage.getMessageById(messageId);
+      if (!msg) { res.status(404).json({ error: "Message not found" }); return; }
+      if (msg.role !== "seeker") {
+        res.status(403).json({ error: "Only seeker messages can be redacted" });
+        return;
+      }
+      if (!msg.sessionId) { res.status(400).json({ error: "Message has no session" }); return; }
+      const m = await assertSessionMember(req, msg.sessionId);
+      if (!m.ok) { res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error }); return; }
+      // The session-member check passes for both provider and seeker; this
+      // endpoint must be seeker-only, so verify ownership explicitly.
+      let seekerUserId: string | null = null;
+      if (m.engagement.seekerId) {
+        const seeker = await storage.getSeekerById(m.engagement.seekerId);
+        seekerUserId = seeker?.ownerId ?? null;
+      }
+      if (seekerUserId !== req.user!.id) {
+        res.status(403).json({ error: "Only the seeker may redact their own messages" });
+        return;
+      }
+      if (msg.redactedAt) { res.json({ ok: true, alreadyRedacted: true }); return; }
+
+      const updated = await storage.redactMessage(messageId, req.user!.id);
+      const cascadedIds = await redactClientMemoryBySourceMessage(messageId, req.user!.id);
+
+      await logSafetyEvent({
+        providerId: m.engagement.providerId,
+        engagementId: m.engagement.id,
+        sessionId: msg.sessionId,
+        userId: req.user!.id,
+        stage: "redaction",
+        decision: "redact",
+        severity: "info",
+        reason: `Seeker redacted message ${msg.id}; cascaded ${cascadedIds.length} memory entries`,
+      });
+      for (const memId of cascadedIds) {
+        await logSafetyEvent({
+          providerId: m.engagement.providerId,
+          engagementId: m.engagement.id,
+          sessionId: msg.sessionId,
+          userId: req.user!.id,
+          stage: "redaction",
+          decision: "redact",
+          severity: "info",
+          reason: `Cascade-redacted client_memory ${memId} from message ${msg.id}`,
+        });
+      }
+      req.log.info(
+        { messageId: msg.id, cascadedMemoryCount: cascadedIds.length },
+        "seeker redacted message",
+      );
+      res.json({ ok: true, message: updated, cascadedMemoryIds: cascadedIds });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Seeker memory inspector — every L3 entry the twin holds about the
+  // requesting seeker, across all engagements they own.
+  app.get("/api/seeker/memory", requireAuth, async (req, res) => {
+    try {
+      const rows = await listClientMemoryForSeekerOwner(req.user!.id);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/seeker/memory/:id/redact", requireAuth, async (req, res): Promise<void> => {
+    try {
+      const memId = String(req.params.id);
+      const mem = await getClientMemoryById(memId);
+      if (!mem) { res.status(404).json({ error: "Memory not found" }); return; }
+      const engagement = await storage.getEngagementById(mem.engagementId);
+      if (!engagement?.seekerId) { res.status(403).json({ error: "Forbidden" }); return; }
+      const seeker = await storage.getSeekerById(engagement.seekerId);
+      if (seeker?.ownerId !== req.user!.id) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (mem.redactedAt) { res.json({ ok: true, alreadyRedacted: true }); return; }
+      await redactClientMemory(memId, req.user!.id);
+      await logSafetyEvent({
+        providerId: engagement.providerId,
+        engagementId: engagement.id,
+        sessionId: mem.sessionId,
+        userId: req.user!.id,
+        stage: "redaction",
+        decision: "redact",
+        severity: "info",
+        reason: `Seeker forgot memory entry ${mem.id}`,
+      });
+      req.log.info({ memoryId: mem.id }, "seeker redacted memory entry");
+      res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

@@ -46,6 +46,12 @@ export async function reflectAndWrite(opts: {
 }): Promise<ClientMemory[]> {
   if (opts.messages.length < 2) return [];
 
+  // Best-effort attribution for cascade-on-redact: tie the batch's memory
+  // entries to the latest seeker turn in the transcript so "Forget this"
+  // on that message also forgets the memory it most likely produced.
+  const lastSeekerMessageId =
+    [...opts.messages].reverse().find((m) => m.role === "seeker")?.id ?? null;
+
   const transcript = opts.messages
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n")
@@ -97,6 +103,7 @@ export async function reflectAndWrite(opts: {
         {
           engagementId: opts.engagementId,
           sessionId: opts.sessionId,
+          sourceMessageId: lastSeekerMessageId,
           kind: trimmed.kind,
           content: trimmed.content,
           tags: trimmed.tags,
