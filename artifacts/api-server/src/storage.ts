@@ -2,14 +2,14 @@ import { db } from "./db";
 import { eq, and, or, desc, asc, sql, isNull, lt, gte, inArray } from "drizzle-orm";
 import {
   users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs,
-  engagements, sessions, messages, messageAttachments, summaries, progressIndicators,
+  engagements, sessions, messages, messageAttachments, attachmentGrants, summaries, progressIndicators,
   clientNotes, goals, goalProgress, intakeForms, intakeResponses, resources, resourceAssignments, alerts, providerOnboardingChats,
   moodEntries, journalPrompts, journalEntries,
   safetyEvents, coachInboxDismissals,
   pushTokens,
   InsertUser, InsertProfile, InsertUserRole, InsertSeeker, InsertProviderConfig,
   InsertProviderAgentConfig, InsertEngagement, InsertSession, InsertMessage,
-  InsertMessageAttachment, MessageAttachment,
+  InsertMessageAttachment, MessageAttachment, AttachmentGrant,
   InsertSummary, InsertProgressIndicator,
   InsertClientNote, InsertGoal, InsertGoalProgress, InsertIntakeForm, InsertIntakeResponse,
   InsertResource, InsertResourceAssignment, InsertAlert, InsertProviderOnboardingChat,
@@ -91,6 +91,8 @@ export interface IStorage {
   createMessageAttachments(messageId: string, items: Array<Omit<InsertMessageAttachment, "messageId">>): Promise<MessageAttachment[]>;
   getAttachmentById(id: string): Promise<MessageAttachment | undefined>;
   updateAttachmentTranscript(id: string, transcript: string): Promise<void>;
+  createAttachmentGrant(data: { objectPath: string; userId: string; sessionId: string; kind: "image" | "audio"; mime: string; ttlSec: number }): Promise<AttachmentGrant>;
+  consumeAttachmentGrant(args: { objectPath: string; userId: string; sessionId: string; kind: "image" | "audio"; mime: string; messageId: string }): Promise<AttachmentGrant | null>;
   
   createSummary(data: InsertSummary): Promise<Summary>;
   getSummaryBySessionId(sessionId: string): Promise<Summary | undefined>;
@@ -392,6 +394,73 @@ export class DatabaseStorage implements IStorage {
     await db.update(messageAttachments).set({ transcript }).where(eq(messageAttachments.id, id));
   }
 
+  async createAttachmentGrant({
+    objectPath,
+    userId,
+    sessionId,
+    kind,
+    mime,
+    ttlSec,
+  }: {
+    objectPath: string;
+    userId: string;
+    sessionId: string;
+    kind: "image" | "audio";
+    mime: string;
+    ttlSec: number;
+  }): Promise<AttachmentGrant> {
+    const [row] = await db
+      .insert(attachmentGrants)
+      .values({
+        objectPath,
+        userId,
+        sessionId,
+        kind,
+        mime,
+        expiresAt: new Date(Date.now() + ttlSec * 1000),
+      })
+      .returning();
+    return row;
+  }
+
+  // Atomically validate + consume an upload grant. Returns the grant row
+  // on success, null on any binding mismatch (objectPath unknown, wrong
+  // user/session/kind/mime, expired, or already consumed). The UPDATE...
+  // WHERE consumedAt IS NULL clause makes this race-safe — a concurrent
+  // consume on the same objectPath will return zero rows on the loser.
+  async consumeAttachmentGrant({
+    objectPath,
+    userId,
+    sessionId,
+    kind,
+    mime,
+    messageId,
+  }: {
+    objectPath: string;
+    userId: string;
+    sessionId: string;
+    kind: "image" | "audio";
+    mime: string;
+    messageId: string;
+  }): Promise<AttachmentGrant | null> {
+    const [row] = await db
+      .update(attachmentGrants)
+      .set({ consumedAt: new Date(), messageId })
+      .where(
+        and(
+          eq(attachmentGrants.objectPath, objectPath),
+          eq(attachmentGrants.userId, userId),
+          eq(attachmentGrants.sessionId, sessionId),
+          eq(attachmentGrants.kind, kind),
+          eq(attachmentGrants.mime, mime),
+          isNull(attachmentGrants.consumedAt),
+          gte(attachmentGrants.expiresAt, new Date()),
+        ),
+      )
+      .returning();
+    return row ?? null;
+  }
+
   async getMessageById(id: string): Promise<Message | undefined> {
     const [row] = await db.select().from(messages).where(eq(messages.id, id));
     return row;
@@ -401,30 +470,11 @@ export class DatabaseStorage implements IStorage {
     // Hard-overwrite the message body in place so the original text is gone
     // from the database, not just hidden by an API filter. The redactedAt
     // tombstone keeps the row so coaches still see a placeholder.
-    //
-    // Attachments piggy-back on the same forget operation: we delete every
-    // blob from object storage (best-effort) AND drop the attachment rows
-    // so any signed URL the client still has in flight stops working at
-    // the storage layer, not just at our API. Without this, a download
-    // URL minted seconds before the redact would keep working until its
-    // 1h TTL expired.
-    const atts = await db
-      .select()
-      .from(messageAttachments)
-      .where(eq(messageAttachments.messageId, id));
-    if (atts.length > 0) {
-      // Lazy import to avoid a top-level cycle (storage <-> objectStorage).
-      const { ObjectStorageService } = await import("./lib/objectStorage");
-      const svc = new ObjectStorageService();
-      await Promise.all(
-        atts.map((a) =>
-          svc.deleteObjectEntity(a.storageKey).catch(() => {
-            /* best-effort: row deletion below still proceeds */
-          }),
-        ),
-      );
-      await db.delete(messageAttachments).where(eq(messageAttachments.messageId, id));
-    }
+    // NOTE: the production redaction path is /api/messages/:id/redact in
+    // routes.ts which also drops attachment rows + purges GCS blobs in
+    // the same transaction. This standalone method is kept for IStorage
+    // compatibility but should not be called directly for seeker
+    // "Forget this" flows.
     const [row] = await db
       .update(messages)
       .set({ content: "", redactedAt: new Date(), redactedBy })

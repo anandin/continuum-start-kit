@@ -157,6 +157,27 @@ export const messageAttachments = pgTable("message_attachments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Upload grants for attachment blobs. Created at /api/attachments/upload-url
+// time and consumed when /api/chat finalizes the message. The grant binds
+// the GCS object key to the issuing seeker, the target session, the kind
+// (image|audio), and the declared mime so a leaked or guessed objectPath
+// can never be re-attached to a different session/user, and so the API
+// server only signs GET URLs for blobs it actually issued. Once consumed
+// (consumedAt set + messageId linked) the grant is dead — replay attempts
+// fail. Stale unconsumed grants past expiresAt are also rejected.
+export const attachmentGrants = pgTable("attachment_grants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  objectPath: text("object_path").notNull().unique(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  sessionId: uuid("session_id").references(() => sessions.id).notNull(),
+  kind: attachmentKindEnum("kind").notNull(),
+  mime: text("mime").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+  messageId: uuid("message_id").references(() => messages.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const summaries = pgTable("summaries", {
   id: uuid("id").primaryKey().defaultRandom(),
   sessionId: uuid("session_id").references(() => sessions.id),
@@ -860,6 +881,7 @@ export type Message = typeof messages.$inferSelect;
 export const insertMessageAttachmentSchema = createInsertSchema(messageAttachments).omit({ id: true, createdAt: true });
 export type InsertMessageAttachment = z.infer<typeof insertMessageAttachmentSchema>;
 export type MessageAttachment = typeof messageAttachments.$inferSelect;
+export type AttachmentGrant = typeof attachmentGrants.$inferSelect;
 export type Summary = typeof summaries.$inferSelect;
 export type ProgressIndicator = typeof progressIndicators.$inferSelect;
 export type ClientNote = typeof clientNotes.$inferSelect;

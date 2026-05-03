@@ -4,6 +4,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import {
   messages as messagesTable,
+  messageAttachments as messageAttachmentsTable,
   clientMemory as clientMemoryTable,
   redactions as redactionsTable,
   safetyEvents as safetyEventsTable,
@@ -23,7 +24,7 @@ function internalAuditSnippet(text: string | undefined | null, label: string): s
   return `[redacted:${label}] len=${text.length} sha256=${hash}`;
 }
 import { z } from "zod/v4";
-import type { Engagement, Goal, Session as DbSession } from "@workspace/db";
+import type { Engagement, Goal, Session as DbSession, InsertMessageAttachment } from "@workspace/db";
 import { runTwinTurn } from "../services/twinChat";
 import { reflectAndWrite } from "../services/memory";
 import { generateAndSaveBriefForEngagement } from "../services/sessionBriefs";
@@ -394,7 +395,25 @@ export function registerRoutes(app: Express) {
       const sessionId = msg.sessionId;
       const engagementId = m.engagement.id;
       const providerId = m.engagement.providerId;
+      // Snapshot attachment storage keys BEFORE the transaction so we can
+      // physically delete the GCS blobs after the DB commits. We do the
+      // blob deletion outside the SQL transaction (it's a network call to
+      // GCS, can't be rolled back) but only after the row deletes
+      // succeed, so a failed delete leaves nothing dangling in the DB.
+      const attachmentRows = await db
+        .select()
+        .from(messageAttachmentsTable)
+        .where(eq(messageAttachmentsTable.messageId, messageId));
+
       const { updated, cascadedIds } = await db.transaction(async (tx) => {
+        // Drop attachment rows in the same atomic write as the content
+        // overwrite so a coach reload mid-redact never sees an orphaned
+        // attachment pointer.
+        if (attachmentRows.length > 0) {
+          await tx
+            .delete(messageAttachmentsTable)
+            .where(eq(messageAttachmentsTable.messageId, messageId));
+        }
         const [updatedRow] = await tx
           .update(messagesTable)
           .set({ content: "", redactedAt: new Date(), redactedBy: userId })
@@ -482,8 +501,26 @@ export function registerRoutes(app: Express) {
         return { updated: updatedRow, cascadedIds: cIds };
       });
 
+      // Best-effort blob purge. If GCS is briefly unavailable the rows
+      // are already gone and any signed URL minted before the redact has
+      // its 1h TTL — but the next time we sweep the bucket these orphans
+      // will be obvious. We log instead of throwing because a 500 here
+      // would mislead the seeker into thinking the redact didn't apply.
+      if (attachmentRows.length > 0) {
+        await Promise.all(
+          attachmentRows.map((a) =>
+            objectStorageService.deleteObjectEntity(a.storageKey).catch((err) => {
+              req.log.warn(
+                { err, messageId, storageKey: a.storageKey },
+                "redact: blob delete failed (db rows already removed)",
+              );
+            }),
+          ),
+        );
+      }
+
       req.log.info(
-        { messageId, cascadedMemoryCount: cascadedIds.length },
+        { messageId, cascadedMemoryCount: cascadedIds.length, attachmentBlobsDeleted: attachmentRows.length },
         "seeker redacted message",
       );
       res.json({ ok: true, message: updated, cascadedMemoryIds: cascadedIds });
@@ -656,17 +693,45 @@ export function registerRoutes(app: Express) {
       const seekerMsg = await storage.createMessage({ sessionId, role: "seeker", content: composedMessage });
       // Link the uploaded blobs. Audio rows include the transcript we
       // produced above; photo rows just carry the storage key + mime.
+      // Every attachment must consume a matching upload grant — otherwise
+      // a client could pass an arbitrary /objects/<id> path (leaked, guessed,
+      // or stolen from another session) and the API would happily mint
+      // signed GETs for it later. Failures abort the whole batch and the
+      // seeker message stays text-only so we don't leave half-attached state.
       if (attachmentInput.length > 0) {
-        const items = attachmentInput.map((a, i) => ({
-          kind: a.kind,
-          storageKey: a.objectPath,
-          mime: a.mime,
-          sizeBytes: a.sizeBytes ?? null,
-          durationS: a.kind === "audio" ? (a.durationS ?? null) : null,
-          transcript: a.kind === "audio"
-            ? (transcripts.find((t) => t.idx === i)?.text ?? "")
-            : null,
-        }));
+        const consumedGrants: Array<{ objectPath: string; idx: number }> = [];
+        const items: Array<Omit<InsertMessageAttachment, "messageId">> = [];
+        let rejected: { objectPath: string; reason: string } | null = null;
+        for (let i = 0; i < attachmentInput.length; i++) {
+          const a = attachmentInput[i];
+          const grant = await storage.consumeAttachmentGrant({
+            objectPath: a.objectPath,
+            userId: req.user!.id,
+            sessionId,
+            kind: a.kind,
+            mime: a.mime,
+            messageId: seekerMsg.id,
+          });
+          if (!grant) {
+            rejected = { objectPath: a.objectPath, reason: "no matching upload grant" };
+            break;
+          }
+          consumedGrants.push({ objectPath: a.objectPath, idx: i });
+          items.push({
+            kind: a.kind,
+            storageKey: a.objectPath,
+            mime: a.mime,
+            sizeBytes: a.sizeBytes ?? null,
+            durationS: a.kind === "audio" ? (a.durationS ?? null) : null,
+            transcript: a.kind === "audio"
+              ? (transcripts.find((t) => t.idx === i)?.text ?? "")
+              : null,
+          });
+        }
+        if (rejected) {
+          req.log.warn({ sessionId, rejected }, "rejected attachment without valid upload grant");
+          return res.status(403).json({ error: "Attachment grant invalid or already consumed" });
+        }
         await storage.createMessageAttachments(seekerMsg.id, items);
       }
       const recentMessages = await storage.getMessagesBySessionId(sessionId);
@@ -769,6 +834,19 @@ export function registerRoutes(app: Express) {
 
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+      // Persist a binding so the next /api/chat call must present a
+      // matching (objectPath, user, session, kind, mime). Without this
+      // record the API server has no way to verify that a client-supplied
+      // /objects/<id> path actually came from a grant we issued.
+      // 15 minutes matches the signed PUT URL TTL.
+      await storage.createAttachmentGrant({
+        objectPath,
+        userId: req.user!.id,
+        sessionId: body.data.sessionId,
+        kind: body.data.kind,
+        mime: body.data.mime,
+        ttlSec: 900,
+      });
       res.json({ uploadURL, objectPath });
     } catch (error: any) {
       req.log.error({ err: error }, "attachments/upload-url failed");
