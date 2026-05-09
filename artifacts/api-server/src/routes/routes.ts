@@ -93,7 +93,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated() || !req.user) {
     return res.status(401).json({ error: "Authentication required" });
   }
-  next();
+  return next();
 }
 
 async function requireProvider(req: Request, res: Response, next: NextFunction) {
@@ -105,9 +105,9 @@ async function requireProvider(req: Request, res: Response, next: NextFunction) 
     if (role?.role !== "provider") {
       return res.status(403).json({ error: "Provider access required" });
     }
-    next();
+    return next();
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   }
 }
 
@@ -157,9 +157,9 @@ export function registerRoutes(app: Express) {
         await storage.createSeeker({ ownerId: userId });
       }
 
-      res.json({ role: userRole.role });
+      return res.json({ role: userRole.role });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -206,9 +206,9 @@ export function registerRoutes(app: Express) {
         taggingRules,
         trajectoryRules,
       });
-      res.json(config);
+      return res.json(config);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -248,9 +248,9 @@ export function registerRoutes(app: Express) {
         reason: "agent_config_created",
         createdBy: userId,
       });
-      res.json(config);
+      return res.json(config);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -271,7 +271,7 @@ export function registerRoutes(app: Express) {
         return res.json(engagements);
       }
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -289,30 +289,30 @@ export function registerRoutes(app: Express) {
         seekerId: seeker.id,
         providerId,
       });
-      res.json(engagement);
+      return res.json(engagement);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
   app.get("/api/engagements/:id", requireAuth, async (req, res) => {
     try {
-      const m = await assertEngagementMember(req, req.params.id);
+      const m = await assertEngagementMember(req, req.params.id as string);
       if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
-      res.json(m.engagement);
+      return res.json(m.engagement);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
   app.get("/api/engagements/:id/sessions", requireAuth, async (req, res) => {
     try {
-      const m = await assertEngagementMember(req, req.params.id);
+      const m = await assertEngagementMember(req, req.params.id as string);
       if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
-      const sessions = await storage.getSessionsByEngagementId(req.params.id);
-      res.json(sessions);
+      const sessions = await storage.getSessionsByEngagementId(req.params.id as string);
+      return res.json(sessions);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -327,25 +327,25 @@ export function registerRoutes(app: Express) {
         initialStage,
         status: "active",
       });
-      res.json(session);
+      return res.json(session);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
   app.get("/api/sessions/:id", requireAuth, async (req, res) => {
     try {
-      const m = await assertSessionMember(req, req.params.id);
+      const m = await assertSessionMember(req, req.params.id as string);
       if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
-      res.json(m.session);
+      return res.json(m.session);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
   app.get("/api/sessions/:id/messages", requireAuth, async (req, res): Promise<void> => {
     try {
-      const sessionId = String(req.params.id);
+      const sessionId = String(req.params.id as string);
       const m = await assertSessionMember(req, sessionId);
       if (!m.ok) {
         res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
@@ -364,7 +364,7 @@ export function registerRoutes(app: Express) {
   // memory entries that were attributed to it. Audited via safety_events.
   app.post("/api/messages/:id/redact", requireAuth, async (req, res): Promise<void> => {
     try {
-      const messageId = String(req.params.id);
+      const messageId = String(req.params.id as string);
       const msg = await storage.getMessageById(messageId);
       if (!msg) { res.status(404).json({ error: "Message not found" }); return; }
       if (msg.role !== "seeker") {
@@ -543,7 +543,7 @@ export function registerRoutes(app: Express) {
 
   app.post("/api/seeker/memory/:id/redact", requireAuth, async (req, res): Promise<void> => {
     try {
-      const memId = String(req.params.id);
+      const memId = String(req.params.id as string);
       const mem = await getClientMemoryById(memId);
       if (!mem) { res.status(404).json({ error: "Memory not found" }); return; }
       const engagement = await storage.getEngagementById(mem.engagementId);
@@ -887,7 +887,7 @@ export function registerRoutes(app: Express) {
         } catch {}
       }
 
-      res.json({
+      return res.json({
         message: agentMessage,
         safety: {
           decision: result.decision,
@@ -896,7 +896,7 @@ export function registerRoutes(app: Express) {
         },
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -948,10 +948,10 @@ export function registerRoutes(app: Express) {
         mime: body.data.mime,
         ttlSec: 900,
       });
-      res.json({ uploadURL, objectPath });
+      return res.json({ uploadURL, objectPath });
     } catch (error: any) {
       req.log.error({ err: error }, "attachments/upload-url failed");
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -961,7 +961,7 @@ export function registerRoutes(app: Express) {
   // from GCS so we don't proxy bytes through the API server.
   app.get("/api/attachments/:id/url", requireAuth, async (req, res) => {
     try {
-      const att = await storage.getAttachmentById(req.params.id);
+      const att = await storage.getAttachmentById(req.params.id as string);
       if (!att) return res.status(404).json({ error: "Not found" });
       const parent = await storage.getMessageById(att.messageId);
       if (!parent?.sessionId) return res.status(404).json({ error: "Not found" });
@@ -972,13 +972,13 @@ export function registerRoutes(app: Express) {
       if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
 
       const url = await objectStorageService.getObjectEntityDownloadURL(att.storageKey, 3600);
-      res.json({ url, mime: att.mime, kind: att.kind });
+      return res.json({ url, mime: att.mime, kind: att.kind });
     } catch (error: any) {
       if (error instanceof ObjectNotFoundError) {
         return res.status(404).json({ error: "Object not found" });
       }
       req.log.error({ err: error }, "attachments/:id/url failed");
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1014,9 +1014,9 @@ export function registerRoutes(app: Express) {
           .status(422)
           .json({ error: "We couldn't understand that recording. Try again." });
       }
-      res.json({ text });
+      return res.json({ text });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1076,15 +1076,15 @@ export function registerRoutes(app: Express) {
       if (!result) {
         return res.status(502).json({ error: "Couldn't generate audio right now." });
       }
-      res.json(result);
+      return res.json(result);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
   app.post("/api/sessions/:id/finish", requireAuth, async (req, res) => {
     try {
-      const sessionId = req.params.id;
+      const sessionId = req.params.id as string;
       const auth = await assertSessionMember(req, sessionId);
       if (!auth.ok) return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
       const session = auth.session;
@@ -1214,20 +1214,20 @@ Only return JSON. No extra text.`;
         } catch {}
       }
 
-      res.json({ success: true, summary });
+      return res.json({ success: true, summary });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
   app.get("/api/sessions/:id/summary", requireAuth, async (req, res) => {
     try {
-      const auth = await assertSessionMember(req, req.params.id);
+      const auth = await assertSessionMember(req, req.params.id as string);
       if (!auth.ok) return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
-      const summary = await storage.getSummaryBySessionId(req.params.id);
-      res.json(summary || null);
+      const summary = await storage.getSummaryBySessionId(req.params.id as string);
+      return res.json(summary || null);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1299,23 +1299,23 @@ If ambiguous, choose the earliest relevant stage.`;
       try {
         const cleanContent = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
         const result = JSON.parse(cleanContent);
-        res.json(result);
+        return res.json(result);
       } catch {
-        res.json({ initial_stage: stages[0]?.name || "Initial", rationale: "Default assignment" });
+        return res.json({ initial_stage: stages[0]?.name || "Initial", rationale: "Default assignment" });
       }
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
   app.get("/api/engagements/:id/indicators", requireAuth, async (req, res) => {
     try {
-      const auth = await assertEngagementMember(req, req.params.id);
+      const auth = await assertEngagementMember(req, req.params.id as string);
       if (!auth.ok) return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
-      const indicators = await storage.getProgressIndicatorsByEngagementId(req.params.id);
-      res.json(indicators);
+      const indicators = await storage.getProgressIndicatorsByEngagementId(req.params.id as string);
+      return res.json(indicators);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1369,48 +1369,48 @@ If ambiguous, choose the earliest relevant stage.`;
   // ============================================================
   app.get("/api/engagements/:id/notes", requireAuth, async (req, res) => {
     try {
-      const check = await assertProviderOwnsEngagement(req, req.params.id);
+      const check = await assertProviderOwnsEngagement(req, req.params.id as string);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
-      const notes = await storage.getClientNotesByEngagementId(req.params.id);
-      res.json(notes);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      const notes = await storage.getClientNotesByEngagementId(req.params.id as string);
+      return res.json(notes);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/engagements/:id/notes", requireAuth, async (req, res) => {
     try {
-      const check = await assertProviderOwnsEngagement(req, req.params.id);
+      const check = await assertProviderOwnsEngagement(req, req.params.id as string);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       const { content, sessionId } = req.body;
       if (!content) return res.status(400).json({ error: "content required" });
       const note = await storage.createClientNote({
-        engagementId: req.params.id,
+        engagementId: req.params.id as string,
         providerId: req.user!.id,
         sessionId: sessionId || null,
         content,
         isPrivate: true,
       });
-      res.json(note);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(note);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.put("/api/notes/:id", requireAuth, async (req, res) => {
     try {
-      const note = await storage.getClientNoteById(req.params.id);
+      const note = await storage.getClientNoteById(req.params.id as string);
       if (!note) return res.status(404).json({ error: "Note not found" });
       if (note.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      const updated = await storage.updateClientNote(req.params.id, { content: req.body.content });
-      res.json(updated);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      const updated = await storage.updateClientNote(req.params.id as string, { content: req.body.content });
+      return res.json(updated);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.delete("/api/notes/:id", requireAuth, async (req, res) => {
     try {
-      const note = await storage.getClientNoteById(req.params.id);
+      const note = await storage.getClientNoteById(req.params.id as string);
       if (!note) return res.status(404).json({ error: "Note not found" });
       if (note.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      await storage.deleteClientNote(req.params.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      await storage.deleteClientNote(req.params.id as string);
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -1418,7 +1418,7 @@ If ambiguous, choose the earliest relevant stage.`;
   // ============================================================
   app.get("/api/engagements/:id/goals", requireAuth, async (req, res) => {
     try {
-      const engagement = await storage.getEngagementById(req.params.id);
+      const engagement = await storage.getEngagementById(req.params.id as string);
       if (!engagement) return res.status(404).json({ error: "Engagement not found" });
       // Allow both provider and seeker (owner) to view goals
       const userId = req.user!.id;
@@ -1428,36 +1428,36 @@ If ambiguous, choose the earliest relevant stage.`;
         if (seeker?.ownerId === userId) allowed = true;
       }
       if (!allowed) return res.status(403).json({ error: "Forbidden" });
-      const goals = await storage.getGoalsByEngagementId(req.params.id);
-      res.json(goals);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      const goals = await storage.getGoalsByEngagementId(req.params.id as string);
+      return res.json(goals);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/engagements/:id/goals", requireAuth, async (req, res) => {
     try {
-      const check = await assertProviderOwnsEngagement(req, req.params.id);
+      const check = await assertProviderOwnsEngagement(req, req.params.id as string);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       const { title, description, dueDate } = req.body;
       if (!title) return res.status(400).json({ error: "title required" });
       const goal = await storage.createGoal({
-        engagementId: req.params.id,
+        engagementId: req.params.id as string,
         providerId: req.user!.id,
         title,
         description: description || null,
         status: "active",
         dueDate: dueDate ? new Date(dueDate) : null,
       });
-      res.json(goal);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(goal);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.put("/api/goals/:id", requireAuth, async (req, res) => {
     try {
-      const goal = await storage.getGoalById(req.params.id);
+      const goal = await storage.getGoalById(req.params.id as string);
       if (!goal) return res.status(404).json({ error: "Goal not found" });
       if (goal.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
       const { title, description, status, dueDate } = req.body;
-      const updated = await storage.updateGoal(req.params.id, {
+      const updated = await storage.updateGoal(req.params.id as string, {
         ...(title !== undefined ? { title } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(status !== undefined ? { status } : {}),
@@ -1467,20 +1467,20 @@ If ambiguous, choose the earliest relevant stage.`;
       // resolve any outstanding pending self-checkoffs so the
       // "to confirm" badge reflects reality.
       if (status === "completed" && goal.status !== "completed") {
-        await storage.resolvePendingProgressForCompletedGoal(req.params.id, req.user!.id);
+        await storage.resolvePendingProgressForCompletedGoal(req.params.id as string, req.user!.id);
       }
-      res.json(updated);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(updated);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.delete("/api/goals/:id", requireAuth, async (req, res) => {
     try {
-      const goal = await storage.getGoalById(req.params.id);
+      const goal = await storage.getGoalById(req.params.id as string);
       if (!goal) return res.status(404).json({ error: "Goal not found" });
       if (goal.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      await storage.deleteGoal(req.params.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      await storage.deleteGoal(req.params.id as string);
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -1506,7 +1506,7 @@ If ambiguous, choose the earliest relevant stage.`;
   // Body: { note?: string }
   app.post("/api/goals/:id/seeker-progress", requireAuth, async (req, res) => {
     try {
-      const check = await assertSeekerOwnsGoal(req, req.params.id);
+      const check = await assertSeekerOwnsGoal(req, req.params.id as string);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       const { goal, engagement } = check;
       if (goal.status === "completed") {
@@ -1545,9 +1545,9 @@ If ambiguous, choose the earliest relevant stage.`;
         } catch {}
       }
 
-      res.json(created);
+      return res.json(created);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1555,12 +1555,12 @@ If ambiguous, choose the earliest relevant stage.`;
   // entries — confirmed entries are part of the audit trail and stay put.
   app.delete("/api/goals/:id/seeker-progress", requireAuth, async (req, res) => {
     try {
-      const check = await assertSeekerOwnsGoal(req, req.params.id);
+      const check = await assertSeekerOwnsGoal(req, req.params.id as string);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       await storage.deletePendingGoalProgress(check.goal.id, req.user!.id);
-      res.json({ success: true });
+      return res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1569,12 +1569,12 @@ If ambiguous, choose the earliest relevant stage.`;
   // currently checked off, even after reinstall) need this.
   app.get("/api/engagements/:id/goal-progress", requireAuth, async (req, res) => {
     try {
-      const m = await assertEngagementMember(req, req.params.id);
+      const m = await assertEngagementMember(req, req.params.id as string);
       if (!m.ok) return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
-      const rows = await storage.getGoalProgressByEngagementId(req.params.id);
-      res.json(rows);
+      const rows = await storage.getGoalProgressByEngagementId(req.params.id as string);
+      return res.json(rows);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1582,7 +1582,7 @@ If ambiguous, choose the earliest relevant stage.`;
   // flip the underlying goal to completed in a single request.
   app.post("/api/goal-progress/:id/confirm", requireAuth, async (req, res) => {
     try {
-      const progress = await storage.getGoalProgressById(req.params.id);
+      const progress = await storage.getGoalProgressById(req.params.id as string);
       if (!progress) return res.status(404).json({ error: "Progress not found" });
       const goal = await storage.getGoalById(progress.goalId);
       if (!goal) return res.status(404).json({ error: "Goal not found" });
@@ -1597,9 +1597,9 @@ If ambiguous, choose the earliest relevant stage.`;
         // the client can refresh rather than treating this as a hard failure.
         return res.status(409).json({ error: "Progress already confirmed" });
       }
-      res.json({ progress: result.progress, goal: result.goal });
+      return res.json({ progress: result.progress, goal: result.goal });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1609,21 +1609,21 @@ If ambiguous, choose the earliest relevant stage.`;
   app.get("/api/intake-forms", requireProvider, async (req, res) => {
     try {
       const forms = await storage.getIntakeFormsByProviderId(req.user!.id);
-      res.json(forms);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(forms);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.get("/api/intake-forms/by-provider/:providerId", requireAuth, async (req, res) => {
     try {
-      const forms = await storage.getIntakeFormsByProviderId(req.params.providerId);
+      const forms = await storage.getIntakeFormsByProviderId(req.params.providerId as string);
       const active = forms.filter(f => f.isActive);
-      res.json(active);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(active);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.get("/api/intake-forms/:id", requireAuth, async (req, res) => {
     try {
-      const form = await storage.getIntakeFormById(req.params.id);
+      const form = await storage.getIntakeFormById(req.params.id as string);
       if (!form) return res.status(404).json({ error: "Form not found" });
       const userId = req.user!.id;
       // Provider owns it, or seeker has an engagement with this provider
@@ -1636,8 +1636,8 @@ If ambiguous, choose the earliest relevant stage.`;
         }
         if (!allowed) return res.status(403).json({ error: "Forbidden" });
       }
-      res.json(form);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(form);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/intake-forms", requireProvider, async (req, res) => {
@@ -1651,28 +1651,28 @@ If ambiguous, choose the earliest relevant stage.`;
         questions,
         isActive: true,
       });
-      res.json(form);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(form);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.put("/api/intake-forms/:id", requireAuth, async (req, res) => {
     try {
-      const form = await storage.getIntakeFormById(req.params.id);
+      const form = await storage.getIntakeFormById(req.params.id as string);
       if (!form) return res.status(404).json({ error: "Form not found" });
       if (form.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      const updated = await storage.updateIntakeForm(req.params.id, req.body);
-      res.json(updated);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      const updated = await storage.updateIntakeForm(req.params.id as string, req.body);
+      return res.json(updated);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.delete("/api/intake-forms/:id", requireAuth, async (req, res) => {
     try {
-      const form = await storage.getIntakeFormById(req.params.id);
+      const form = await storage.getIntakeFormById(req.params.id as string);
       if (!form) return res.status(404).json({ error: "Form not found" });
       if (form.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      await storage.deleteIntakeForm(req.params.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      await storage.deleteIntakeForm(req.params.id as string);
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -1710,13 +1710,13 @@ If ambiguous, choose the earliest relevant stage.`;
           });
         } catch {}
       }
-      res.json(response);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(response);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.get("/api/engagements/:id/intake", requireAuth, async (req, res) => {
     try {
-      const engagement = await storage.getEngagementById(req.params.id);
+      const engagement = await storage.getEngagementById(req.params.id as string);
       if (!engagement) return res.status(404).json({ error: "Engagement not found" });
       const userId = req.user!.id;
       let allowed = engagement.providerId === userId;
@@ -1725,9 +1725,9 @@ If ambiguous, choose the earliest relevant stage.`;
         if (seeker?.ownerId === userId) allowed = true;
       }
       if (!allowed) return res.status(403).json({ error: "Forbidden" });
-      const response = await storage.getIntakeResponseByEngagementId(req.params.id);
-      res.json(response || null);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      const response = await storage.getIntakeResponseByEngagementId(req.params.id as string);
+      return res.json(response || null);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -1736,8 +1736,8 @@ If ambiguous, choose the earliest relevant stage.`;
   app.get("/api/resources", requireProvider, async (req, res) => {
     try {
       const resources = await storage.getResourcesByProviderId(req.user!.id);
-      res.json(resources);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(resources);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/resources", requireProvider, async (req, res) => {
@@ -1753,33 +1753,33 @@ If ambiguous, choose the earliest relevant stage.`;
         url: url || null,
         content: content || null,
       });
-      res.json(resource);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(resource);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.put("/api/resources/:id", requireProvider, async (req, res) => {
     try {
-      const resource = await storage.getResourceById(req.params.id);
+      const resource = await storage.getResourceById(req.params.id as string);
       if (!resource) return res.status(404).json({ error: "Resource not found" });
       if (resource.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      const updated = await storage.updateResource(req.params.id, req.body);
-      res.json(updated);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      const updated = await storage.updateResource(req.params.id as string, req.body);
+      return res.json(updated);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.delete("/api/resources/:id", requireProvider, async (req, res) => {
     try {
-      const resource = await storage.getResourceById(req.params.id);
+      const resource = await storage.getResourceById(req.params.id as string);
       if (!resource) return res.status(404).json({ error: "Resource not found" });
       if (resource.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      await storage.deleteResource(req.params.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      await storage.deleteResource(req.params.id as string);
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/resources/:id/assign", requireProvider, async (req, res) => {
     try {
-      const resource = await storage.getResourceById(req.params.id);
+      const resource = await storage.getResourceById(req.params.id as string);
       if (!resource) return res.status(404).json({ error: "Resource not found" });
       if (resource.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
       const { engagementId } = req.body;
@@ -1787,16 +1787,16 @@ If ambiguous, choose the earliest relevant stage.`;
       const check = await assertProviderOwnsEngagement(req, engagementId);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       const assignment = await storage.createResourceAssignment({
-        resourceId: req.params.id,
+        resourceId: req.params.id as string,
         engagementId,
       });
-      res.json(assignment);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(assignment);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.get("/api/engagements/:id/resources", requireAuth, async (req, res) => {
     try {
-      const engagement = await storage.getEngagementById(req.params.id);
+      const engagement = await storage.getEngagementById(req.params.id as string);
       if (!engagement) return res.status(404).json({ error: "Engagement not found" });
       const userId = req.user!.id;
       let allowed = engagement.providerId === userId;
@@ -1805,14 +1805,14 @@ If ambiguous, choose the earliest relevant stage.`;
         if (seeker?.ownerId === userId) allowed = true;
       }
       if (!allowed) return res.status(403).json({ error: "Forbidden" });
-      const assignments = await storage.getResourceAssignmentsByEngagementId(req.params.id);
-      res.json(assignments);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      const assignments = await storage.getResourceAssignmentsByEngagementId(req.params.id as string);
+      return res.json(assignments);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/resource-assignments/:id/view", requireAuth, async (req, res) => {
     try {
-      const assignment = await storage.getResourceAssignmentById(req.params.id);
+      const assignment = await storage.getResourceAssignmentById(req.params.id as string);
       if (!assignment) return res.status(404).json({ error: "Assignment not found" });
       const engagement = await storage.getEngagementById(assignment.engagementId);
       if (!engagement) return res.status(404).json({ error: "Engagement not found" });
@@ -1823,9 +1823,9 @@ If ambiguous, choose the earliest relevant stage.`;
         if (seeker?.ownerId === userId) allowed = true;
       }
       if (!allowed) return res.status(403).json({ error: "Forbidden" });
-      await storage.markResourceViewed(req.params.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      await storage.markResourceViewed(req.params.id as string);
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -1834,29 +1834,29 @@ If ambiguous, choose the earliest relevant stage.`;
   app.get("/api/alerts", requireProvider, async (req, res) => {
     try {
       const alerts = await storage.getAlertsByProviderId(req.user!.id);
-      res.json(alerts);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(alerts);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.get("/api/alerts/unread-count", requireProvider, async (req, res) => {
     try {
       const count = await storage.getUnreadAlertCountByProviderId(req.user!.id);
-      res.json({ count });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json({ count });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.put("/api/alerts/:id/read", requireProvider, async (req, res) => {
     try {
-      await storage.markAlertRead(req.params.id, req.user!.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      await storage.markAlertRead(req.params.id as string, req.user!.id);
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.put("/api/alerts/read-all", requireProvider, async (req, res) => {
     try {
       await storage.markAllAlertsRead(req.user!.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -1875,15 +1875,15 @@ If ambiguous, choose the earliest relevant stage.`;
   app.post("/api/coach/inbox/:engagementId/handle", requireProvider, async (req, res) => {
     try {
       // Verify the engagement actually belongs to this coach before mutating.
-      const engagement = await storage.getEngagementById(req.params.engagementId);
+      const engagement = await storage.getEngagementById(req.params.engagementId as string);
       if (!engagement || engagement.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Engagement not found" });
       }
-      await storage.dismissCoachInboxRow(req.user!.id, req.params.engagementId);
-      res.json({ success: true });
+      await storage.dismissCoachInboxRow(req.user!.id, req.params.engagementId as string);
+      return res.json({ success: true });
     } catch (error: any) {
-      req.log.error({ err: error, engagementId: req.params.engagementId }, "coach inbox dismiss failed");
-      res.status(500).json({ error: error.message });
+      req.log.error({ err: error, engagementId: req.params.engagementId as string }, "coach inbox dismiss failed");
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1911,10 +1911,10 @@ If ambiguous, choose the earliest relevant stage.`;
         token,
         platform: plat,
       });
-      res.json({ token: row });
+      return res.json({ token: row });
     } catch (error: any) {
       req.log.warn({ err: error }, "push: upsert token failed");
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message });
     }
   });
 
@@ -1922,7 +1922,7 @@ If ambiguous, choose the earliest relevant stage.`;
     try {
       const tokens = await storage.getPushTokensByUserId(req.user!.id);
       const anyEnabled = tokens.some((t) => t.enabled);
-      res.json({
+      return res.json({
         enabled: anyEnabled,
         tokens: tokens.map((t) => ({
           id: t.id,
@@ -1931,7 +1931,7 @@ If ambiguous, choose the earliest relevant stage.`;
           updatedAt: t.updatedAt,
         })),
       });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.patch("/api/push-tokens", requireAuth, async (req, res) => {
@@ -1941,8 +1941,8 @@ If ambiguous, choose the earliest relevant stage.`;
         return res.status(400).json({ error: "enabled (boolean) is required" });
       }
       await storage.setPushTokensEnabledForUser(req.user!.id, enabled);
-      res.json({ enabled });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json({ enabled });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.delete("/api/push-tokens", requireAuth, async (req, res) => {
@@ -1952,8 +1952,8 @@ If ambiguous, choose the earliest relevant stage.`;
         return res.status(400).json({ error: "token (string) is required" });
       }
       await storage.deletePushToken(token, req.user!.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -2046,12 +2046,12 @@ If ambiguous, choose the earliest relevant stage.`;
       if (typeof message !== "string") {
         return res.status(400).json({ error: "message (string) is required" });
       }
-      const r = await deliverCoachMessage(req, req.params.id, message, {
+      const r = await deliverCoachMessage(req, req.params.id as string, message, {
         title: "New message from your coach",
         type: "coach_message",
       });
-      res.status(r.status).json(r.body);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.status(r.status).json(r.body);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/engagements/:id/check-in", requireProvider, async (req, res) => {
@@ -2061,12 +2061,12 @@ If ambiguous, choose the earliest relevant stage.`;
         typeof message === "string" && message.trim().length > 0
           ? message
           : "Just checking in — how are you doing today?";
-      const r = await deliverCoachMessage(req, req.params.id, text, {
+      const r = await deliverCoachMessage(req, req.params.id as string, text, {
         title: "Check-in from your coach",
         type: "coach_check_in",
       });
-      res.status(r.status).json(r.body);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.status(r.status).json(r.body);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -2075,8 +2075,8 @@ If ambiguous, choose the earliest relevant stage.`;
   app.get("/api/provider-onboarding/status", requireProvider, async (req, res) => {
     try {
       const chat = await storage.getActiveOnboardingChatByProviderId(req.user!.id);
-      res.json(chat || null);
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json(chat || null);
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/provider-onboarding/chat", requireProvider, async (req, res) => {
@@ -2169,8 +2169,8 @@ Until [READY_TO_GENERATE], just keep the conversation going naturally. Do NOT ge
         messages: history,
       });
 
-      res.json({ chat: updated, message: cleanContent, readyToGenerate });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json({ chat: updated, message: cleanContent, readyToGenerate });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/provider-onboarding/generate", requireProvider, async (req, res) => {
@@ -2259,8 +2259,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         generatedConfig: generated,
       });
 
-      res.json({ chat: updated, generatedConfig: generated });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json({ chat: updated, generatedConfig: generated });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   app.post("/api/provider-onboarding/apply", requireProvider, async (req, res) => {
@@ -2274,8 +2274,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       const existingProviderConfig = await storage.getProviderConfigByProviderId(userId);
       const providerConfigData = {
         providerId: userId,
-        title: config.title || "My Practice",
-        methodology: config.methodology || "",
+        title: (config.title || "My Practice") as string,
+        methodology: (config.methodology || "") as string,
         stages: config.stages || [],
         labels: config.labels || [],
         summaryTemplate: config.summaryTemplate || [],
@@ -2289,18 +2289,18 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       }
 
       // Upsert agent config
-      const agent = config.agent || {};
+      const agent = (config.agent || {}) as Record<string, unknown>;
       const existingAgent = await storage.getProviderAgentConfigByProviderId(userId);
       const agentData = {
         providerId: userId,
-        providerName: agent.providerName || null,
-        providerTitle: agent.providerTitle || null,
-        coreIdentity: agent.coreIdentity || null,
-        guidingPrinciples: agent.guidingPrinciples || null,
-        tone: agent.tone || null,
-        voice: agent.voice || null,
-        rules: agent.rules || null,
-        boundaries: agent.boundaries || null,
+        providerName: (agent.providerName || null) as string | null,
+        providerTitle: (agent.providerTitle || null) as string | null,
+        coreIdentity: (agent.coreIdentity || null) as string | null,
+        guidingPrinciples: (agent.guidingPrinciples || null) as string | null,
+        tone: (agent.tone || null) as string | null,
+        voice: (agent.voice || null) as string | null,
+        rules: (agent.rules || null) as string | null,
+        boundaries: (agent.boundaries || null) as string | null,
         avatarUrl: existingAgent?.avatarUrl || null,
         selectedModel: existingAgent?.selectedModel || "google/gemini-2.5-flash",
       };
@@ -2319,8 +2319,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         await storage.updateProviderOnboardingChat(chat.id, { status: "completed" });
       }
 
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+      return res.json({ success: true });
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -2360,7 +2360,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
       const avgSessionsPerClient = totalClients ? +(totalSessions / totalClients).toFixed(1) : 0;
 
-      res.json({
+      return res.json({
         totalClients,
         activeClients,
         totalSessions,
@@ -2370,7 +2370,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         trajectoryCounts,
         sessionsPerWeek,
       });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -2414,12 +2414,12 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
       recentSessions.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 
-      res.json({
+      return res.json({
         recentSessions: recentSessions.slice(0, 10),
         inactiveClients,
         overdueGoals,
       });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -2427,11 +2427,11 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // ============================================================
   app.get("/api/public/provider/:providerId", async (req, res) => {
     try {
-      const providerId = req.params.providerId;
+      const providerId = req.params.providerId as string;
       const config = await storage.getProviderConfigByProviderId(providerId);
       const agent = await storage.getProviderAgentConfigByProviderId(providerId);
       if (!config && !agent) return res.status(404).json({ error: "Provider not found" });
-      res.json({
+      return res.json({
         providerId,
         title: config?.title || agent?.providerTitle || "Coach",
         methodology: config?.methodology || "",
@@ -2441,7 +2441,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         providerTitle: agent?.providerTitle || "",
         avatarUrl: agent?.avatarUrl || "",
       });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+    } catch (error: any) { return res.status(500).json({ error: error.message }); }
   });
 
   // ============================================================
@@ -2463,8 +2463,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         return res.json(rows);
       }
       const rows = await listPersonaExamplesByProvider(req.user!.id);
-      res.json(rows);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(rows);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   app.post("/api/twin/persona-examples", requireProvider, async (req, res) => {
@@ -2503,8 +2503,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         reason: "persona_example_manual",
         createdBy: req.user!.id,
       });
-      res.json(row);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(row);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // ============================================================
@@ -2527,10 +2527,10 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
   app.get("/api/twin/playbooks/:id", requireProvider, async (req, res) => {
     try {
-      const pb = await getPlaybookById(req.params.id);
+      const pb = await getPlaybookById(req.params.id as string);
       if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
-      res.json(pb);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(pb);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   app.post("/api/twin/playbooks", requireProvider, async (req, res) => {
@@ -2550,17 +2550,17 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         isDefault: Boolean(isDefault),
         isArchived: false,
       });
-      res.json(row);
+      return res.json(row);
     } catch (e: any) {
       req.log?.error?.({ err: e }, "playbook_create_failed");
-      res.status(500).json({ error: e.message });
+      return res.status(500).json({ error: e.message });
     }
   });
 
   // PATCH for rename / description edit / archive toggle.
   app.patch("/api/twin/playbooks/:id", requireProvider, async (req, res) => {
     try {
-      const pb = await getPlaybookById(req.params.id);
+      const pb = await getPlaybookById(req.params.id as string);
       if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
       const { title, description, isArchived } = req.body as {
         title?: string;
@@ -2571,43 +2571,43 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (typeof title === "string" && title.trim()) patch.title = title.trim().slice(0, 200);
       if (description !== undefined) patch.description = description?.slice(0, 2000) ?? null;
       if (typeof isArchived === "boolean") patch.isArchived = isArchived;
-      const row = await updatePlaybook(req.params.id, patch);
-      res.json(row);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      const row = await updatePlaybook(req.params.id as string, patch);
+      return res.json(row);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // Promote to default. Demotes the previous default in the same transaction.
   app.post("/api/twin/playbooks/:id/default", requireProvider, async (req, res) => {
     try {
-      const pb = await getPlaybookById(req.params.id);
+      const pb = await getPlaybookById(req.params.id as string);
       if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
-      const row = await setDefaultPlaybook(req.user!.id, req.params.id);
-      res.json(row);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      const row = await setDefaultPlaybook(req.user!.id, req.params.id as string);
+      return res.json(row);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // Clone a playbook + all its active examples. Embeddings are copied across
   // so retrieval works on the duplicate immediately without re-embedding.
   app.post("/api/twin/playbooks/:id/duplicate", requireProvider, async (req, res) => {
     try {
-      const pb = await getPlaybookById(req.params.id);
+      const pb = await getPlaybookById(req.params.id as string);
       if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Not found" });
       const titleOverride = typeof req.body?.title === "string" && req.body.title.trim()
         ? req.body.title.trim().slice(0, 200)
         : `${pb.title} (copy)`;
-      const dup = await duplicatePlaybook(req.user!.id, req.params.id, titleOverride);
+      const dup = await duplicatePlaybook(req.user!.id, req.params.id as string, titleOverride);
       if (!dup) return res.status(500).json({ error: "Duplication failed" });
-      res.json(dup);
+      return res.json(dup);
     } catch (e: any) {
       req.log?.error?.({ err: e }, "playbook_duplicate_failed");
-      res.status(500).json({ error: e.message });
+      return res.status(500).json({ error: e.message });
     }
   });
 
   // Assign a playbook (or unassign with playbookId=null) to an engagement.
   app.patch("/api/engagements/:id/playbook", requireProvider, async (req, res) => {
     try {
-      const check = await assertProviderOwnsEngagement(req, req.params.id);
+      const check = await assertProviderOwnsEngagement(req, req.params.id as string);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       const { playbookId } = req.body as { playbookId?: string | null };
       let resolved: string | null = null;
@@ -2616,27 +2616,27 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         if (!pb || pb.providerId !== req.user!.id) return res.status(404).json({ error: "Playbook not found" });
         resolved = pb.id;
       }
-      const updated = await storage.updateEngagement(req.params.id, { playbookId: resolved });
-      res.json(updated);
+      const updated = await storage.updateEngagement(req.params.id as string, { playbookId: resolved });
+      return res.json(updated);
     } catch (e: any) {
       req.log?.error?.({ err: e }, "engagement_set_playbook_failed");
-      res.status(500).json({ error: e.message });
+      return res.status(500).json({ error: e.message });
     }
   });
 
   app.delete("/api/twin/persona-examples/:id", requireProvider, async (req, res) => {
     try {
-      const ex = await getPersonaExampleById(req.params.id);
+      const ex = await getPersonaExampleById(req.params.id as string);
       if (!ex) return res.status(404).json({ error: "Not found" });
       if (ex.providerId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
-      await deactivatePersonaExample(req.params.id);
+      await deactivatePersonaExample(req.params.id as string);
       await snapshotAgentVersion({
         providerId: req.user!.id,
         reason: "persona_example_deactivated",
         createdBy: req.user!.id,
       });
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json({ ok: true });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // ---- Calibration sessions (synthetic-client interview) ----
@@ -2710,31 +2710,31 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         transcript: [] satisfies CalibrationTurn[],
         status: "in_progress",
       });
-      res.json(row);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(row);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   app.get("/api/twin/calibration", requireProvider, async (req, res) => {
     try {
       const rows = await listCalibrationSessionsByProvider(req.user!.id);
-      res.json(rows);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(rows);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   app.get("/api/twin/calibration/:id", requireProvider, async (req, res) => {
     try {
-      const row = await getCalibrationSession(req.params.id);
+      const row = await getCalibrationSession(req.params.id as string);
       if (!row || row.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Not found" });
       }
-      res.json(row);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(row);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // Generate the next synthetic-client utterance + the AI's draft response.
   app.post("/api/twin/calibration/:id/turn", requireProvider, async (req, res) => {
     try {
-      const calib = await getCalibrationSession(req.params.id);
+      const calib = await getCalibrationSession(req.params.id as string);
       if (!calib || calib.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Not found" });
       }
@@ -2792,14 +2792,14 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       const updated = await updateCalibrationSession(calib.id, {
         transcript: [...transcript, newTurn],
       });
-      res.json({ session: updated, turn: newTurn });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json({ session: updated, turn: newTurn });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // Therapist labels / edits a calibration turn — writes a persona_example.
   app.post("/api/twin/calibration/:id/approve", requireProvider, async (req, res) => {
     try {
-      const calib = await getCalibrationSession(req.params.id);
+      const calib = await getCalibrationSession(req.params.id as string);
       if (!calib || calib.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Not found" });
       }
@@ -2878,8 +2878,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       }
 
       const updated = await updateCalibrationSession(calib.id, { transcript });
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(updated);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   /**
@@ -2888,7 +2888,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
    */
   app.post("/api/calibration/:id/correct", requireProvider, async (req, res) => {
     try {
-      const calib = await getCalibrationSession(req.params.id);
+      const calib = await getCalibrationSession(req.params.id as string);
       if (!calib || calib.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Not found" });
       }
@@ -2940,15 +2940,15 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       });
 
       const updated = await updateCalibrationSession(calib.id, { transcript });
-      res.json(updated);
+      return res.json(updated);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      return res.status(500).json({ error: e.message });
     }
   });
 
   app.post("/api/twin/calibration/:id/complete", requireProvider, async (req, res) => {
     try {
-      const calib = await getCalibrationSession(req.params.id);
+      const calib = await getCalibrationSession(req.params.id as string);
       if (!calib || calib.providerId !== req.user!.id) {
         return res.status(404).json({ error: "Not found" });
       }
@@ -2956,37 +2956,37 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         status: "completed",
         completedAt: new Date(),
       });
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(updated);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // ---- Memory inspector (L3) ----
   app.get("/api/twin/memory/:engagementId", requireProvider, async (req, res) => {
     try {
-      const check = await assertProviderOwnsEngagement(req, req.params.engagementId);
+      const check = await assertProviderOwnsEngagement(req, req.params.engagementId as string);
       if (!check.ok) return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
-      const rows = await listClientMemoryByEngagement(req.params.engagementId);
-      res.json(rows);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      const rows = await listClientMemoryByEngagement(req.params.engagementId as string);
+      return res.json(rows);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   app.delete("/api/twin/memory/:id", requireProvider, async (req, res) => {
     try {
-      const mem = await getClientMemoryById(req.params.id);
+      const mem = await getClientMemoryById(req.params.id as string);
       if (!mem) return res.status(404).json({ error: "Not found" });
       const ownerCheck = await assertProviderOwnsEngagement(req, mem.engagementId);
       if (!ownerCheck.ok) return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
       // Redaction is one-way; provider can't mutate forgotten rows.
       if (mem.redactedAt) return res.status(410).json({ error: "Memory entry already redacted" });
-      await redactClientMemory(req.params.id, req.user!.id);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      await redactClientMemory(req.params.id as string, req.user!.id);
+      return res.json({ ok: true });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // Edit a memory entry; recomputes embedding when content changes.
   app.patch("/api/twin/memory/:id", requireProvider, async (req, res) => {
     try {
-      const mem = await getClientMemoryById(req.params.id);
+      const mem = await getClientMemoryById(req.params.id as string);
       if (!mem) return res.status(404).json({ error: "Not found" });
       const ownerCheck = await assertProviderOwnsEngagement(req, mem.engagementId);
       if (!ownerCheck.ok) return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
@@ -3003,9 +3003,9 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (typeof importance === "number") patch.importance = Math.min(1, Math.max(0, importance));
       if (typeof kind === "string") patch.kind = kind;
       const newEmbedding = patch.content ? await embed(patch.content) : null;
-      const updated = await updateClientMemory(req.params.id, patch, newEmbedding);
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      const updated = await updateClientMemory(req.params.id as string, patch, newEmbedding);
+      return res.json(updated);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // ---- Safety event audit log (L1) ----
@@ -3013,28 +3013,28 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   app.get("/api/twin/safety-events", requireProvider, async (req, res) => {
     try {
       const rows = await listSafetyEventsByProvider(req.user!.id, 200);
-      res.json(rows);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(rows);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // Per-client (engagement-scoped) audit log. Provider must own the engagement.
   app.get("/api/clients/:engagementId/safety-events", requireProvider, async (req, res) => {
     try {
-      const ownerCheck = await assertProviderOwnsEngagement(req, req.params.engagementId);
+      const ownerCheck = await assertProviderOwnsEngagement(req, req.params.engagementId as string);
       if (!ownerCheck.ok) {
         return res.status(ownerCheck.error === "Forbidden" ? 403 : 404).json({ error: ownerCheck.error });
       }
-      const rows = await listSafetyEventsByEngagement(req.params.engagementId, 200);
-      res.json(rows);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      const rows = await listSafetyEventsByEngagement(req.params.engagementId as string, 200);
+      return res.json(rows);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // ---- Review queue (sample recent agent messages for therapist labeling) ----
   app.get("/api/twin/review-queue", requireProvider, async (req, res) => {
     try {
       const items = await listReviewQueueForProvider(req.user!.id, 20);
-      res.json(items);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json(items);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // Therapist labels a sampled message: this_is_me / not_me / never_say_this / needs_edit.
@@ -3042,7 +3042,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // "never_say_this" also writes a safety_event so it surfaces in the audit log.
   app.post("/api/twin/review-queue/:messageId/label", requireProvider, async (req, res) => {
     try {
-      const { messageId } = req.params;
+      const messageId = req.params.messageId as string;
       // Only label/approvedEdit/tags are trusted from the client; the rest
       // (draft, scenario, engagementId, sessionId) is loaded server-side.
       const VALID_LABELS = ["this_is_me", "not_me", "never_say_this", "needs_edit"] as const;
@@ -3138,8 +3138,8 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
         });
       }
 
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return res.json({ ok: true });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   // ============================================================
@@ -3220,7 +3220,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
       if (!seeker) {
         return res.json({ today: null, entries: [] });
       }
-      const days = clampDays(req.query.days, 14, 90);
+      const days = clampDays(req.query.days as string, 14, 90);
       // Inclusive window: shift back days-1 so days=14 yields a 14-day window.
       const sinceDay = shiftYmd(days - 1);
       const entries = await storage.getMoodEntriesBySeekerId(seeker.id, sinceDay);
@@ -3238,7 +3238,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   app.get("/api/seeker/progress", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.user!.id;
-      const moodWindowDays = clampDays(req.query.moodDays, 30, 90);
+      const moodWindowDays = clampDays(req.query.moodDays as string, 30, 90);
       const snapshot = await storage.getSeekerProgressSnapshot(userId, { moodWindowDays });
       return res.json(snapshot);
     } catch (error: any) {
@@ -3250,12 +3250,12 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // Coach (or seeker on their own engagement) reads mood history for an engagement.
   app.get("/api/engagements/:id/mood", requireAuth, async (req: Request, res: Response) => {
     try {
-      const engagementIdParam = String(req.params.id);
+      const engagementIdParam = String(req.params.id as string);
       const m = await assertEngagementMember(req, engagementIdParam);
       if (!m.ok) {
         return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
       }
-      const days = clampDays(req.query.days, 14, 90);
+      const days = clampDays(req.query.days as string, 14, 90);
       const sinceDay = shiftYmd(days - 1);
       const entries = await storage.getMoodEntriesByEngagementId(engagementIdParam, sinceDay);
       const latest = entries.length > 0 ? entries[entries.length - 1] : null;
@@ -3345,7 +3345,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // Coach edits or archives one of their own prompts. Global starters are read-only.
   app.patch("/api/journal/prompts/:id", requireProvider, async (req: Request, res: Response) => {
     try {
-      const promptId = String(req.params.id);
+      const promptId = String(req.params.id as string);
       const existing = await storage.getJournalPromptById(promptId);
       if (!existing) return res.status(404).json({ error: "Not found" });
       if (!existing.providerId || existing.providerId !== req.user!.id) {
@@ -3475,7 +3475,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // Seeker updates an entry: edit body or toggle share. Once shared, body is locked.
   app.patch("/api/journal/entries/:id", requireAuth, async (req: Request, res: Response) => {
     try {
-      const entryId = String(req.params.id);
+      const entryId = String(req.params.id as string);
       const seeker = await storage.getSeekerByOwnerId(req.user!.id);
       if (!seeker) return res.status(403).json({ error: "Forbidden" });
       const existing = await storage.getJournalEntryById(entryId);
@@ -3520,7 +3520,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // Coach (or seeker on their own engagement) reads shared journal entries.
   app.get("/api/engagements/:id/journal", requireAuth, async (req: Request, res: Response) => {
     try {
-      const engagementIdParam = String(req.params.id);
+      const engagementIdParam = String(req.params.id as string);
       const m = await assertEngagementMember(req, engagementIdParam);
       if (!m.ok) {
         return res.status(m.error === "Forbidden" ? 403 : 404).json({ error: m.error });
@@ -3599,7 +3599,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   app.post("/api/nudges/:id/respond", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.user!.id;
-      const idParam = String(req.params.id);
+      const idParam = String(req.params.id as string);
 
       const bodySchema = z.object({
         action: z.enum(["done", "skip", "snooze"]),
@@ -3637,7 +3637,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
   // ============================================================
   app.post("/api/engagements/:id/briefs/generate", requireProvider, async (req, res) => {
     try {
-      const engagementId = String(req.params.id);
+      const engagementId = String(req.params.id as string);
       const auth = await assertProviderOwnsEngagement(req, engagementId);
       if (!auth.ok) {
         return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
@@ -3658,7 +3658,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
   app.get("/api/engagements/:id/briefs/latest", requireProvider, async (req, res) => {
     try {
-      const engagementId = String(req.params.id);
+      const engagementId = String(req.params.id as string);
       const auth = await assertProviderOwnsEngagement(req, engagementId);
       if (!auth.ok) {
         return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
@@ -3673,7 +3673,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
   app.get("/api/engagements/:id/briefs", requireProvider, async (req, res) => {
     try {
-      const engagementId = String(req.params.id);
+      const engagementId = String(req.params.id as string);
       const auth = await assertProviderOwnsEngagement(req, engagementId);
       if (!auth.ok) {
         return res.status(auth.error === "Forbidden" ? 403 : 404).json({ error: auth.error });
@@ -3692,7 +3692,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
   app.post("/api/briefs/:id/used", requireProvider, async (req, res) => {
     try {
-      const briefId = String(req.params.id);
+      const briefId = String(req.params.id as string);
       const existing = await getSessionBriefById(briefId);
       if (!existing) return res.status(404).json({ error: "Brief not found" });
       // Authz: must be the provider who owns the brief's engagement.
@@ -3788,7 +3788,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
   app.post("/api/engagements/:id/scheduled-sessions", requireAuth, async (req, res) => {
     try {
-      const check = await assertProviderOwnsEngagement(req, String(req.params.id));
+      const check = await assertProviderOwnsEngagement(req, String(req.params.id as string));
       if (!check.ok) {
         return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       }
@@ -3834,7 +3834,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
 
   app.get("/api/engagements/:id/scheduled-sessions", requireAuth, async (req, res) => {
     try {
-      const check = await assertEngagementMember(req, String(req.params.id));
+      const check = await assertEngagementMember(req, String(req.params.id as string));
       if (!check.ok) {
         return res.status(check.error === "Forbidden" ? 403 : 404).json({ error: check.error });
       }
@@ -3865,7 +3865,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     try {
       const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
       const { confirmSlot } = await import("../services/scheduling");
-      const row = await scheduledSessionStorage.getById(String(req.params.id));
+      const row = await scheduledSessionStorage.getById(String(req.params.id as string));
       if (!row) return res.status(404).json({ error: "Not found" });
       // Only the seeker can confirm; coaches use reschedule if they need
       // to change things post-proposal.
@@ -4013,7 +4013,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     try {
       const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
       const { rescheduleSession } = await import("../services/scheduling");
-      const row = await scheduledSessionStorage.getById(String(req.params.id));
+      const row = await scheduledSessionStorage.getById(String(req.params.id as string));
       if (!row) return res.status(404).json({ error: "Not found" });
       const isCoach = row.providerId === req.user!.id;
       const isSeeker = row.seekerUserId === req.user!.id;
@@ -4049,7 +4049,7 @@ Aim for 4-6 stages that reflect their actual journey. Use the coach's own langua
     try {
       const { scheduledSessionStorage } = await import("../services/scheduledSessionStorage");
       const { cancelSession } = await import("../services/scheduling");
-      const row = await scheduledSessionStorage.getById(String(req.params.id));
+      const row = await scheduledSessionStorage.getById(String(req.params.id as string));
       if (!row) return res.status(404).json({ error: "Not found" });
       const isCoach = row.providerId === req.user!.id;
       const isSeeker = row.seekerUserId === req.user!.id;
