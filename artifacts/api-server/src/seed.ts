@@ -1,5 +1,13 @@
 import { db } from "./db";
-import { users, profiles, userRoles, seekers, providerConfigs, providerAgentConfigs, engagements } from "@workspace/db";
+import {
+  users,
+  profiles,
+  userRoles,
+  seekers,
+  providerConfigs,
+  providerAgentConfigs,
+  engagements,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -13,16 +21,23 @@ async function seed() {
 
   // Create Provider account
   console.log("Creating provider account...");
-  
-  let provider = await db.select().from(users).where(eq(users.email, "coach@haven.test")).then(r => r[0]);
-  
+
+  let provider = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, "coach@haven.test"))
+    .then((r) => r[0]);
+
   if (!provider) {
     const providerId = uuidv4();
-    [provider] = await db.insert(users).values({
-      id: providerId,
-      email: "coach@haven.test",
-      password: passwordHash,
-    }).returning();
+    [provider] = await db
+      .insert(users)
+      .values({
+        id: providerId,
+        email: "coach@haven.test",
+        password: passwordHash,
+      })
+      .returning();
 
     await db.insert(profiles).values({
       id: uuidv4(),
@@ -40,13 +55,14 @@ async function seed() {
       id: uuidv4(),
       providerId: provider.id,
       title: "Life Transformation Coaching",
-      methodology: "I use a holistic approach combining cognitive behavioral techniques with mindfulness practices to help clients achieve lasting personal growth and fulfillment.",
+      methodology:
+        "I use a holistic approach combining cognitive behavioral techniques with mindfulness practices to help clients achieve lasting personal growth and fulfillment.",
       stages: JSON.stringify([
         { name: "Discovery", order: 1 },
         { name: "Awareness", order: 2 },
         { name: "Action", order: 3 },
         { name: "Integration", order: 4 },
-        { name: "Mastery", order: 5 }
+        { name: "Mastery", order: 5 },
       ]),
     });
 
@@ -54,15 +70,12 @@ async function seed() {
     await db.insert(providerAgentConfigs).values({
       id: uuidv4(),
       providerId: provider.id,
-      coreIdentity: "I am a warm, empathetic AI coaching companion trained in life transformation methodologies. I help seekers discover their inner strength and navigate personal growth journeys.",
-      responseStyle: "conversational",
-      therapeuticApproaches: ["CBT", "Mindfulness", "Positive Psychology"],
-      sessionStructure: JSON.stringify({
-        opening: "Start with a warm check-in",
-        core: "Explore current challenges and insights",
-        closing: "Summarize progress and set intentions"
-      }),
-      boundaryGuidelines: "I maintain professional boundaries while being supportive. I don't provide medical advice and refer to professionals when needed.",
+      coreIdentity:
+        "I am a warm, empathetic AI coaching companion trained in life transformation methodologies. I help seekers discover their inner strength and navigate personal growth journeys.",
+      tone: "conversational",
+      guidingPrinciples: "CBT, Mindfulness, Positive Psychology",
+      boundaries:
+        "I maintain professional boundaries while being supportive. I don't provide medical advice and refer to professionals when needed.",
     });
 
     console.log("✅ Provider created: coach@haven.test / test1234\n");
@@ -73,17 +86,24 @@ async function seed() {
   // Create Seeker account
   console.log("Creating seeker account...");
 
-  let seekerUser = await db.select().from(users).where(eq(users.email, "seeker@haven.test")).then(r => r[0]);
-  
+  let seekerUser = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, "seeker@haven.test"))
+    .then((r) => r[0]);
+
   if (!seekerUser) {
     const seekerUserId = uuidv4();
     const seekerId = uuidv4();
 
-    [seekerUser] = await db.insert(users).values({
-      id: seekerUserId,
-      email: "seeker@haven.test",
-      password: passwordHash,
-    }).returning();
+    [seekerUser] = await db
+      .insert(users)
+      .values({
+        id: seekerUserId,
+        email: "seeker@haven.test",
+        password: passwordHash,
+      })
+      .returning();
 
     await db.insert(profiles).values({
       id: uuidv4(),
@@ -96,14 +116,13 @@ async function seed() {
       role: "seeker",
     });
 
-    const [seeker] = await db.insert(seekers).values({
-      id: seekerId,
-      ownerId: seekerUser.id,
-      currentPain: "Feeling stuck in my career and unsure about my next steps. I want to find more meaning and purpose in my work.",
-      desiredOutcome: "I want to feel confident in my career direction and wake up excited about my work every day.",
-      presentChallenge: "Making decisions feels overwhelming. I keep second-guessing myself.",
-      recentWin: "I finally started journaling daily and it's helping me understand my thoughts better.",
-    }).returning();
+    const [seeker] = await db
+      .insert(seekers)
+      .values({
+        id: seekerId,
+        ownerId: seekerUser.id,
+      })
+      .returning();
 
     // Create engagement between seeker and provider
     await db.insert(engagements).values({

@@ -1,6 +1,9 @@
 import { logger } from "./logger";
 
-export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "google/gemini-2.5-flash";
@@ -31,7 +34,10 @@ export async function chat(opts: {
 
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${key()}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -39,14 +45,17 @@ export async function chat(opts: {
     logger.error({ status: res.status, errText }, "openrouter chat failed");
     throw new Error(`LLM call failed: ${res.status}`);
   }
-  const data = await res.json();
+  const data: any = await res.json();
   return data.choices?.[0]?.message?.content ?? "";
 }
 
 /**
  * Cheap classifier call. Returns parsed JSON or throws.
  */
-export async function classify<T>(prompt: string, schemaHint: string): Promise<T> {
+export async function classify<T>(
+  prompt: string,
+  schemaHint: string,
+): Promise<T> {
   const raw = await chat({
     model: SAFETY_MODEL,
     temperature: 0,
@@ -60,7 +69,10 @@ export async function classify<T>(prompt: string, schemaHint: string): Promise<T
       { role: "user", content: `${prompt}\n\nSchema: ${schemaHint}` },
     ],
   });
-  const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const cleaned = raw
+    .replace(/```json\s*/g, "")
+    .replace(/```\s*/g, "")
+    .trim();
   return JSON.parse(cleaned) as T;
 }
 
@@ -87,15 +99,23 @@ export async function embed(text: string): Promise<number[] | null> {
     const trimmed = text.slice(0, 8000); // safety: stay well under context
     const res = await fetch(EMBED_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${k}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ model: EMBED_MODEL, input: trimmed }),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      logger.warn({ status: res.status, errText }, "embedding call failed; falling back");
+      logger.warn(
+        { status: res.status, errText },
+        "embedding call failed; falling back",
+      );
       return null;
     }
-    const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> };
+    const data = (await res.json()) as {
+      data?: Array<{ embedding?: number[] }>;
+    };
     const vec = data.data?.[0]?.embedding;
     return Array.isArray(vec) ? vec : null;
   } catch (err) {
@@ -170,8 +190,7 @@ export async function transcribeAudio(opts: {
     if (buf.length === 0) return null;
     const mime = opts.mimeType || "audio/m4a";
     const filename =
-      opts.filename ||
-      `voice.${(mime.split("/")[1] || "m4a").split(";")[0]}`;
+      opts.filename || `voice.${(mime.split("/")[1] || "m4a").split(";")[0]}`;
     const blob = new Blob([new Uint8Array(buf)], { type: mime });
 
     const form = new FormData();
@@ -187,7 +206,10 @@ export async function transcribeAudio(opts: {
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      logger.warn({ status: res.status, errText }, "whisper transcription failed");
+      logger.warn(
+        { status: res.status, errText },
+        "whisper transcription failed",
+      );
       return null;
     }
     const data = (await res.json()) as { text?: string };
@@ -210,7 +232,8 @@ export async function transcribeAudio(opts: {
 const TTS_URL = "https://api.openai.com/v1/audio/speech";
 const TTS_MODEL = "gpt-4o-mini-tts";
 const TTS_VOICE_DEFAULT = "alloy";
-const TTS_FORMAT_DEFAULT: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm" = "mp3";
+const TTS_FORMAT_DEFAULT: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm" =
+  "mp3";
 
 export function ttsConfigured(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
@@ -262,8 +285,14 @@ export async function moderate(text: string): Promise<ModerationResult | null> {
   try {
     const res = await fetch(MODERATION_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: MODERATION_MODEL, input: text.slice(0, 8000) }),
+      headers: {
+        Authorization: `Bearer ${k}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODERATION_MODEL,
+        input: text.slice(0, 8000),
+      }),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
