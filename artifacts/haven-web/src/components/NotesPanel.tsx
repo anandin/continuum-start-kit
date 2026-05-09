@@ -30,19 +30,37 @@ export function NotesPanel({ engagementId }: { engagementId: string }) {
     if (!draft.trim()) return;
     setSaving(true);
     try {
-      await apiRequest("POST", `/api/engagements/${engagementId}/notes`, { content: draft });
+      await apiRequest("POST", `/api/engagements/${engagementId}/notes`, {
+        content: draft,
+      });
       setDraft("");
-      qc.invalidateQueries({ queryKey: [`/api/engagements/${engagementId}/notes`] });
+      qc.invalidateQueries({
+        queryKey: [`/api/engagements/${engagementId}/notes`],
+      });
     } catch (e: any) {
-      toast({ title: "Couldn't save note", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+      toast({
+        title: "Couldn't save note",
+        description: e.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async (id: string) => {
     try {
       await apiRequest("DELETE", `/api/notes/${id}`);
-      qc.invalidateQueries({ queryKey: [`/api/engagements/${engagementId}/notes`] });
-    } catch (e: any) { toast({ title: "Couldn't delete", description: e.message, variant: "destructive" }); }
+      qc.invalidateQueries({
+        queryKey: [`/api/engagements/${engagementId}/notes`],
+      });
+    } catch (e: any) {
+      toast({
+        title: "Couldn't delete",
+        description: e.message,
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -60,29 +78,55 @@ export function NotesPanel({ engagementId }: { engagementId: string }) {
         <div className="space-y-2">
           <Textarea
             value={draft}
-            onChange={e => setDraft(e.target.value)}
+            onChange={(e) => setDraft(e.target.value)}
             placeholder="Capture an observation, hypothesis, or follow-up..."
             rows={3}
             data-testid="input-note"
           />
-          <Button onClick={add} disabled={saving || !draft.trim()} size="sm" data-testid="button-add-note">
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+          <Button
+            onClick={add}
+            disabled={saving || !draft.trim()}
+            size="sm"
+            data-testid="button-add-note"
+          >
+            {saving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="mr-2 h-4 w-4" />
+            )}
             Add note
           </Button>
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
         ) : notes.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">No notes yet.</p>
+          <p className="text-sm text-muted-foreground text-center py-6">
+            No notes yet.
+          </p>
         ) : (
           <div className="space-y-3">
-            {notes.map(n => (
-              <div key={n.id} className="rounded-lg border border-border/60 bg-card/40 p-3" data-testid={`note-${n.id}`}>
-                <p className="text-sm text-foreground whitespace-pre-wrap">{n.content}</p>
+            {notes.map((n) => (
+              <div
+                key={n.id}
+                className="rounded-lg border border-border/60 bg-card/40 p-3"
+                data-testid={`note-${n.id}`}
+              >
+                <p className="text-sm text-foreground whitespace-pre-wrap">
+                  {n.content}
+                </p>
                 <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString()}</p>
-                  <Button variant="ghost" size="sm" onClick={() => remove(n.id)} className="h-7 text-muted-foreground hover:text-destructive">
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(n.createdAt).toLocaleString()}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => remove(n.id)}
+                    className="h-7 text-muted-foreground hover:text-destructive"
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>

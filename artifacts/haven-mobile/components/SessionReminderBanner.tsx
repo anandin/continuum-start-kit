@@ -73,7 +73,9 @@ export function SessionReminderBanner() {
 
   const minutes = Math.max(
     1,
-    Math.round((new Date(imminent.confirmedAt).getTime() - Date.now()) / 60_000),
+    Math.round(
+      (new Date(imminent.confirmedAt).getTime() - Date.now()) / 60_000,
+    ),
   );
   const tz = detectedTimezone();
 

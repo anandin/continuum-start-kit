@@ -12,7 +12,11 @@ export interface SyntheticClientProfile {
   [k: string]: unknown;
 }
 
-export type CalibrationLabel = "this_is_me" | "needs_edit" | "never_say_this" | null;
+export type CalibrationLabel =
+  | "this_is_me"
+  | "needs_edit"
+  | "never_say_this"
+  | null;
 
 export interface CalibrationTurn {
   client: string;

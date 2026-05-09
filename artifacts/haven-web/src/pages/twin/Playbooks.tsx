@@ -3,13 +3,25 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { AppLayout } from "@/components/AppLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { BookOpen, Copy, Star, Archive, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -36,15 +48,22 @@ export default function Playbooks() {
   const playbooksQ = useQuery<Playbook[]>({
     queryKey: ["/api/twin/playbooks", showArchived],
     queryFn: async () =>
-      (await apiRequest("GET", `/api/twin/playbooks${showArchived ? "?includeArchived=true" : ""}`)).json(),
+      (
+        await apiRequest(
+          "GET",
+          `/api/twin/playbooks${showArchived ? "?includeArchived=true" : ""}`,
+        )
+      ).json(),
   });
 
   const createMut = useMutation({
     mutationFn: async () =>
-      (await apiRequest("POST", "/api/twin/playbooks", {
-        title: newTitle,
-        description: newDescription || null,
-      })).json(),
+      (
+        await apiRequest("POST", "/api/twin/playbooks", {
+          title: newTitle,
+          description: newDescription || null,
+        })
+      ).json(),
     onSuccess: (created: Playbook) => {
       qc.invalidateQueries({ queryKey: ["/api/twin/playbooks"] });
       setCreateOpen(false);
@@ -57,11 +76,17 @@ export default function Playbooks() {
   });
 
   const renameMut = useMutation({
-    mutationFn: async (vars: { id: string; title: string; description: string | null }) =>
-      (await apiRequest("PATCH", `/api/twin/playbooks/${vars.id}`, {
-        title: vars.title,
-        description: vars.description,
-      })).json(),
+    mutationFn: async (vars: {
+      id: string;
+      title: string;
+      description: string | null;
+    }) =>
+      (
+        await apiRequest("PATCH", `/api/twin/playbooks/${vars.id}`, {
+          title: vars.title,
+          description: vars.description,
+        })
+      ).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/twin/playbooks"] });
       setRenameOpen(null);
@@ -71,7 +96,9 @@ export default function Playbooks() {
 
   const duplicateMut = useMutation({
     mutationFn: async (id: string) =>
-      (await apiRequest("POST", `/api/twin/playbooks/${id}/duplicate`, {})).json(),
+      (
+        await apiRequest("POST", `/api/twin/playbooks/${id}/duplicate`, {})
+      ).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/twin/playbooks"] });
       toast.success("Playbook duplicated");
@@ -80,18 +107,24 @@ export default function Playbooks() {
 
   const archiveMut = useMutation({
     mutationFn: async (vars: { id: string; isArchived: boolean }) =>
-      (await apiRequest("PATCH", `/api/twin/playbooks/${vars.id}`, {
-        isArchived: vars.isArchived,
-      })).json(),
+      (
+        await apiRequest("PATCH", `/api/twin/playbooks/${vars.id}`, {
+          isArchived: vars.isArchived,
+        })
+      ).json(),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["/api/twin/playbooks"] });
-      toast.success(vars.isArchived ? "Playbook archived" : "Playbook restored");
+      toast.success(
+        vars.isArchived ? "Playbook archived" : "Playbook restored",
+      );
     },
   });
 
   const setDefaultMut = useMutation({
     mutationFn: async (id: string) =>
-      (await apiRequest("POST", `/api/twin/playbooks/${id}/default`, {})).json(),
+      (
+        await apiRequest("POST", `/api/twin/playbooks/${id}/default`, {})
+      ).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/twin/playbooks"] });
       toast.success("Default playbook updated");
@@ -101,7 +134,10 @@ export default function Playbooks() {
   const playbooks = playbooksQ.data ?? [];
 
   return (
-    <AppLayout title="Playbooks" subtitle="Reusable bundles of approved examples that shape how the AI talks to each client.">
+    <AppLayout
+      title="Playbooks"
+      subtitle="Reusable bundles of approved examples that shape how the AI talks to each client."
+    >
       <div className="space-y-6 animate-fade-in">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -132,12 +168,15 @@ export default function Playbooks() {
               <DialogHeader>
                 <DialogTitle>New playbook</DialogTitle>
                 <DialogDescription>
-                  A playbook is a named bundle of approved examples. You'll add scenarios after creating it.
+                  A playbook is a named bundle of approved examples. You'll add
+                  scenarios after creating it.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-foreground">Title</label>
+                  <label className="text-sm font-medium text-foreground">
+                    Title
+                  </label>
                   <Input
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
@@ -146,7 +185,9 @@ export default function Playbooks() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">Description (optional)</label>
+                  <label className="text-sm font-medium text-foreground">
+                    Description (optional)
+                  </label>
                   <Textarea
                     value={newDescription}
                     onChange={(e) => setNewDescription(e.target.value)}
@@ -157,7 +198,9 @@ export default function Playbooks() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+                  Cancel
+                </Button>
                 <Button
                   onClick={() => createMut.mutate()}
                   disabled={!newTitle.trim() || createMut.isPending}
@@ -171,12 +214,19 @@ export default function Playbooks() {
         </div>
 
         {playbooksQ.isLoading && (
-          <Card><CardContent className="p-8 text-center text-muted-foreground">Loading playbooks…</CardContent></Card>
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              Loading playbooks…
+            </CardContent>
+          </Card>
         )}
 
         {!playbooksQ.isLoading && playbooks.length === 0 && (
           <Card>
-            <CardContent className="p-12 text-center text-muted-foreground" data-testid="empty-playbooks">
+            <CardContent
+              className="p-12 text-center text-muted-foreground"
+              data-testid="empty-playbooks"
+            >
               <BookOpen className="mx-auto h-10 w-10 mb-3 opacity-50" />
               No playbooks yet. Create one to get started.
             </CardContent>
@@ -196,13 +246,18 @@ export default function Playbooks() {
                     <CardTitle className="flex items-center gap-2 text-base">
                       <button
                         className="text-left hover:underline truncate"
-                        onClick={() => navigate(`/provider/twin/playbooks/${pb.id}`)}
+                        onClick={() =>
+                          navigate(`/provider/twin/playbooks/${pb.id}`)
+                        }
                         data-testid={`link-open-${pb.id}`}
                       >
                         {pb.title}
                       </button>
                       {pb.isDefault && (
-                        <Badge variant="outline" className="border-amber-400 text-amber-700">
+                        <Badge
+                          variant="outline"
+                          className="border-amber-400 text-amber-700"
+                        >
                           <Star className="mr-1 h-3 w-3" /> Default
                         </Badge>
                       )}
@@ -211,7 +266,9 @@ export default function Playbooks() {
                       )}
                     </CardTitle>
                     {pb.description && (
-                      <CardDescription className="mt-1 line-clamp-2">{pb.description}</CardDescription>
+                      <CardDescription className="mt-1 line-clamp-2">
+                        {pb.description}
+                      </CardDescription>
                     )}
                   </div>
                 </div>
@@ -221,7 +278,9 @@ export default function Playbooks() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => navigate(`/provider/twin/playbooks/${pb.id}`)}
+                    onClick={() =>
+                      navigate(`/provider/twin/playbooks/${pb.id}`)
+                    }
                     data-testid={`button-edit-${pb.id}`}
                   >
                     Open editor
@@ -261,12 +320,24 @@ export default function Playbooks() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => archiveMut.mutate({ id: pb.id, isArchived: !pb.isArchived })}
-                    disabled={archiveMut.isPending || (pb.isDefault && !pb.isArchived)}
-                    title={pb.isDefault && !pb.isArchived ? "Pick a different default first" : ""}
+                    onClick={() =>
+                      archiveMut.mutate({
+                        id: pb.id,
+                        isArchived: !pb.isArchived,
+                      })
+                    }
+                    disabled={
+                      archiveMut.isPending || (pb.isDefault && !pb.isArchived)
+                    }
+                    title={
+                      pb.isDefault && !pb.isArchived
+                        ? "Pick a different default first"
+                        : ""
+                    }
                     data-testid={`button-archive-${pb.id}`}
                   >
-                    <Archive className="mr-1 h-4 w-4" /> {pb.isArchived ? "Restore" : "Archive"}
+                    <Archive className="mr-1 h-4 w-4" />{" "}
+                    {pb.isArchived ? "Restore" : "Archive"}
                   </Button>
                 </div>
               </CardContent>
@@ -275,11 +346,18 @@ export default function Playbooks() {
         </div>
       </div>
 
-      <Dialog open={!!renameOpen} onOpenChange={(o) => { if (!o) setRenameOpen(null); }}>
+      <Dialog
+        open={!!renameOpen}
+        onOpenChange={(o) => {
+          if (!o) setRenameOpen(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename playbook</DialogTitle>
-            <DialogDescription>Update the title and description.</DialogDescription>
+            <DialogDescription>
+              Update the title and description.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <Input
@@ -295,13 +373,18 @@ export default function Playbooks() {
             />
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setRenameOpen(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setRenameOpen(null)}>
+              Cancel
+            </Button>
             <Button
-              onClick={() => renameOpen && renameMut.mutate({
-                id: renameOpen.id,
-                title: newTitle,
-                description: newDescription || null,
-              })}
+              onClick={() =>
+                renameOpen &&
+                renameMut.mutate({
+                  id: renameOpen.id,
+                  title: newTitle,
+                  description: newDescription || null,
+                })
+              }
               disabled={!newTitle.trim() || renameMut.isPending}
               data-testid="button-save-rename"
             >

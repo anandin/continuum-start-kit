@@ -1,5 +1,18 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Calendar, Users, BookOpen, ClipboardList, BarChart3, Settings, Sparkles, BookText, Inbox, BookMarked, CreditCard } from "lucide-react";
+import {
+  LayoutDashboard,
+  Calendar,
+  Users,
+  BookOpen,
+  ClipboardList,
+  BarChart3,
+  Settings,
+  Sparkles,
+  BookText,
+  Inbox,
+  BookMarked,
+  CreditCard,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -21,16 +34,18 @@ export function ProviderSidebar() {
     <nav className="flex flex-col gap-1 p-3" aria-label="Main navigation">
       <NavLink
         to="/provider/onboarding"
-        className={({ isActive }) => cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors mb-2",
-          "bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20 text-primary hover:from-primary/15 hover:to-accent/15"
-        )}
+        className={({ isActive }) =>
+          cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors mb-2",
+            "bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20 text-primary hover:from-primary/15 hover:to-accent/15",
+          )
+        }
         data-testid="nav-onboarding"
       >
         <Sparkles className="h-4 w-4" />
         Re-run setup chat
       </NavLink>
-      {navItems.map(item => {
+      {navItems.map((item) => {
         const Icon = item.icon;
         const active = loc.pathname.startsWith(item.to);
         return (
@@ -41,7 +56,7 @@ export function ProviderSidebar() {
               "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
               active
                 ? "bg-primary/10 text-primary font-medium"
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
             data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
           >

@@ -122,7 +122,10 @@ export function QuietNightstand() {
                 justifyContent: "center",
               }}
             >
-              <Heart style={{ width: 12, height: 12, color: amber }} strokeWidth={1.8} />
+              <Heart
+                style={{ width: 12, height: 12, color: amber }}
+                strokeWidth={1.8}
+              />
             </div>
             <span
               className="qn-serif"
@@ -166,7 +169,10 @@ export function QuietNightstand() {
               fontSize: 15,
             }}
           >
-            <p className="qn-serif" style={{ fontSize: 28, color: text, marginBottom: 8 }}>
+            <p
+              className="qn-serif"
+              style={{ fontSize: 28, color: text, marginBottom: 8 }}
+            >
               For Experts
             </p>
             <p>Coming soon.</p>
@@ -205,12 +211,15 @@ export function QuietNightstand() {
                 }}
               >
                 Haven is a coaching companion built with practicing therapists.
-                It remembers what you talked about with your coach, and it's here
-                at 11 pm when you need to think out loud.
+                It remembers what you talked about with your coach, and it's
+                here at 11 pm when you need to think out loud.
               </p>
               <button className="qn-amber-btn">
                 Begin with Haven
-                <ArrowRight style={{ width: 16, height: 16 }} strokeWidth={1.8} />
+                <ArrowRight
+                  style={{ width: 16, height: 16 }}
+                  strokeWidth={1.8}
+                />
               </button>
             </section>
 
@@ -233,18 +242,15 @@ export function QuietNightstand() {
                 {[
                   {
                     title: "Picks up where you left off",
-                    body:
-                      "Your coach's notes carry over. Haven remembers what you've been working on, so you don't restart from zero each time.",
+                    body: "Your coach's notes carry over. Haven remembers what you've been working on, so you don't restart from zero each time.",
                   },
                   {
                     title: "Built with clinicians",
-                    body:
-                      "Designed alongside practicing therapists. Responses follow approaches your coach actually uses — not generic advice.",
+                    body: "Designed alongside practicing therapists. Responses follow approaches your coach actually uses — not generic advice.",
                   },
                   {
                     title: "Quiet by default",
-                    body:
-                      "No notifications begging for attention. No streaks. Open it when you want to think; close it when you don't.",
+                    body: "No notifications begging for attention. No streaks. Open it when you want to think; close it when you don't.",
                   },
                 ].map((f) => (
                   <div key={f.title} style={{ display: "flex" }}>
@@ -262,7 +268,14 @@ export function QuietNightstand() {
                       >
                         {f.title}
                       </h3>
-                      <p style={{ color: muted, fontSize: 15, margin: 0, lineHeight: 1.7 }}>
+                      <p
+                        style={{
+                          color: muted,
+                          fontSize: 15,
+                          margin: 0,
+                          lineHeight: 1.7,
+                        }}
+                      >
                         {f.body}
                       </p>
                     </div>
@@ -294,7 +307,12 @@ export function QuietNightstand() {
                 </p>
                 <h2
                   className="qn-serif qn-section-h"
-                  style={{ fontSize: 40, color: text, margin: 0, lineHeight: 1.15 }}
+                  style={{
+                    fontSize: 40,
+                    color: text,
+                    margin: 0,
+                    lineHeight: 1.15,
+                  }}
                 >
                   Three small steps.
                 </h2>
@@ -314,20 +332,17 @@ export function QuietNightstand() {
                   {
                     n: "1",
                     title: "Match",
-                    body:
-                      "Your therapist or coach invites you. Haven mirrors their approach, not someone else's.",
+                    body: "Your therapist or coach invites you. Haven mirrors their approach, not someone else's.",
                   },
                   {
                     n: "2",
                     title: "Meet",
-                    body:
-                      "Have a first conversation when you have a quiet moment. No prep required.",
+                    body: "Have a first conversation when you have a quiet moment. No prep required.",
                   },
                   {
                     n: "3",
                     title: "Keep going",
-                    body:
-                      "Return between sessions to think out loud. Your coach can see what's helpful.",
+                    body: "Return between sessions to think out loud. Your coach can see what's helpful.",
                   },
                 ].map((s) => (
                   <div key={s.n}>
@@ -345,7 +360,9 @@ export function QuietNightstand() {
                     >
                       {s.title}
                     </h3>
-                    <p style={{ color: muted, fontSize: 15, margin: 0 }}>{s.body}</p>
+                    <p style={{ color: muted, fontSize: 15, margin: 0 }}>
+                      {s.body}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -394,20 +411,17 @@ export function QuietNightstand() {
                   {
                     icon: Lock,
                     title: "Private",
-                    body:
-                      "Conversations are encrypted and stay between you and your coach. Never sold, never used to train models.",
+                    body: "Conversations are encrypted and stay between you and your coach. Never sold, never used to train models.",
                   },
                   {
                     icon: Users,
                     title: "Clinician-built",
-                    body:
-                      "Co-developed with licensed therapists. Reviewed for safety before any change reaches you.",
+                    body: "Co-developed with licensed therapists. Reviewed for safety before any change reaches you.",
                   },
                   {
                     icon: Clock,
                     title: "At your pace",
-                    body:
-                      "There's no schedule, no streak, no badges. You set when and how often you show up.",
+                    body: "There's no schedule, no streak, no badges. You set when and how often you show up.",
                   },
                 ].map((t, i) => {
                   const Icon = t.icon;
@@ -420,7 +434,12 @@ export function QuietNightstand() {
                       }}
                     >
                       <Icon
-                        style={{ width: 18, height: 18, color: muted, marginBottom: 18 }}
+                        style={{
+                          width: 18,
+                          height: 18,
+                          color: muted,
+                          marginBottom: 18,
+                        }}
                         strokeWidth={1.5}
                       />
                       <h3
@@ -434,7 +453,9 @@ export function QuietNightstand() {
                       >
                         {t.title}
                       </h3>
-                      <p style={{ color: muted, fontSize: 14.5, margin: 0 }}>{t.body}</p>
+                      <p style={{ color: muted, fontSize: 14.5, margin: 0 }}>
+                        {t.body}
+                      </p>
                     </div>
                   );
                 })}
@@ -487,7 +508,10 @@ export function QuietNightstand() {
               </p>
               <button className="qn-amber-btn">
                 Get Started
-                <ArrowRight style={{ width: 16, height: 16 }} strokeWidth={1.8} />
+                <ArrowRight
+                  style={{ width: 16, height: 16 }}
+                  strokeWidth={1.8}
+                />
               </button>
             </section>
           </>

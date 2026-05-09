@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 export default function ProviderEngagement() {
   const { engagementId } = useParams<{ engagementId: string }>();
@@ -9,7 +9,7 @@ export default function ProviderEngagement() {
     if (engagementId) {
       navigate(`/provider/client/${engagementId}`, { replace: true });
     } else {
-      navigate('/dashboard', { replace: true });
+      navigate("/dashboard", { replace: true });
     }
   }, [engagementId, navigate]);
 

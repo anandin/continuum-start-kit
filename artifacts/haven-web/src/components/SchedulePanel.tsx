@@ -1,13 +1,27 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarClock, Plus, Trash2, RefreshCw, XCircle, CheckCircle2, Mail } from "lucide-react";
+import {
+  CalendarClock,
+  Plus,
+  Trash2,
+  RefreshCw,
+  XCircle,
+  CheckCircle2,
+  Mail,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface ScheduledSession {
@@ -114,12 +128,17 @@ function ProposeForm({
     if (initial?.slots?.length) return initial.slots.map(isoToLocalInput);
     return [nowPlusHours(24)];
   });
-  const [duration, setDuration] = useState<number>(initial?.durationMinutes ?? 50);
-  const [title, setTitle] = useState<string>(initial?.title ?? "Therapy session");
+  const [duration, setDuration] = useState<number>(
+    initial?.durationMinutes ?? 50,
+  );
+  const [title, setTitle] = useState<string>(
+    initial?.title ?? "Therapy session",
+  );
 
   const updateSlot = (i: number, value: string) =>
     setSlots((s) => s.map((v, idx) => (idx === i ? value : v)));
-  const addSlot = () => setSlots((s) => (s.length >= 3 ? s : [...s, nowPlusHours(48)]));
+  const addSlot = () =>
+    setSlots((s) => (s.length >= 3 ? s : [...s, nowPlusHours(48)]));
   const removeSlot = (i: number) =>
     setSlots((s) => (s.length <= 1 ? s : s.filter((_, idx) => idx !== i)));
 
@@ -162,7 +181,11 @@ function ProposeForm({
           max={240}
           step={5}
           value={duration}
-          onChange={(e) => setDuration(Math.max(15, Math.min(240, Number(e.target.value) || 50)))}
+          onChange={(e) =>
+            setDuration(
+              Math.max(15, Math.min(240, Number(e.target.value) || 50)),
+            )
+          }
         />
       </div>
       <div className="space-y-2">
@@ -193,11 +216,16 @@ function ProposeForm({
           </Button>
         )}
         <p className="text-xs text-muted-foreground">
-          Times are in your local zone ({detectedTimezone()}). Your client will see them in theirs.
+          Times are in your local zone ({detectedTimezone()}). Your client will
+          see them in theirs.
         </p>
       </div>
       <div className="flex items-center gap-2 pt-2">
-        <Button onClick={submit} disabled={submitting} data-testid="submit-propose">
+        <Button
+          onClick={submit}
+          disabled={submitting}
+          data-testid="submit-propose"
+        >
           {submitting ? "Sending..." : submitLabel}
         </Button>
         {onCancel && (
@@ -230,7 +258,8 @@ function ScheduledRow({
         <div>
           <p className="font-medium text-sm">{row.title}</p>
           <p className="text-xs text-muted-foreground">
-            {row.durationMinutes}m · times shown in your zone ({detectedTimezone()})
+            {row.durationMinutes}m · times shown in your zone (
+            {detectedTimezone()})
           </p>
         </div>
         <StatusBadge status={row.status} />
@@ -282,10 +311,17 @@ export function SchedulePanel({ engagementId }: { engagementId: string }) {
   const qc = useQueryClient();
   const queryKey = [`/api/engagements/${engagementId}/scheduled-sessions`];
 
-  const { data, isLoading } = useQuery<{ scheduledSessions: ScheduledSession[] }>({
+  const { data, isLoading } = useQuery<{
+    scheduledSessions: ScheduledSession[];
+  }>({
     queryKey,
     queryFn: async () =>
-      (await apiRequest("GET", `/api/engagements/${engagementId}/scheduled-sessions`)).json(),
+      (
+        await apiRequest(
+          "GET",
+          `/api/engagements/${engagementId}/scheduled-sessions`,
+        )
+      ).json(),
     enabled: !!engagementId,
   });
 
@@ -338,12 +374,16 @@ export function SchedulePanel({ engagementId }: { engagementId: string }) {
       timezone: string;
     }) =>
       (
-        await apiRequest("POST", `/api/engagements/${engagementId}/scheduled-sessions`, {
-          proposedSlots: input.slots,
-          durationMinutes: input.durationMinutes,
-          title: input.title,
-          timezone: input.timezone,
-        })
+        await apiRequest(
+          "POST",
+          `/api/engagements/${engagementId}/scheduled-sessions`,
+          {
+            proposedSlots: input.slots,
+            durationMinutes: input.durationMinutes,
+            title: input.title,
+            timezone: input.timezone,
+          },
+        )
       ).json(),
     onSuccess: () => {
       toast.success("Proposed times sent to your client.");
@@ -362,12 +402,16 @@ export function SchedulePanel({ engagementId }: { engagementId: string }) {
       timezone: string;
     }) =>
       (
-        await apiRequest("POST", `/api/scheduled-sessions/${input.id}/reschedule`, {
-          proposedSlots: input.slots,
-          durationMinutes: input.durationMinutes,
-          title: input.title,
-          timezone: input.timezone,
-        })
+        await apiRequest(
+          "POST",
+          `/api/scheduled-sessions/${input.id}/reschedule`,
+          {
+            proposedSlots: input.slots,
+            durationMinutes: input.durationMinutes,
+            title: input.title,
+            timezone: input.timezone,
+          },
+        )
       ).json(),
     onSuccess: () => {
       toast.success("Reschedule sent — your client will pick a new time.");
@@ -405,7 +449,8 @@ export function SchedulePanel({ engagementId }: { engagementId: string }) {
                 <CalendarClock className="h-4 w-4" /> Scheduled sessions
               </CardTitle>
               <CardDescription>
-                Propose a few times — your client picks one, both sides get a calendar invite by email.
+                Propose a few times — your client picks one, both sides get a
+                calendar invite by email.
               </CardDescription>
             </div>
             {!showCompose && !rescheduleId && (
@@ -544,7 +589,8 @@ export function SchedulePanel({ engagementId }: { engagementId: string }) {
 
           <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
             <Mail className="h-3 w-3" />
-            We send a real .ics calendar invite to both sides on confirm, reschedule, and cancel.
+            We send a real .ics calendar invite to both sides on confirm,
+            reschedule, and cancel.
           </p>
         </CardContent>
       </Card>

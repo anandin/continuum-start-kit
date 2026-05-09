@@ -19,7 +19,9 @@ import { and, desc, eq } from "drizzle-orm";
 
 export const billingStorage = {
   // ---------------- providerBilling ----------------
-  async getProviderBilling(providerId: string): Promise<ProviderBilling | undefined> {
+  async getProviderBilling(
+    providerId: string,
+  ): Promise<ProviderBilling | undefined> {
     const [row] = await db
       .select()
       .from(providerBilling)
@@ -92,7 +94,10 @@ export const billingStorage = {
       .from(priceTiers)
       .where(
         opts.activeOnly
-          ? and(eq(priceTiers.providerId, providerId), eq(priceTiers.isActive, true))
+          ? and(
+              eq(priceTiers.providerId, providerId),
+              eq(priceTiers.isActive, true),
+            )
           : eq(priceTiers.providerId, providerId),
       )
       .orderBy(priceTiers.sortOrder);
@@ -100,7 +105,11 @@ export const billingStorage = {
   },
 
   async getTierById(id: string): Promise<PriceTier | undefined> {
-    const [row] = await db.select().from(priceTiers).where(eq(priceTiers.id, id)).limit(1);
+    const [row] = await db
+      .select()
+      .from(priceTiers)
+      .where(eq(priceTiers.id, id))
+      .limit(1);
     return row;
   },
 
@@ -109,7 +118,10 @@ export const billingStorage = {
     return row;
   },
 
-  async updateTier(id: string, patch: Partial<InsertPriceTier>): Promise<PriceTier | undefined> {
+  async updateTier(
+    id: string,
+    patch: Partial<InsertPriceTier>,
+  ): Promise<PriceTier | undefined> {
     const [row] = await db
       .update(priceTiers)
       .set({ ...patch, updatedAt: new Date() })
@@ -126,7 +138,9 @@ export const billingStorage = {
   },
 
   // ---------------- engagementBilling ----------------
-  async getEngagementBilling(engagementId: string): Promise<EngagementBilling | undefined> {
+  async getEngagementBilling(
+    engagementId: string,
+  ): Promise<EngagementBilling | undefined> {
     const [row] = await db
       .select()
       .from(engagementBilling)
@@ -276,7 +290,9 @@ export const billingStorage = {
     const [existing] = await db
       .select()
       .from(billingPayments)
-      .where(eq(billingPayments.stripePaymentIntentId, input.stripePaymentIntentId))
+      .where(
+        eq(billingPayments.stripePaymentIntentId, input.stripePaymentIntentId),
+      )
       .limit(1);
     if (existing) {
       await db
@@ -310,7 +326,10 @@ export const billingStorage = {
 
   // Record an event as processed AFTER the handler has succeeded.
   // Conflict (concurrent retry) is fine — the other request finished it.
-  async markStripeEventProcessed(eventId: string, eventType: string): Promise<void> {
+  async markStripeEventProcessed(
+    eventId: string,
+    eventType: string,
+  ): Promise<void> {
     await db
       .insert(billingProcessedEvents)
       .values({ eventId, eventType })

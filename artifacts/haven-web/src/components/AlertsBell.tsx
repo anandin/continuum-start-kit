@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Bell, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useNavigate } from "react-router-dom";
@@ -55,7 +59,12 @@ export function AlertsBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="relative" data-testid="button-alerts">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="relative"
+          data-testid="button-alerts"
+        >
           <Bell className="h-5 w-5" />
           {count > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-foreground">
@@ -68,7 +77,13 @@ export function AlertsBell() {
         <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
           <p className="text-sm font-semibold">Notifications</p>
           {count > 0 && (
-            <Button variant="ghost" size="sm" onClick={markAll} className="text-xs h-7" data-testid="button-mark-all-read">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={markAll}
+              className="text-xs h-7"
+              data-testid="button-mark-all-read"
+            >
               <Check className="mr-1 h-3 w-3" /> Mark all read
             </Button>
           )}
@@ -80,7 +95,7 @@ export function AlertsBell() {
               You're all caught up.
             </div>
           ) : (
-            alerts.map(a => (
+            alerts.map((a) => (
               <button
                 key={a.id}
                 onClick={() => handleClick(a)}
@@ -88,7 +103,9 @@ export function AlertsBell() {
                 data-testid={`alert-${a.id}`}
               >
                 <p className="text-foreground">{a.message}</p>
-                <p className="text-xs text-muted-foreground mt-1">{new Date(a.createdAt).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {new Date(a.createdAt).toLocaleString()}
+                </p>
               </button>
             ))
           )}

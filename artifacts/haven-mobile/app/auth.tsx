@@ -56,7 +56,10 @@ export default function AuthScreen() {
     }
     const head = raw.split("?")[0] ?? raw;
     const ok = ALLOWED_NEXT_PREFIXES.some(
-      (prefix) => head === prefix || head.startsWith(`${prefix}/`) || head.startsWith(`${prefix}?`),
+      (prefix) =>
+        head === prefix ||
+        head.startsWith(`${prefix}/`) ||
+        head.startsWith(`${prefix}?`),
     );
     return ok ? raw : "/(tabs)";
   })();
@@ -157,7 +160,9 @@ export default function AuthScreen() {
                       styles.tabLabel,
                       {
                         color:
-                          mode === m ? colors.primaryForeground : colors.mutedForeground,
+                          mode === m
+                            ? colors.primaryForeground
+                            : colors.mutedForeground,
                       },
                     ]}
                   >
@@ -202,7 +207,9 @@ export default function AuthScreen() {
                 placeholder="Your password"
                 placeholderTextColor={colors.mutedForeground}
                 secureTextEntry
-                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                autoComplete={
+                  mode === "signin" ? "current-password" : "new-password"
+                }
                 style={[
                   styles.input,
                   {
@@ -251,7 +258,9 @@ export default function AuthScreen() {
 
             <View style={styles.privacy}>
               <Feather name="shield" size={12} color={colors.mutedForeground} />
-              <Text style={[styles.privacyText, { color: colors.mutedForeground }]}>
+              <Text
+                style={[styles.privacyText, { color: colors.mutedForeground }]}
+              >
                 Your privacy and safety are our priority
               </Text>
             </View>

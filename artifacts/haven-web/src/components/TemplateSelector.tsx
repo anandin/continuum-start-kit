@@ -1,13 +1,21 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { providerTemplates, ProviderTemplate } from '@/data/providerTemplates';
-import { CheckCircle2, Sparkles } from 'lucide-react';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { providerTemplates, ProviderTemplate } from "@/data/providerTemplates";
+import { CheckCircle2, Sparkles } from "lucide-react";
 
 interface TemplateSelectorProps {
   onSelectTemplate: (template: ProviderTemplate) => void;
 }
 
-export default function TemplateSelector({ onSelectTemplate }: TemplateSelectorProps) {
+export default function TemplateSelector({
+  onSelectTemplate,
+}: TemplateSelectorProps) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
       <header className="border-b bg-card/50 backdrop-blur">
@@ -16,7 +24,9 @@ export default function TemplateSelector({ onSelectTemplate }: TemplateSelectorP
             <Sparkles className="h-8 w-8 text-primary" />
             <div>
               <h1 className="text-3xl font-bold">Choose Your Framework</h1>
-              <p className="text-muted-foreground">Select a pre-built template or start from scratch</p>
+              <p className="text-muted-foreground">
+                Select a pre-built template or start from scratch
+              </p>
             </div>
           </div>
         </div>
@@ -35,7 +45,7 @@ export default function TemplateSelector({ onSelectTemplate }: TemplateSelectorP
                   <CardTitle className="text-xl group-hover:text-primary transition-colors">
                     {template.name}
                   </CardTitle>
-                  {template.id !== 'blank' && (
+                  {template.id !== "blank" && (
                     <CheckCircle2 className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
                   )}
                 </div>
@@ -45,14 +55,20 @@ export default function TemplateSelector({ onSelectTemplate }: TemplateSelectorP
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {template.id !== 'blank' && (
+                  {template.id !== "blank" && (
                     <>
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">Stages</p>
-                        <p className="text-sm">{template.stages.length} progression stages</p>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          Stages
+                        </p>
+                        <p className="text-sm">
+                          {template.stages.length} progression stages
+                        </p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">Focus Areas</p>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          Focus Areas
+                        </p>
                         <div className="flex flex-wrap gap-1">
                           {template.labels.slice(0, 3).map((label, idx) => (
                             <span
@@ -72,14 +88,16 @@ export default function TemplateSelector({ onSelectTemplate }: TemplateSelectorP
                     </>
                   )}
                   <Button
-                    variant={template.id === 'blank' ? 'outline' : 'default'}
+                    variant={template.id === "blank" ? "outline" : "default"}
                     className="w-full mt-4"
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelectTemplate(template);
                     }}
                   >
-                    {template.id === 'blank' ? 'Start Fresh' : 'Use This Template'}
+                    {template.id === "blank"
+                      ? "Start Fresh"
+                      : "Use This Template"}
                   </Button>
                 </div>
               </CardContent>

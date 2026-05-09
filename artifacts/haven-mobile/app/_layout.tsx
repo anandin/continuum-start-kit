@@ -42,7 +42,8 @@ function NotificationDeepLinkHandler() {
 
     const handle = (data: Record<string, unknown> | undefined) => {
       if (!data) return;
-      const explicit = typeof data.path === "string" ? (data.path as string) : null;
+      const explicit =
+        typeof data.path === "string" ? (data.path as string) : null;
       const type = typeof data.type === "string" ? (data.type as string) : null;
       try {
         if (explicit) {
@@ -60,7 +61,11 @@ function NotificationDeepLinkHandler() {
     // Cold-start: the user tapped the notification while the app was killed.
     Notifications.getLastNotificationResponseAsync()
       .then((res) => {
-        handle(res?.notification.request.content.data as Record<string, unknown> | undefined);
+        handle(
+          res?.notification.request.content.data as
+            | Record<string, unknown>
+            | undefined,
+        );
       })
       .catch(() => {
         // Best-effort; ignore failures (e.g. permissions, simulator).
@@ -68,7 +73,11 @@ function NotificationDeepLinkHandler() {
 
     // Warm-start: the app was already running.
     const sub = Notifications.addNotificationResponseReceivedListener((res) => {
-      handle(res.notification.request.content.data as Record<string, unknown> | undefined);
+      handle(
+        res.notification.request.content.data as
+          | Record<string, unknown>
+          | undefined,
+      );
     });
     return () => sub.remove();
   }, []);
@@ -87,7 +96,10 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="auth" options={{ animation: "fade" }} />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="progress" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen
+        name="progress"
+        options={{ animation: "slide_from_right" }}
+      />
     </Stack>
   );
 }

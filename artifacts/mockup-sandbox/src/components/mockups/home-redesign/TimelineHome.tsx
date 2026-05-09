@@ -24,9 +24,13 @@ export function TimelineHome() {
           fontFamily: "'DM Sans', sans-serif",
         }}
       >
-        <style dangerouslySetInnerHTML={{ __html: `
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400;1,9..40,500&display=swap');
-        ` }} />
+        `,
+          }}
+        />
 
         {/* Top Status Bar Simulator */}
         <div className="h-12 w-full flex justify-between items-end px-6 pb-2 text-[11px] font-medium tracking-wide">
@@ -38,7 +42,10 @@ export function TimelineHome() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-24" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+        <div
+          className="flex-1 overflow-y-auto pb-24"
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        >
           {/* Top bar */}
           <header className="px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -61,11 +68,20 @@ export function TimelineHome() {
               Your last session was Thursday — you set 3 things to try.
             </p>
             <div className="mt-4 pt-4 border-t border-[#E5E5E0] flex items-center gap-3 text-[11px] font-bold uppercase tracking-wider text-[#666666]">
-              <span>Sessions <span className="text-[#1A1A1A] ml-1">7</span></span>
+              <span>
+                Sessions <span className="text-[#1A1A1A] ml-1">7</span>
+              </span>
               <span className="text-[#E5E5E0]">/</span>
-              <span>Stage <span className="text-[#1A1A1A] ml-1 normal-case tracking-normal">2</span></span>
+              <span>
+                Stage{" "}
+                <span className="text-[#1A1A1A] ml-1 normal-case tracking-normal">
+                  2
+                </span>
+              </span>
               <span className="text-[#E5E5E0]">/</span>
-              <span className="normal-case tracking-normal text-[#1A1A1A]">Working through avoidance</span>
+              <span className="normal-case tracking-normal text-[#1A1A1A]">
+                Working through avoidance
+              </span>
             </div>
           </div>
 
@@ -93,13 +109,18 @@ export function TimelineHome() {
               {/* Insights */}
               <div className="space-y-4 mb-5">
                 <div className="flex gap-3">
-                  <span className="text-[#164E36] font-bold text-[13px] leading-relaxed">1</span>
+                  <span className="text-[#164E36] font-bold text-[13px] leading-relaxed">
+                    1
+                  </span>
                   <p className="text-[14px] leading-relaxed border-l-2 border-[#164E36] pl-3">
-                    You named perfectionism as the reason you avoid starting the report.
+                    You named perfectionism as the reason you avoid starting the
+                    report.
                   </p>
                 </div>
                 <div className="flex gap-3">
-                  <span className="text-[#164E36] font-bold text-[13px] leading-relaxed">2</span>
+                  <span className="text-[#164E36] font-bold text-[13px] leading-relaxed">
+                    2
+                  </span>
                   <p className="text-[14px] leading-relaxed border-l-2 border-[#164E36] pl-3">
                     Rest still feels like something you have to earn.
                   </p>
@@ -108,9 +129,12 @@ export function TimelineHome() {
 
               {/* Try this */}
               <div className="bg-white border border-[#E5E5E0] rounded-lg p-4">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#164E36] mb-2">Try this</h4>
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#164E36] mb-2">
+                  Try this
+                </h4>
                 <p className="text-[14px] italic leading-relaxed text-[#1A1A1A]">
-                  "Try the 4-7-8 breath when you notice your chest tightening tonight, before you reach for your phone."
+                  "Try the 4-7-8 breath when you notice your chest tightening
+                  tonight, before you reach for your phone."
                 </p>
               </div>
             </section>
@@ -125,7 +149,9 @@ export function TimelineHome() {
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[#666666]">
                   This week · 3 things to try
                 </div>
-                <span className="text-[11px] font-bold text-[#164E36]">1 / 3</span>
+                <span className="text-[11px] font-bold text-[#164E36]">
+                  1 / 3
+                </span>
               </div>
               <div className="space-y-2.5 mt-3">
                 <div className="flex items-start gap-3">
@@ -209,7 +235,9 @@ export function TimelineHome() {
             <button className="w-full flex items-center justify-between group">
               <div className="flex items-center gap-3">
                 <Target className="w-5 h-5 text-[#164E36]" />
-                <span className="text-[15px] font-bold">View full progress</span>
+                <span className="text-[15px] font-bold">
+                  View full progress
+                </span>
               </div>
               <ChevronRight className="w-5 h-5 text-[#666666]" />
             </button>

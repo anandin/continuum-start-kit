@@ -18,7 +18,9 @@ export const DEFAULT_NUDGE_PREFS = {
   windowEndHour: 11,
 } as const;
 
-export async function getNudgePrefs(userId: string): Promise<NudgePrefs | undefined> {
+export async function getNudgePrefs(
+  userId: string,
+): Promise<NudgePrefs | undefined> {
   const [row] = await db
     .select()
     .from(nudgePrefs)
@@ -29,7 +31,11 @@ export async function getNudgePrefs(userId: string): Promise<NudgePrefs | undefi
 
 export async function upsertNudgePrefs(
   userId: string,
-  patch: Partial<{ enabled: boolean; windowStartHour: number; windowEndHour: number }>,
+  patch: Partial<{
+    enabled: boolean;
+    windowStartHour: number;
+    windowEndHour: number;
+  }>,
 ): Promise<NudgePrefs> {
   const existing = await getNudgePrefs(userId);
   if (!existing) {
@@ -38,7 +44,8 @@ export async function upsertNudgePrefs(
       .values({
         userId,
         enabled: patch.enabled ?? DEFAULT_NUDGE_PREFS.enabled,
-        windowStartHour: patch.windowStartHour ?? DEFAULT_NUDGE_PREFS.windowStartHour,
+        windowStartHour:
+          patch.windowStartHour ?? DEFAULT_NUDGE_PREFS.windowStartHour,
         windowEndHour: patch.windowEndHour ?? DEFAULT_NUDGE_PREFS.windowEndHour,
       })
       .returning();
@@ -75,7 +82,10 @@ export async function createOrGetTodaysNudge(
   } catch (err) {
     const code = (err as { code?: string } | null)?.code;
     if (code === "23505") {
-      const existing = await getTodaysNudgeForSeeker(data.seekerUserId, todayYmd);
+      const existing = await getTodaysNudgeForSeeker(
+        data.seekerUserId,
+        todayYmd,
+      );
       if (existing) return existing;
     }
     throw err;
@@ -100,7 +110,11 @@ export async function getTodaysNudgeForSeeker(
 }
 
 export async function getNudgeById(id: string): Promise<Nudge | undefined> {
-  const [row] = await db.select().from(nudges).where(eq(nudges.id, id)).limit(1);
+  const [row] = await db
+    .select()
+    .from(nudges)
+    .where(eq(nudges.id, id))
+    .limit(1);
   return row;
 }
 
@@ -130,7 +144,11 @@ export async function respondToNudge(
   action: "done" | "skip" | "snooze",
 ): Promise<Nudge | undefined> {
   const now = new Date();
-  const patch: Partial<{ status: string; respondedAt: Date; snoozeUntil: Date }> = {
+  const patch: Partial<{
+    status: string;
+    respondedAt: Date;
+    snoozeUntil: Date;
+  }> = {
     respondedAt: now,
   };
   if (action === "done") {

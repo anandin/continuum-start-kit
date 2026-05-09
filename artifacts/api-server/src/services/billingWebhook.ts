@@ -18,21 +18,26 @@ type InvoiceWithSub = Stripe.Invoice & {
 
 function invoiceSubId(inv: Stripe.Invoice): string | null {
   const raw = (inv as InvoiceWithSub).subscription ?? null;
-  return typeof raw === "string" ? raw : raw?.id ?? null;
+  return typeof raw === "string" ? raw : (raw?.id ?? null);
 }
 
 function invoicePaymentIntentId(inv: Stripe.Invoice): string | null {
   const raw = (inv as InvoiceWithSub).payment_intent ?? null;
-  return typeof raw === "string" ? raw : raw?.id ?? null;
+  return typeof raw === "string" ? raw : (raw?.id ?? null);
 }
 
-export async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
+export async function handleStripeWebhook(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const stripe = getStripe();
   const secret = stripeWebhookSecret();
   if (!stripe || !secret) {
     // Refuse to process unverifiable payloads. 503 makes the misconfig
     // loud — Stripe will retry and the operator must set the secret.
-    logger.warn("stripe webhook: STRIPE_WEBHOOK_SECRET not set — refusing event");
+    logger.warn(
+      "stripe webhook: STRIPE_WEBHOOK_SECRET not set — refusing event",
+    );
     res.status(503).json({ error: "webhook not configured" });
     return;
   }
@@ -46,19 +51,21 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body as Buffer,
-      sigStr,
-      secret,
-    );
+    event = stripe.webhooks.constructEvent(req.body as Buffer, sigStr, secret);
   } catch (err: any) {
-    logger.warn({ err: err?.message }, "stripe webhook: signature verification failed");
+    logger.warn(
+      { err: err?.message },
+      "stripe webhook: signature verification failed",
+    );
     res.status(400).json({ error: `signature: ${err?.message ?? "invalid"}` });
     return;
   }
 
   if (await billingStorage.isStripeEventProcessed(event.id)) {
-    logger.debug({ eventId: event.id, type: event.type }, "stripe webhook: duplicate, skipped");
+    logger.debug(
+      { eventId: event.id, type: event.type },
+      "stripe webhook: duplicate, skipped",
+    );
     res.status(200).json({ received: true, duplicate: true });
     return;
   }
@@ -131,7 +138,8 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         const inv = event.data.object as Stripe.Invoice;
         const subId = invoiceSubId(inv);
         if (subId) {
-          const eb = await billingStorage.getEngagementBillingBySubscriptionId(subId);
+          const eb =
+            await billingStorage.getEngagementBillingBySubscriptionId(subId);
           if (eb) {
             // Persist the PM that paid this invoice so the per-confirm
             // PM gate doesn't block bookings on an active subscription.
@@ -140,7 +148,8 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
             if (piId && stripe) {
               try {
                 const pi = await stripe.paymentIntents.retrieve(piId);
-                if (typeof pi.payment_method === "string") pmId = pi.payment_method;
+                if (typeof pi.payment_method === "string")
+                  pmId = pi.payment_method;
               } catch {}
             }
             if (!pmId && stripe) {
@@ -184,7 +193,8 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         const inv = event.data.object as Stripe.Invoice;
         const subId = invoiceSubId(inv);
         if (subId) {
-          const eb = await billingStorage.getEngagementBillingBySubscriptionId(subId);
+          const eb =
+            await billingStorage.getEngagementBillingBySubscriptionId(subId);
           if (eb) {
             await billingStorage.upsertEngagementBilling({
               engagementId: eb.engagementId,
@@ -213,7 +223,9 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
       }
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
-        const eb = await billingStorage.getEngagementBillingBySubscriptionId(sub.id);
+        const eb = await billingStorage.getEngagementBillingBySubscriptionId(
+          sub.id,
+        );
         if (eb) {
           // Clear tierId too: with no tier, the confirm route's
           // tier-required gate blocks new sessions until the seeker
@@ -236,8 +248,13 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     await billingStorage.markStripeEventProcessed(event.id, event.type);
     res.status(200).json({ received: true });
   } catch (err: any) {
-    logger.error({ err: err?.message, type: event.type }, "stripe webhook: handler error");
+    logger.error(
+      { err: err?.message, type: event.type },
+      "stripe webhook: handler error",
+    );
     // Return 500 so Stripe retries; the event is NOT marked processed.
-    res.status(500).json({ received: false, error: err?.message ?? "handler error" });
+    res
+      .status(500)
+      .json({ received: false, error: err?.message ?? "handler error" });
   }
 }

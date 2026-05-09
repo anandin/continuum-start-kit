@@ -68,18 +68,22 @@ export function PragmaticStudio() {
             {/* 3. Hero */}
             <section className="pt-20 pb-24 grid grid-cols-12 gap-8 border-b ps-rule">
               <div className="col-span-12 md:col-span-9">
-                <div className="ps-label text-[#298E89] mb-6">A coaching companion</div>
+                <div className="ps-label text-[#298E89] mb-6">
+                  A coaching companion
+                </div>
                 <h1 className="ps-headline text-[56px] md:text-[68px] text-[#1A1A1A]">
                   A coaching companion built with the
                   <br />
                   people who do the work.
                 </h1>
                 <p className="mt-8 text-[17px] leading-relaxed text-[#666666] max-w-[640px]">
-                  Haven works with your therapist or coach — between sessions, not in place of them.
+                  Haven works with your therapist or coach — between sessions,
+                  not in place of them.
                 </p>
                 <div className="mt-10 flex items-center gap-5">
                   <button className="bg-[#298E89] text-white px-6 py-3.5 text-[14px] font-semibold tracking-tight inline-flex items-center gap-2 hover:bg-[#1f6f6b] transition-colors">
-                    Get Started <ArrowRight className="w-4 h-4" strokeWidth={2.25} />
+                    Get Started{" "}
+                    <ArrowRight className="w-4 h-4" strokeWidth={2.25} />
                   </button>
                   <span className="text-[12px] text-[#999999]">
                     By invite only — your coach gets you in.
@@ -110,11 +114,15 @@ export function PragmaticStudio() {
                   },
                 ].map((f) => (
                   <div key={f.n} className="bg-[#FAFAF7] p-8">
-                    <div className="ps-num text-[#999999] text-[13px] font-semibold mb-6">{f.n}</div>
+                    <div className="ps-num text-[#999999] text-[13px] font-semibold mb-6">
+                      {f.n}
+                    </div>
                     <h3 className="text-[20px] font-bold tracking-tight mb-3 text-[#1A1A1A]">
                       {f.title}
                     </h3>
-                    <p className="text-[14px] leading-relaxed text-[#666666]">{f.body}</p>
+                    <p className="text-[14px] leading-relaxed text-[#666666]">
+                      {f.body}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -124,23 +132,41 @@ export function PragmaticStudio() {
             <section className="py-16 border-b ps-rule">
               <div className="grid grid-cols-12 gap-8">
                 <div className="col-span-12 md:col-span-4">
-                  <div className="ps-label text-[#298E89] mb-4">How Haven works</div>
+                  <div className="ps-label text-[#298E89] mb-4">
+                    How Haven works
+                  </div>
                   <h2 className="ps-headline text-[36px] text-[#1A1A1A]">
                     Three steps. No theatrics.
                   </h2>
                 </div>
                 <div className="col-span-12 md:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-8">
                   {[
-                    { n: "01", t: "Connect", d: "with a coach who joins Haven." },
-                    { n: "02", t: "Work", d: "between sessions, on your own terms." },
-                    { n: "03", t: "Return", d: "and bring it back to your next session." },
+                    {
+                      n: "01",
+                      t: "Connect",
+                      d: "with a coach who joins Haven.",
+                    },
+                    {
+                      n: "02",
+                      t: "Work",
+                      d: "between sessions, on your own terms.",
+                    },
+                    {
+                      n: "03",
+                      t: "Return",
+                      d: "and bring it back to your next session.",
+                    },
                   ].map((s) => (
                     <div key={s.n} className="border-t-2 border-[#1A1A1A] pt-5">
                       <div className="ps-num text-[64px] font-bold text-[#1A1A1A] leading-none mb-4">
                         {s.n}
                       </div>
-                      <div className="text-[15px] font-semibold text-[#1A1A1A] mb-1">{s.t}</div>
-                      <div className="text-[14px] text-[#666666] leading-snug">{s.d}</div>
+                      <div className="text-[15px] font-semibold text-[#1A1A1A] mb-1">
+                        {s.t}
+                      </div>
+                      <div className="text-[14px] text-[#666666] leading-snug">
+                        {s.d}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -149,7 +175,9 @@ export function PragmaticStudio() {
 
             {/* 6. Built on Trust */}
             <section className="py-16 border-b ps-rule">
-              <div className="ps-label text-[#666666] mb-10">Built on trust</div>
+              <div className="ps-label text-[#666666] mb-10">
+                Built on trust
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
                 {[
                   {
@@ -169,11 +197,16 @@ export function PragmaticStudio() {
                   },
                 ].map((t) => (
                   <div key={t.title} className="border-l ps-rule pl-5">
-                    <t.icon className="w-4 h-4 text-[#298E89] mb-4" strokeWidth={2} />
+                    <t.icon
+                      className="w-4 h-4 text-[#298E89] mb-4"
+                      strokeWidth={2}
+                    />
                     <h3 className="text-[16px] font-bold tracking-tight mb-2 text-[#1A1A1A]">
                       {t.title}
                     </h3>
-                    <p className="text-[13px] leading-relaxed text-[#666666]">{t.body}</p>
+                    <p className="text-[13px] leading-relaxed text-[#666666]">
+                      {t.body}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -183,14 +216,17 @@ export function PragmaticStudio() {
             <section className="py-24 border-b ps-rule">
               <div className="grid grid-cols-12 gap-8 items-end">
                 <div className="col-span-12 md:col-span-8">
-                  <h2 className="ps-headline text-[48px] text-[#1A1A1A]">Start with Haven.</h2>
+                  <h2 className="ps-headline text-[48px] text-[#1A1A1A]">
+                    Start with Haven.
+                  </h2>
                   <p className="mt-5 text-[15px] text-[#666666] max-w-[520px]">
                     Joining requires an invitation from a coach or therapist.
                   </p>
                 </div>
                 <div className="col-span-12 md:col-span-4 md:text-right">
                   <button className="bg-[#298E89] text-white px-6 py-3.5 text-[14px] font-semibold tracking-tight inline-flex items-center gap-2 hover:bg-[#1f6f6b] transition-colors">
-                    Get Started <ArrowRight className="w-4 h-4" strokeWidth={2.25} />
+                    Get Started{" "}
+                    <ArrowRight className="w-4 h-4" strokeWidth={2.25} />
                   </button>
                 </div>
               </div>

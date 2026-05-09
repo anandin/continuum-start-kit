@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
-import { ProviderDashboardView } from '@/components/dashboard/ProviderDashboardView';
-import { SeekerDashboardView } from '@/components/dashboard/SeekerDashboardView';
-import { AppLayout } from '@/components/AppLayout';
+import { useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
+import { ProviderDashboardView } from "@/components/dashboard/ProviderDashboardView";
+import { SeekerDashboardView } from "@/components/dashboard/SeekerDashboardView";
+import { AppLayout } from "@/components/AppLayout";
 
 export default function Dashboard() {
   const { user, role, loading } = useAuth();
@@ -13,13 +13,13 @@ export default function Dashboard() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate('/auth');
+        navigate("/auth");
       } else if (!role) {
-        navigate('/auth/role');
-      } else if (role === 'provider') {
+        navigate("/auth/role");
+      } else if (role === "provider") {
         // Coaches land in the triage Inbox by default; the legacy dashboard
         // (client list, twin tower, stats) still lives at /provider/dashboard.
-        navigate('/provider/inbox', { replace: true });
+        navigate("/provider/inbox", { replace: true });
       }
     }
   }, [user, role, loading, navigate]);
@@ -39,10 +39,12 @@ export default function Dashboard() {
 
   return (
     <AppLayout
-      title={role === 'provider' ? 'Coach Dashboard' : 'Your Journey'}
-      subtitle={role === 'provider' ? 'Your practice at a glance' : 'Welcome back'}
+      title={role === "provider" ? "Coach Dashboard" : "Your Journey"}
+      subtitle={
+        role === "provider" ? "Your practice at a glance" : "Welcome back"
+      }
     >
-      {role === 'provider' ? (
+      {role === "provider" ? (
         <ProviderDashboardView userId={user.id} />
       ) : (
         <SeekerDashboardView userId={user.id} />

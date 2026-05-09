@@ -32,7 +32,11 @@ function fmtUsd(cents: number): string {
 // Coach-facing read-only billing summary for an engagement: shows the
 // seeker's current tier, status, last failure (if any), and a short
 // payment history. Coaches cannot change the tier — the seeker owns it.
-export function CoachBillingSummary({ engagementId }: { engagementId: string }) {
+export function CoachBillingSummary({
+  engagementId,
+}: {
+  engagementId: string;
+}) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [history, setHistory] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,8 +45,12 @@ export function CoachBillingSummary({ engagementId }: { engagementId: string }) 
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      fetch(`/api/engagements/${engagementId}/billing`, { credentials: "include" }).then((r) => r.json()),
-      fetch(`/api/engagements/${engagementId}/billing/history`, { credentials: "include" }).then((r) => r.json()),
+      fetch(`/api/engagements/${engagementId}/billing`, {
+        credentials: "include",
+      }).then((r) => r.json()),
+      fetch(`/api/engagements/${engagementId}/billing/history`, {
+        credentials: "include",
+      }).then((r) => r.json()),
     ])
       .then(([s, h]) => {
         if (cancelled) return;
@@ -80,7 +88,9 @@ export function CoachBillingSummary({ engagementId }: { engagementId: string }) 
                 <div>
                   <div className="font-medium">Payment is past due</div>
                   {summary.lastFailureMessage && (
-                    <div className="text-muted-foreground mt-0.5">{summary.lastFailureMessage}</div>
+                    <div className="text-muted-foreground mt-0.5">
+                      {summary.lastFailureMessage}
+                    </div>
                   )}
                 </div>
               </div>
@@ -92,27 +102,38 @@ export function CoachBillingSummary({ engagementId }: { engagementId: string }) 
                     <span className="font-medium">{summary.tier.label}</span>{" "}
                     <span className="text-muted-foreground">
                       — {fmtUsd(summary.tier.amountCents)}{" "}
-                      {summary.tier.billingCadence === "monthly" ? "/ month" : "/ session"}
+                      {summary.tier.billingCadence === "monthly"
+                        ? "/ month"
+                        : "/ session"}
                     </span>
                   </>
                 ) : (
-                  <span className="text-muted-foreground italic">No tier selected by client</span>
+                  <span className="text-muted-foreground italic">
+                    No tier selected by client
+                  </span>
                 )}
               </div>
-              <Badge variant={summary.status === "active" ? "default" : "secondary"} className="gap-1">
-                {summary.status === "active" && <CheckCircle2 className="h-3 w-3" />}
+              <Badge
+                variant={summary.status === "active" ? "default" : "secondary"}
+                className="gap-1"
+              >
+                {summary.status === "active" && (
+                  <CheckCircle2 className="h-3 w-3" />
+                )}
                 {summary.status === "active"
                   ? "Active"
                   : summary.status === "past_due"
-                  ? "Past due"
-                  : summary.status === "incomplete"
-                  ? "Awaiting payment"
-                  : summary.status}
+                    ? "Past due"
+                    : summary.status === "incomplete"
+                      ? "Awaiting payment"
+                      : summary.status}
               </Badge>
             </div>
             {history.length > 0 && (
               <div className="border-t pt-2">
-                <div className="text-xs text-muted-foreground mb-1">Recent payments</div>
+                <div className="text-xs text-muted-foreground mb-1">
+                  Recent payments
+                </div>
                 <div className="divide-y text-xs">
                   {history.map((p) => (
                     <div key={p.id} className="flex justify-between py-1.5">
@@ -126,8 +147,8 @@ export function CoachBillingSummary({ engagementId }: { engagementId: string }) 
                             p.status === "succeeded"
                               ? "default"
                               : p.status === "failed"
-                              ? "destructive"
-                              : "secondary"
+                                ? "destructive"
+                                : "secondary"
                           }
                           className="text-[10px] px-1.5 py-0"
                         >

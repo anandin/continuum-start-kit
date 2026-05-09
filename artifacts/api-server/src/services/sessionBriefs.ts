@@ -38,8 +38,7 @@ const COMPOSE_MODEL = "google/gemini-2.5-flash";
 const FALLBACK_SECTIONS: BriefSections = {
   whatsChanged:
     "We couldn't generate a fresh summary right now. Open the Sessions, Mood, and Journal tabs for the latest signal before your meeting.",
-  suggestedOpening:
-    "How have things been since we last talked?",
+  suggestedOpening: "How have things been since we last talked?",
   topicsToRevisit: [
     "Anything the client flagged as unresolved at the end of the last session.",
     "Active goals — review status together.",
@@ -78,14 +77,18 @@ function clip(text: string, n: number): string {
 
 const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 const URL_RE = /\bhttps?:\/\/\S+/gi;
-const PHONE_RE = /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\b/g;
+const PHONE_RE =
+  /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\b/g;
 const LONG_DIGITS_RE = /\b\d{9,}\b/g;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function scrubPii(text: string | null | undefined, knownIdentifiers: string[] = []): string {
+function scrubPii(
+  text: string | null | undefined,
+  knownIdentifiers: string[] = [],
+): string {
   if (!text) return "";
   let out = text;
   // Order matters: emails before URL (so user@host.tld doesn't get caught as
@@ -106,7 +109,9 @@ function scrubPii(text: string | null | undefined, knownIdentifiers: string[] = 
 // the seeker and the coach so we can mask them by name. We can't enumerate
 // third-party names, but covering the two participants of the engagement
 // catches the most common accidental self-references.
-async function gatherKnownIdentifiers(engagement: Engagement): Promise<string[]> {
+async function gatherKnownIdentifiers(
+  engagement: Engagement,
+): Promise<string[]> {
   const ids = new Set<string>();
   const userIds: string[] = [];
   if (engagement.providerId) userIds.push(engagement.providerId);
@@ -151,16 +156,44 @@ function isoDayNDaysAgo(n: number): string {
 interface GatheredContext {
   engagement: Engagement;
   seekerAlias: string;
-  lastSummaries: Array<{ sessionStartedAt: Date | null; summary: string; nextAction: string | null }>;
-  openGoals: Array<{ title: string; description: string | null; status: string | null }>;
-  recentMoods: Array<{ day: string; rating: number | null; note: string | null }>;
-  recentJournalEntries: Array<{ at: Date | null; promptText: string | null; content: string }>;
-  memoryEntries: Array<{ kind: string; content: string; tags: string[]; importance: number }>;
-  openSafetyEvents: Array<{ at: Date | null; severity: string; reason: string; stage: string }>;
+  lastSummaries: Array<{
+    sessionStartedAt: Date | null;
+    summary: string;
+    nextAction: string | null;
+  }>;
+  openGoals: Array<{
+    title: string;
+    description: string | null;
+    status: string | null;
+  }>;
+  recentMoods: Array<{
+    day: string;
+    rating: number | null;
+    note: string | null;
+  }>;
+  recentJournalEntries: Array<{
+    at: Date | null;
+    promptText: string | null;
+    content: string;
+  }>;
+  memoryEntries: Array<{
+    kind: string;
+    content: string;
+    tags: string[];
+    importance: number;
+  }>;
+  openSafetyEvents: Array<{
+    at: Date | null;
+    severity: string;
+    reason: string;
+    stage: string;
+  }>;
   openAlerts: Array<{ at: Date | null; type: string; message: string }>;
 }
 
-async function gatherContext(engagementId: string): Promise<GatheredContext | { error: string }> {
+async function gatherContext(
+  engagementId: string,
+): Promise<GatheredContext | { error: string }> {
   const engagement = await storage.getEngagementById(engagementId);
   if (!engagement) return { error: "engagement_not_found" };
 
@@ -202,14 +235,18 @@ async function gatherContext(engagementId: string): Promise<GatheredContext | { 
     }));
 
   // Recent mood (14 days) + journal (last 6 shared).
-  const recentMoods = (await storage.getMoodEntriesByEngagementId(engagementId, isoDayNDaysAgo(14)))
+  const recentMoods = (
+    await storage.getMoodEntriesByEngagementId(engagementId, isoDayNDaysAgo(14))
+  )
     .slice(-14)
     .map((m) => ({
-      day: typeof m.day === "string" ? m.day : fmtDate(m.day as unknown as Date),
+      day:
+        typeof m.day === "string" ? m.day : fmtDate(m.day as unknown as Date),
       rating: m.score ?? null,
       note: m.note ? scrub(m.note) : null,
     }));
-  const sharedJournal = await storage.listSharedJournalEntriesByEngagementId(engagementId);
+  const sharedJournal =
+    await storage.listSharedJournalEntriesByEngagementId(engagementId);
   const recentJournalEntries = sharedJournal.slice(0, 6).map((j) => ({
     at: j.sharedAt ?? j.createdAt ?? null,
     promptText: null as string | null,
@@ -220,14 +257,12 @@ async function gatherContext(engagementId: string): Promise<GatheredContext | { 
   // rather than topClientMemory(query) since the brief needs a broad view,
   // not a query-specific slice.
   const memRows = await listClientMemoryByEngagement(engagementId);
-  const memoryEntries = memRows
-    .slice(0, 12)
-    .map((m) => ({
-      kind: m.kind,
-      content: scrub(clip(m.content, 500)),
-      tags: Array.isArray(m.tags) ? (m.tags as string[]) : [],
-      importance: typeof m.importance === "number" ? m.importance : 0.5,
-    }));
+  const memoryEntries = memRows.slice(0, 12).map((m) => ({
+    kind: m.kind,
+    content: scrub(clip(m.content, 500)),
+    tags: Array.isArray(m.tags) ? (m.tags as string[]) : [],
+    importance: typeof m.importance === "number" ? m.importance : 0.5,
+  }));
 
   // Safety events scoped to this engagement: only high/critical signals
   // from the last 14 days. The full audit log is informational and would
@@ -295,7 +330,9 @@ function renderContextPrompt(ctx: GatheredContext): string {
   if (ctx.openGoals.length === 0) lines.push("  (none)");
   else {
     for (const g of ctx.openGoals) {
-      lines.push(`- ${g.title}${g.description ? ` — ${clip(g.description, 200)}` : ""}`);
+      lines.push(
+        `- ${g.title}${g.description ? ` — ${clip(g.description, 200)}` : ""}`,
+      );
     }
   }
 
@@ -312,7 +349,9 @@ function renderContextPrompt(ctx: GatheredContext): string {
   if (ctx.recentJournalEntries.length === 0) lines.push("  (none)");
   else {
     for (const j of ctx.recentJournalEntries) {
-      const prompt = j.promptText ? ` (prompt: "${clip(j.promptText, 100)}")` : "";
+      const prompt = j.promptText
+        ? ` (prompt: "${clip(j.promptText, 100)}")`
+        : "";
       lines.push(`- ${fmtDate(j.at)}${prompt}: ${j.content}`);
     }
   }
@@ -322,7 +361,9 @@ function renderContextPrompt(ctx: GatheredContext): string {
   else {
     for (const m of ctx.memoryEntries) {
       const tags = m.tags.length ? ` [${m.tags.join(", ")}]` : "";
-      lines.push(`- (${m.kind}, importance=${m.importance.toFixed(2)})${tags} ${m.content}`);
+      lines.push(
+        `- (${m.kind}, importance=${m.importance.toFixed(2)})${tags} ${m.content}`,
+      );
     }
   }
 
@@ -330,7 +371,9 @@ function renderContextPrompt(ctx: GatheredContext): string {
   if (ctx.openSafetyEvents.length === 0) lines.push("  (none)");
   else {
     for (const e of ctx.openSafetyEvents) {
-      lines.push(`- ${fmtDate(e.at)} severity=${e.severity} stage=${e.stage} reason=${e.reason}`);
+      lines.push(
+        `- ${fmtDate(e.at)} severity=${e.severity} stage=${e.stage} reason=${e.reason}`,
+      );
     }
   }
 
@@ -360,25 +403,46 @@ Output ONLY a JSON object with this exact shape:
 Do not include markdown, headings, or commentary outside the JSON.`;
 
 function parseSections(raw: string): BriefSections | null {
-  const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const cleaned = raw
+    .replace(/```json\s*/g, "")
+    .replace(/```\s*/g, "")
+    .trim();
   try {
     const obj = JSON.parse(cleaned);
     if (!obj || typeof obj !== "object") return null;
-    const whatsChanged = typeof obj.whatsChanged === "string" ? obj.whatsChanged.trim() : "";
-    const suggestedOpening = typeof obj.suggestedOpening === "string" ? obj.suggestedOpening.trim() : "";
-    const topicsRaw = Array.isArray(obj.topicsToRevisit) ? obj.topicsToRevisit : [];
+    const whatsChanged =
+      typeof obj.whatsChanged === "string" ? obj.whatsChanged.trim() : "";
+    const suggestedOpening =
+      typeof obj.suggestedOpening === "string"
+        ? obj.suggestedOpening.trim()
+        : "";
+    const topicsRaw = Array.isArray(obj.topicsToRevisit)
+      ? obj.topicsToRevisit
+      : [];
     const topicsToRevisit = topicsRaw
-      .filter((t: unknown): t is string => typeof t === "string" && t.trim().length > 0)
+      .filter(
+        (t: unknown): t is string =>
+          typeof t === "string" && t.trim().length > 0,
+      )
       .map((t: string) => t.trim())
       .slice(0, 6);
-    const safetyContext = typeof obj.safetyContext === "string" ? obj.safetyContext.trim() : "";
-    if (!whatsChanged && !suggestedOpening && topicsToRevisit.length === 0 && !safetyContext) {
+    const safetyContext =
+      typeof obj.safetyContext === "string" ? obj.safetyContext.trim() : "";
+    if (
+      !whatsChanged &&
+      !suggestedOpening &&
+      topicsToRevisit.length === 0 &&
+      !safetyContext
+    ) {
       return null;
     }
     return {
       whatsChanged: whatsChanged || FALLBACK_SECTIONS.whatsChanged,
       suggestedOpening: suggestedOpening || FALLBACK_SECTIONS.suggestedOpening,
-      topicsToRevisit: topicsToRevisit.length > 0 ? topicsToRevisit : FALLBACK_SECTIONS.topicsToRevisit,
+      topicsToRevisit:
+        topicsToRevisit.length > 0
+          ? topicsToRevisit
+          : FALLBACK_SECTIONS.topicsToRevisit,
       safetyContext: safetyContext || FALLBACK_SECTIONS.safetyContext,
     };
   } catch {
@@ -439,25 +503,37 @@ export async function generateAndSaveBriefForEngagement(opts: {
         model = COMPOSE_MODEL;
         composedOk = true;
       } else {
-        logger.warn({ engagementId }, "session-brief: LLM returned unparseable JSON");
+        logger.warn(
+          { engagementId },
+          "session-brief: LLM returned unparseable JSON",
+        );
       }
     } catch (err) {
       logger.error({ err, engagementId }, "session-brief: LLM compose failed");
     }
   } else {
-    logger.warn({ engagementId }, "session-brief: LLM not configured, using fallback");
+    logger.warn(
+      { engagementId },
+      "session-brief: LLM not configured, using fallback",
+    );
   }
 
   // L1 output gate (defense-in-depth). Wraps everything: even the
   // fallback text gets checked. If the gate softens/blocks, we replace
   // the entire brief body with the templated response and flag status.
-  let status: "ready" | "templated_safety" | "failed" = composedOk ? "ready" : "failed";
+  let status: "ready" | "templated_safety" | "failed" = composedOk
+    ? "ready"
+    : "failed";
   let safetyDecision: string | null = null;
   let safetyReason: string | null = null;
 
   try {
     const briefText = sectionsToText(sections);
-    const verdict = await checkOutput(briefText, "[session_prep_brief]", safetyCtx);
+    const verdict = await checkOutput(
+      briefText,
+      "[session_prep_brief]",
+      safetyCtx,
+    );
     safetyDecision = verdict.decision;
     safetyReason = verdict.reason;
     if (verdict.decision !== "allow" && verdict.templatedResponse) {

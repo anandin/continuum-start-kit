@@ -224,9 +224,7 @@ export default function JournalScreen() {
             <Text style={[styles.title, { color: colors.foreground }]}>
               Journal
             </Text>
-            <Text
-              style={[styles.subtitle, { color: colors.mutedForeground }]}
-            >
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
               A private space to reflect. Share entries with your coach when
               you're ready.
             </Text>
@@ -242,12 +240,13 @@ export default function JournalScreen() {
               ]}
               testID="journal-new-entry"
             >
-              <Feather name="edit-3" size={16} color={colors.primaryForeground} />
+              <Feather
+                name="edit-3"
+                size={16}
+                color={colors.primaryForeground}
+              />
               <Text
-                style={[
-                  styles.newBtnText,
-                  { color: colors.primaryForeground },
-                ]}
+                style={[styles.newBtnText, { color: colors.primaryForeground }]}
               >
                 New entry
               </Text>
@@ -306,20 +305,19 @@ export default function JournalScreen() {
               { borderColor: colors.border, borderRadius: colors.radius },
             ]}
           >
-            <Feather name="book-open" size={28} color={colors.mutedForeground} />
-            <Text
-              style={[styles.emptyTitle, { color: colors.foreground }]}
-            >
+            <Feather
+              name="book-open"
+              size={28}
+              color={colors.mutedForeground}
+            />
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               No entries yet
             </Text>
             <Text
-              style={[
-                styles.emptySubtitle,
-                { color: colors.mutedForeground },
-              ]}
+              style={[styles.emptySubtitle, { color: colors.mutedForeground }]}
             >
-              Reflect on your week, a feeling, or something you want to bring
-              to your next session.
+              Reflect on your week, a feeling, or something you want to bring to
+              your next session.
             </Text>
           </View>
         }
@@ -330,9 +328,7 @@ export default function JournalScreen() {
           colors={colors}
           insets={insets}
           prompt={
-            selectedPromptId
-              ? promptById.get(selectedPromptId) ?? null
-              : null
+            selectedPromptId ? (promptById.get(selectedPromptId) ?? null) : null
           }
           body={body}
           setBody={setBody}
@@ -376,10 +372,7 @@ function Composer({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={[
-        styles.composerOverlay,
-        { backgroundColor: "rgba(0,0,0,0.45)" },
-      ]}
+      style={[styles.composerOverlay, { backgroundColor: "rgba(0,0,0,0.45)" }]}
     >
       <View
         style={[
@@ -394,18 +387,16 @@ function Composer({
       >
         <View style={styles.composerHeader}>
           <Pressable onPress={onCancel} testID="journal-cancel">
-            <Text style={[styles.composerCancel, { color: colors.mutedForeground }]}>
+            <Text
+              style={[styles.composerCancel, { color: colors.mutedForeground }]}
+            >
               Cancel
             </Text>
           </Pressable>
           <Text style={[styles.composerTitle, { color: colors.foreground }]}>
             New entry
           </Text>
-          <Pressable
-            onPress={onSave}
-            disabled={!canSave}
-            testID="journal-save"
-          >
+          <Pressable onPress={onSave} disabled={!canSave} testID="journal-save">
             <Text
               style={[
                 styles.composerSave,
@@ -431,7 +422,9 @@ function Composer({
             ]}
           >
             <Feather name="message-circle" size={14} color={colors.primary} />
-            <Text style={[styles.composerPromptText, { color: colors.primary }]}>
+            <Text
+              style={[styles.composerPromptText, { color: colors.primary }]}
+            >
               {prompt.text}
             </Text>
           </View>
@@ -467,9 +460,7 @@ function Composer({
             <Text style={[styles.shareLabel, { color: colors.foreground }]}>
               Share with coach
             </Text>
-            <Text
-              style={[styles.shareHelp, { color: colors.mutedForeground }]}
-            >
+            <Text style={[styles.shareHelp, { color: colors.mutedForeground }]}>
               Once shared, this entry can't be edited or unshared.
             </Text>
           </View>

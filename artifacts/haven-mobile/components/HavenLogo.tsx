@@ -26,10 +26,16 @@ export function HavenLogo({ size = 28, showWordmark = true }: HavenLogoProps) {
           },
         ]}
       >
-        <Feather name="heart" size={size - 6} color={colors.primaryForeground} />
+        <Feather
+          name="heart"
+          size={size - 6}
+          color={colors.primaryForeground}
+        />
       </View>
       {showWordmark ? (
-        <Text style={[styles.wordmark, { color: colors.foreground }]}>Haven</Text>
+        <Text style={[styles.wordmark, { color: colors.foreground }]}>
+          Haven
+        </Text>
       ) : null}
     </View>
   );

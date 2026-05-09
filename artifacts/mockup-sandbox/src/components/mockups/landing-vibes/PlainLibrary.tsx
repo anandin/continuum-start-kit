@@ -32,17 +32,22 @@ export function PlainLibrary() {
 
       <div className="mx-auto" style={{ maxWidth: 1180 }}>
         {/* 1. Top nav */}
-        <header
-          className="flex items-center justify-between px-8 pt-8 pb-6 border-b pl-rule"
-        >
+        <header className="flex items-center justify-between px-8 pt-8 pb-6 border-b pl-rule">
           <div className="flex items-center gap-2.5">
             <div
               className="w-6 h-6 rounded-full flex items-center justify-center"
               style={{ backgroundColor: ink }}
             >
-              <Heart className="w-3 h-3" style={{ color: cream }} strokeWidth={2} />
+              <Heart
+                className="w-3 h-3"
+                style={{ color: cream }}
+                strokeWidth={2}
+              />
             </div>
-            <span className="pl-serif text-[22px] tracking-wide" style={{ color: ink }}>
+            <span
+              className="pl-serif text-[22px] tracking-wide"
+              style={{ color: ink }}
+            >
               Haven
             </span>
           </div>
@@ -62,7 +67,10 @@ export function PlainLibrary() {
               className="pb-2"
               style={{
                 color: tab === "individuals" ? ink : muted,
-                borderBottom: tab === "individuals" ? `1px solid ${ink}` : "1px solid transparent",
+                borderBottom:
+                  tab === "individuals"
+                    ? `1px solid ${ink}`
+                    : "1px solid transparent",
               }}
             >
               For individuals
@@ -72,7 +80,10 @@ export function PlainLibrary() {
               className="pb-2"
               style={{
                 color: tab === "experts" ? ink : muted,
-                borderBottom: tab === "experts" ? `1px solid ${ink}` : "1px solid transparent",
+                borderBottom:
+                  tab === "experts"
+                    ? `1px solid ${ink}`
+                    : "1px solid transparent",
               }}
             >
               For experts
@@ -144,31 +155,35 @@ export function PlainLibrary() {
                   {
                     Icon: BookOpen,
                     title: "Continuity",
-                    body:
-                      "Your coach's notes carry between sessions. You don't have to start over each time.",
+                    body: "Your coach's notes carry between sessions. You don't have to start over each time.",
                   },
                   {
                     Icon: Users,
                     title: "Built with clinicians",
-                    body:
-                      "Made alongside therapists, not retrofitted. Their language and methods are the foundation.",
+                    body: "Made alongside therapists, not retrofitted. Their language and methods are the foundation.",
                   },
                   {
                     Icon: Lock,
                     title: "Yours alone",
-                    body:
-                      "Private by default. You decide what is saved, what is shared, and what is forgotten.",
+                    body: "Private by default. You decide what is saved, what is shared, and what is forgotten.",
                   },
                 ].map(({ Icon, title, body }) => (
                   <div key={title}>
-                    <Icon className="w-5 h-5 mb-6" strokeWidth={1.25} style={{ color: ink }} />
+                    <Icon
+                      className="w-5 h-5 mb-6"
+                      strokeWidth={1.25}
+                      style={{ color: ink }}
+                    />
                     <h3
                       className="pl-serif text-[26px] mb-3"
                       style={{ fontWeight: 500, color: ink, lineHeight: 1.2 }}
                     >
                       {title}
                     </h3>
-                    <p className="text-[15px] leading-[1.7] font-light" style={{ color: muted }}>
+                    <p
+                      className="text-[15px] leading-[1.7] font-light"
+                      style={{ color: muted }}
+                    >
                       {body}
                     </p>
                   </div>
@@ -201,20 +216,17 @@ export function PlainLibrary() {
                   {
                     num: "I",
                     title: "Match.",
-                    body:
-                      "A coach or therapist invites you in. You begin with someone who already knows your situation.",
+                    body: "A coach or therapist invites you in. You begin with someone who already knows your situation.",
                   },
                   {
                     num: "II",
                     title: "Meet.",
-                    body:
-                      "Talk through what is on your mind. Haven listens, and remembers what matters for next time.",
+                    body: "Talk through what is on your mind. Haven listens, and remembers what matters for next time.",
                   },
                   {
                     num: "III",
                     title: "Keep going.",
-                    body:
-                      "Between appointments, return when you need to. Pick up exactly where you left off.",
+                    body: "Between appointments, return when you need to. Pick up exactly where you left off.",
                   },
                 ].map(({ num, title, body }) => (
                   <div key={num}>
@@ -235,7 +247,10 @@ export function PlainLibrary() {
                     >
                       {title}
                     </h3>
-                    <p className="text-[15px] leading-[1.7] font-light" style={{ color: muted }}>
+                    <p
+                      className="text-[15px] leading-[1.7] font-light"
+                      style={{ color: muted }}
+                    >
                       {body}
                     </p>
                   </div>
@@ -267,18 +282,15 @@ export function PlainLibrary() {
                 {[
                   {
                     label: "Confidential",
-                    body:
-                      "End-to-end encrypted. Notes are kept only when you ask. Nothing is sold, ever.",
+                    body: "End-to-end encrypted. Notes are kept only when you ask. Nothing is sold, ever.",
                   },
                   {
                     label: "Made with clinicians",
-                    body:
-                      "Designed in practice with licensed therapists who use it with their own clients.",
+                    body: "Designed in practice with licensed therapists who use it with their own clients.",
                   },
                   {
                     label: "At your pace",
-                    body:
-                      "No streaks. No nudges. No metrics that turn care into a game. You set the rhythm.",
+                    body: "No streaks. No nudges. No metrics that turn care into a game. You set the rhythm.",
                   },
                 ].map(({ label, body }) => (
                   <div key={label} className="border-t pl-rule pt-6">
@@ -288,7 +300,10 @@ export function PlainLibrary() {
                     >
                       {label}
                     </h4>
-                    <p className="text-[15px] leading-[1.7] font-light" style={{ color: muted }}>
+                    <p
+                      className="text-[15px] leading-[1.7] font-light"
+                      style={{ color: muted }}
+                    >
                       {body}
                     </p>
                   </div>
@@ -325,7 +340,8 @@ export function PlainLibrary() {
                     borderRadius: 2,
                   }}
                 >
-                  Get started <ArrowUpRight className="w-4 h-4" strokeWidth={1.5} />
+                  Get started{" "}
+                  <ArrowUpRight className="w-4 h-4" strokeWidth={1.5} />
                 </button>
               </div>
             </section>
@@ -334,7 +350,8 @@ export function PlainLibrary() {
             <footer className="px-8 py-10 border-t pl-rule">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <p className="text-[12px]" style={{ color: muted }}>
-                  © {new Date().getFullYear()} Haven Studio. All rights reserved.
+                  © {new Date().getFullYear()} Haven Studio. All rights
+                  reserved.
                 </p>
                 <p
                   className="pl-serif italic text-[13px]"

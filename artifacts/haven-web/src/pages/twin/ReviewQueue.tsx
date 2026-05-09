@@ -22,7 +22,8 @@ export default function ReviewQueue() {
 
   const queueQ = useQuery<ReviewItem[]>({
     queryKey: ["/api/twin/review-queue"],
-    queryFn: async () => (await apiRequest("GET", "/api/twin/review-queue")).json(),
+    queryFn: async () =>
+      (await apiRequest("GET", "/api/twin/review-queue")).json(),
   });
 
   const labelMut = useMutation({
@@ -34,11 +35,15 @@ export default function ReviewQueue() {
     }) => {
       // Server re-loads draft / scenario / engagement / session from messageId.
       // We only send the label, optional edit, and optional tags.
-      return apiRequest("POST", `/api/twin/review-queue/${args.item.messageId}/label`, {
-        label: args.label,
-        approvedEdit: args.approvedEdit,
-        tags: args.tags ?? [],
-      });
+      return apiRequest(
+        "POST",
+        `/api/twin/review-queue/${args.item.messageId}/label`,
+        {
+          label: args.label,
+          approvedEdit: args.approvedEdit,
+          tags: args.tags ?? [],
+        },
+      );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/twin/review-queue"] });
@@ -61,10 +66,13 @@ export default function ReviewQueue() {
       <div className="max-w-5xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-stone-900">Review Queue</h1>
+            <h1 className="text-2xl font-semibold text-stone-900">
+              Review Queue
+            </h1>
             <p className="text-stone-600 text-sm">
-              Recent things your Twin said. Mark each one as "this is me", "needs an edit",
-              "not me", or "never say this" — your labels train the persona.
+              Recent things your Twin said. Mark each one as "this is me",
+              "needs an edit", "not me", or "never say this" — your labels train
+              the persona.
             </p>
           </div>
           <button
@@ -76,28 +84,42 @@ export default function ReviewQueue() {
         </div>
 
         {queueQ.isLoading && (
-          <div className="bg-white rounded-lg p-8 text-center text-stone-500 shadow-sm">Loading…</div>
+          <div className="bg-white rounded-lg p-8 text-center text-stone-500 shadow-sm">
+            Loading…
+          </div>
         )}
 
         {queueQ.data?.length === 0 && (
           <div className="bg-white rounded-lg p-8 text-center text-stone-500 shadow-sm">
-            Nothing to review yet. Once your clients chat with the Twin, recent responses will appear here.
+            Nothing to review yet. Once your clients chat with the Twin, recent
+            responses will appear here.
           </div>
         )}
 
         <div className="space-y-3">
           {queueQ.data?.map((item) => {
             const draftText = editing[item.messageId] ?? item.draft;
-            const isEdited = editing[item.messageId] !== undefined && editing[item.messageId] !== item.draft;
+            const isEdited =
+              editing[item.messageId] !== undefined &&
+              editing[item.messageId] !== item.draft;
             return (
-              <div key={item.messageId} className="bg-white rounded-lg p-4 shadow-sm">
+              <div
+                key={item.messageId}
+                className="bg-white rounded-lg p-4 shadow-sm"
+              >
                 {item.scenario && (
                   <>
-                    <p className="text-xs uppercase tracking-wide text-stone-500">Client said</p>
-                    <p className="text-sm text-stone-800 mb-3">{item.scenario}</p>
+                    <p className="text-xs uppercase tracking-wide text-stone-500">
+                      Client said
+                    </p>
+                    <p className="text-sm text-stone-800 mb-3">
+                      {item.scenario}
+                    </p>
                   </>
                 )}
-                <p className="text-xs uppercase tracking-wide text-stone-500">Twin replied</p>
+                <p className="text-xs uppercase tracking-wide text-stone-500">
+                  Twin replied
+                </p>
                 <textarea
                   value={draftText}
                   onChange={(e) =>
@@ -108,13 +130,20 @@ export default function ReviewQueue() {
                 />
                 <input
                   value={tagInput[item.messageId] ?? ""}
-                  onChange={(e) => setTagInput({ ...tagInput, [item.messageId]: e.target.value })}
+                  onChange={(e) =>
+                    setTagInput({
+                      ...tagInput,
+                      [item.messageId]: e.target.value,
+                    })
+                  }
                   placeholder="optional tags (comma-separated)"
                   className="w-full border border-stone-300 rounded p-2 text-xs mb-2"
                 />
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => submit(item, isEdited ? "needs_edit" : "this_is_me")}
+                    onClick={() =>
+                      submit(item, isEdited ? "needs_edit" : "this_is_me")
+                    }
                     disabled={labelMut.isPending}
                     className="px-3 py-1.5 text-xs rounded bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
                   >
@@ -136,7 +165,9 @@ export default function ReviewQueue() {
                   </button>
                   {item.engagementId && (
                     <button
-                      onClick={() => navigate(`/provider/twin/memory/${item.engagementId}`)}
+                      onClick={() =>
+                        navigate(`/provider/twin/memory/${item.engagementId}`)
+                      }
                       className="px-3 py-1.5 text-xs rounded border border-stone-300 hover:bg-stone-50 text-stone-700 ml-auto"
                     >
                       View this client's memory

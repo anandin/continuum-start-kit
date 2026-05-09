@@ -20,10 +20,12 @@ let registering: Promise<string | null> | null = null;
 let lastRegisteredToken: string | null = null;
 
 function resolveProjectId(): string | undefined {
-  const fromExpo = (Constants.expoConfig as { extra?: { eas?: { projectId?: string } } } | null)
-    ?.extra?.eas?.projectId;
-  const fromEas = (Constants as unknown as { easConfig?: { projectId?: string } })?.easConfig
-    ?.projectId;
+  const fromExpo = (
+    Constants.expoConfig as { extra?: { eas?: { projectId?: string } } } | null
+  )?.extra?.eas?.projectId;
+  const fromEas = (
+    Constants as unknown as { easConfig?: { projectId?: string } }
+  )?.easConfig?.projectId;
   return fromExpo ?? fromEas;
 }
 
@@ -127,7 +129,9 @@ export async function getPushPreference(): Promise<PushPreference> {
   }
 }
 
-export async function setPushPreference(enabled: boolean): Promise<PushPreference> {
+export async function setPushPreference(
+  enabled: boolean,
+): Promise<PushPreference> {
   if (enabled) {
     const token = await registerForPushNotifications();
     if (!token) {

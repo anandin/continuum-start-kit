@@ -1,10 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { BookOpen, MessageSquareQuote, ExternalLink } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useQuery } from "@tanstack/react-query";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { BookOpen, MessageSquareQuote, ExternalLink } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface JournalEntry {
   id: string;
@@ -30,18 +36,20 @@ export function JournalPanel({ engagementId }: JournalPanelProps) {
     queryKey: [`/api/engagements/${engagementId}/journal`],
     queryFn: async () => {
       const res = await fetch(`/api/engagements/${engagementId}/journal`, {
-        credentials: 'include',
+        credentials: "include",
       });
-      if (!res.ok) throw new Error('Failed to load journal entries');
+      if (!res.ok) throw new Error("Failed to load journal entries");
       return res.json();
     },
   });
 
   const promptsQ = useQuery<JournalPrompt[]>({
-    queryKey: ['/api/journal/prompts'],
+    queryKey: ["/api/journal/prompts"],
     queryFn: async () => {
-      const res = await fetch('/api/journal/prompts', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load prompts');
+      const res = await fetch("/api/journal/prompts", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load prompts");
       return res.json();
     },
   });
@@ -70,7 +78,8 @@ export function JournalPanel({ engagementId }: JournalPanelProps) {
               Shared journal
             </CardTitle>
             <CardDescription>
-              Entries this client chose to share. Private reflections stay private.
+              Entries this client chose to share. Private reflections stay
+              private.
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" asChild>
@@ -101,9 +110,9 @@ export function JournalPanel({ engagementId }: JournalPanelProps) {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs text-muted-foreground">
                         {new Date(sharedDate).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
                         })}
                       </span>
                       <Badge variant="secondary" className="text-[10px]">

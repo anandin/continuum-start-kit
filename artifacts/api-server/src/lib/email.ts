@@ -51,7 +51,9 @@ function getTransport(): { transport: Transporter; from: string } | null {
   return { transport: cachedTransport, from: cachedFrom };
 }
 
-export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
+export async function sendEmail(
+  input: SendEmailInput,
+): Promise<SendEmailResult> {
   const t = getTransport();
   if (!t) return { ok: false, reason: "not_configured" };
   const { to, subject, text, html, attachments } = input;
@@ -67,14 +69,20 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
         content: a.content,
         contentType: a.contentType,
         ...(a.method
-          ? { contentType: `${a.contentType ?? "text/calendar"}; method=${a.method}` }
+          ? {
+              contentType: `${a.contentType ?? "text/calendar"}; method=${a.method}`,
+            }
           : {}),
       })),
     });
     return { ok: true, messageId: info.messageId };
   } catch (err: any) {
     logger.warn({ err: err?.message ?? String(err) }, "email: send failed");
-    return { ok: false, reason: "send_failed", error: String(err?.message ?? err) };
+    return {
+      ok: false,
+      reason: "send_failed",
+      error: String(err?.message ?? err),
+    };
   }
 }
 

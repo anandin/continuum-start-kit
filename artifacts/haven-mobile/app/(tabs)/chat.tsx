@@ -166,7 +166,15 @@ function VoicePreviewPlayer({
         >
           <Feather name={isPlaying ? "pause" : "play"} size={16} color="#fff" />
         </Pressable>
-        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 2, height: 28 }}>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 2,
+            height: 28,
+          }}
+        >
           {bars.map((h, i) => (
             <View
               key={i}
@@ -180,7 +188,15 @@ function VoicePreviewPlayer({
             />
           ))}
         </View>
-        <Text style={{ color: fg, fontSize: 12, fontFamily: "Inter_500Medium", minWidth: 40, textAlign: "right" }}>
+        <Text
+          style={{
+            color: fg,
+            fontSize: 12,
+            fontFamily: "Inter_500Medium",
+            minWidth: 40,
+            textAlign: "right",
+          }}
+        >
           {formatDuration(isPlaying || elapsedS > 0 ? elapsedS : durationS)}
         </Text>
       </View>
@@ -210,7 +226,9 @@ function AttachmentView({
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Couldn't load attachment");
+          setError(
+            err instanceof Error ? err.message : "Couldn't load attachment",
+          );
         }
       });
     return () => {
@@ -286,7 +304,9 @@ function AttachmentView({
           paddingVertical: 6,
           paddingHorizontal: 10,
           borderRadius: 999,
-          backgroundColor: isSeeker ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.06)",
+          backgroundColor: isSeeker
+            ? "rgba(255,255,255,0.18)"
+            : "rgba(0,0,0,0.06)",
           alignSelf: "flex-start",
           opacity: url ? 1 : 0.5,
         }}
@@ -408,14 +428,18 @@ export default function ChatScreen() {
                 : m,
             ),
         );
-        void queryClient.invalidateQueries({ queryKey: ["session-messages", sid] });
+        void queryClient.invalidateQueries({
+          queryKey: ["session-messages", sid],
+        });
       }
     },
     onError: () => {
       setRedactTarget(null);
     },
   });
-  const [activeSummary, setActiveSummary] = useState<SessionSummary | null>(null);
+  const [activeSummary, setActiveSummary] = useState<SessionSummary | null>(
+    null,
+  );
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // ---- Voice in/out state ---------------------------------------------------
@@ -519,9 +543,7 @@ export default function ChatScreen() {
       const sessions = sessionsQ.data ?? [];
       const active = sessions.find((s) => s.status === "active");
       if (active) return active;
-      const latest = sessions
-        .slice()
-        .sort((a, b) => ts(b) - ts(a))[0];
+      const latest = sessions.slice().sort((a, b) => ts(b) - ts(a))[0];
       const created = await api<SessionRow>("/api/sessions", {
         method: "POST",
         body: JSON.stringify({
@@ -582,7 +604,10 @@ export default function ChatScreen() {
   );
 
   const sendMutation = useMutation({
-    mutationFn: async (input: { message?: string; attachments?: UploadedAttachment[] }) => {
+    mutationFn: async (input: {
+      message?: string;
+      attachments?: UploadedAttachment[];
+    }) => {
       if (!session?.id) throw new Error("No active session");
       return api(`/api/chat`, {
         method: "POST",
@@ -658,7 +683,9 @@ export default function ChatScreen() {
         });
       } catch (err) {
         setVoiceError(
-          err instanceof Error ? err.message : "Couldn't open the photo picker.",
+          err instanceof Error
+            ? err.message
+            : "Couldn't open the photo picker.",
         );
       }
     },
@@ -777,7 +804,9 @@ export default function ChatScreen() {
 
   // Forward ref to finishRecording so the auto-stop timer can call it
   // before finishRecording is declared.
-  const finishRecordingRef = useRef<((cancelled: boolean) => Promise<void>) | null>(null);
+  const finishRecordingRef = useRef<
+    ((cancelled: boolean) => Promise<void>) | null
+  >(null);
 
   const startRecording = useCallback(async () => {
     if (!session?.id || session.status === "ended") return;
@@ -851,10 +880,16 @@ export default function ChatScreen() {
       setPendingVoice({
         uri,
         mime,
-        durationS: durationMs > 0 ? Math.max(1, Math.round(durationMs / 1000)) : 0,
+        durationS:
+          durationMs > 0 ? Math.max(1, Math.round(durationMs / 1000)) : 0,
       });
     },
-    [recorder, recorderState.durationMillis, recorderState.isRecording, session?.id],
+    [
+      recorder,
+      recorderState.durationMillis,
+      recorderState.isRecording,
+      session?.id,
+    ],
   );
 
   const cancelPendingVoice = useCallback(() => {
@@ -940,7 +975,9 @@ export default function ChatScreen() {
     const sortedAsc = (messagesQ.data ?? [])
       .slice()
       .sort((a, b) => ts(a) - ts(b));
-    const latestAgent = [...sortedAsc].reverse().find((m) => m.role === "agent");
+    const latestAgent = [...sortedAsc]
+      .reverse()
+      .find((m) => m.role === "agent");
     if (!latestAgent) return;
     if (lastSpokenAgentMessageIdRef.current === latestAgent.id) return;
     lastSpokenAgentMessageIdRef.current = latestAgent.id;
@@ -984,7 +1021,10 @@ export default function ChatScreen() {
   if (engagementsQ.isLoading || (activeEngagement && sessionsQ.isLoading)) {
     return (
       <View
-        style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}
+        style={[
+          styles.center,
+          { backgroundColor: colors.background, paddingTop: insets.top },
+        ]}
       >
         <ActivityIndicator color={colors.primary} />
       </View>
@@ -994,7 +1034,14 @@ export default function ChatScreen() {
   if (!activeEngagement) {
     return (
       <View
-        style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top + 24, paddingHorizontal: 24 }]}
+        style={[
+          styles.center,
+          {
+            backgroundColor: colors.background,
+            paddingTop: insets.top + 24,
+            paddingHorizontal: 24,
+          },
+        ]}
       >
         <View
           style={[
@@ -1004,7 +1051,12 @@ export default function ChatScreen() {
         >
           <Feather name="message-circle" size={24} color={colors.primary} />
         </View>
-        <Text style={[styles.emptyTitle, { color: colors.foreground, marginTop: 12 }]}>
+        <Text
+          style={[
+            styles.emptyTitle,
+            { color: colors.foreground, marginTop: 12 },
+          ]}
+        >
           No active coach yet
         </Text>
         <Text
@@ -1043,9 +1095,7 @@ export default function ChatScreen() {
         <View
           style={[styles.avatar, { backgroundColor: colors.gradientHeroMid }]}
         >
-          <Text
-            style={[styles.avatarText, { color: colors.primary }]}
-          >
+          <Text style={[styles.avatarText, { color: colors.primary }]}>
             {coachInitial}
           </Text>
         </View>
@@ -1097,17 +1147,9 @@ export default function ChatScreen() {
           />
         </Pressable>
         {session?.status === "ended" ? (
-          <View
-            style={[
-              styles.statusPill,
-              { backgroundColor: colors.muted },
-            ]}
-          >
+          <View style={[styles.statusPill, { backgroundColor: colors.muted }]}>
             <Text
-              style={[
-                styles.statusPillText,
-                { color: colors.mutedForeground },
-              ]}
+              style={[styles.statusPillText, { color: colors.mutedForeground }]}
             >
               Completed
             </Text>
@@ -1174,9 +1216,7 @@ export default function ChatScreen() {
           ]}
         >
           <Feather name="file-text" size={14} color={colors.primary} />
-          <Text
-            style={[styles.viewSummaryText, { color: colors.primary }]}
-          >
+          <Text style={[styles.viewSummaryText, { color: colors.primary }]}>
             View session summary
           </Text>
         </Pressable>
@@ -1215,7 +1255,10 @@ export default function ChatScreen() {
                     },
                   ]}
                 >
-                  <ActivityIndicator color={colors.primaryForeground} size="small" />
+                  <ActivityIndicator
+                    color={colors.primaryForeground}
+                    size="small"
+                  />
                   <Text
                     style={[
                       styles.bubbleText,
@@ -1280,16 +1323,11 @@ export default function ChatScreen() {
                 >
                   <Feather name="heart" size={22} color={colors.primary} />
                 </View>
-                <Text
-                  style={[styles.emptyTitle, { color: colors.foreground }]}
-                >
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
                   Welcome to your safe space
                 </Text>
                 <Text
-                  style={[
-                    styles.emptyBody,
-                    { color: colors.mutedForeground },
-                  ]}
+                  style={[styles.emptyBody, { color: colors.mutedForeground }]}
                 >
                   Take your time. Share whatever feels right.
                 </Text>
@@ -1317,10 +1355,7 @@ export default function ChatScreen() {
                     ]}
                   >
                     <Text
-                      style={[
-                        styles.miniAvatarText,
-                        { color: colors.primary },
-                      ]}
+                      style={[styles.miniAvatarText, { color: colors.primary }]}
                     >
                       {coachInitial}
                     </Text>
@@ -1339,9 +1374,7 @@ export default function ChatScreen() {
                   style={[
                     styles.bubble,
                     {
-                      backgroundColor: isSeeker
-                        ? colors.primary
-                        : colors.card,
+                      backgroundColor: isSeeker ? colors.primary : colors.card,
                       borderColor: isSeeker ? "transparent" : colors.border,
                       borderRadius: 18,
                     },
@@ -1642,7 +1675,14 @@ export default function ChatScreen() {
       >
         <Pressable
           onPress={() => setAttachSheetOpen(false)}
-          style={[styles.modalBackdrop, { backgroundColor: "rgba(20,16,12,0.55)", justifyContent: "flex-end", padding: 16 }]}
+          style={[
+            styles.modalBackdrop,
+            {
+              backgroundColor: "rgba(20,16,12,0.55)",
+              justifyContent: "flex-end",
+              padding: 16,
+            },
+          ]}
         >
           <Pressable
             onPress={() => {}}
@@ -1670,7 +1710,13 @@ export default function ChatScreen() {
               testID="attach-camera"
             >
               <Feather name="camera" size={18} color={colors.primary} />
-              <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: "Inter_500Medium" }}>
+              <Text
+                style={{
+                  color: colors.foreground,
+                  fontSize: 15,
+                  fontFamily: "Inter_500Medium",
+                }}
+              >
                 Take a photo
               </Text>
             </Pressable>
@@ -1687,7 +1733,13 @@ export default function ChatScreen() {
               testID="attach-library"
             >
               <Feather name="image" size={18} color={colors.primary} />
-              <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: "Inter_500Medium" }}>
+              <Text
+                style={{
+                  color: colors.foreground,
+                  fontSize: 15,
+                  fontFamily: "Inter_500Medium",
+                }}
+              >
                 Choose from library
               </Text>
             </Pressable>
@@ -1705,7 +1757,13 @@ export default function ChatScreen() {
               opacity: pressed ? 0.7 : 1,
             })}
           >
-            <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: "Inter_600SemiBold" }}>
+            <Text
+              style={{
+                color: colors.foreground,
+                fontSize: 15,
+                fontFamily: "Inter_600SemiBold",
+              }}
+            >
               Cancel
             </Text>
           </Pressable>
@@ -1718,7 +1776,12 @@ export default function ChatScreen() {
         animationType="slide"
         onRequestClose={cancelPhoto}
       >
-        <View style={[styles.summaryBackdrop, { backgroundColor: "rgba(20,16,12,0.75)" }]}>
+        <View
+          style={[
+            styles.summaryBackdrop,
+            { backgroundColor: "rgba(20,16,12,0.75)" },
+          ]}
+        >
           <View
             style={[
               styles.summarySheet,
@@ -1732,10 +1795,14 @@ export default function ChatScreen() {
           >
             <View style={styles.summaryHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
+                <Text
+                  style={[styles.summaryTitle, { color: colors.foreground }]}
+                >
                   Share this photo?
                 </Text>
-                <Text style={[styles.summarySub, { color: colors.mutedForeground }]}>
+                <Text
+                  style={[styles.summarySub, { color: colors.mutedForeground }]}
+                >
                   Add a note for your coach if you'd like.
                 </Text>
               </View>
@@ -1797,7 +1864,9 @@ export default function ChatScreen() {
                   { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
                 ]}
               >
-                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>
+                <Text
+                  style={[styles.modalBtnText, { color: colors.foreground }]}
+                >
                   Cancel
                 </Text>
               </Pressable>
@@ -1816,7 +1885,12 @@ export default function ChatScreen() {
                 {isAttaching ? (
                   <ActivityIndicator color={colors.primaryForeground} />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>
+                  <Text
+                    style={[
+                      styles.modalBtnText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
                     Send
                   </Text>
                 )}
@@ -1834,7 +1908,10 @@ export default function ChatScreen() {
       >
         <Pressable
           onPress={cancelPendingVoice}
-          style={[styles.modalBackdrop, { backgroundColor: "rgba(20,16,12,0.55)" }]}
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: "rgba(20,16,12,0.55)" },
+          ]}
         >
           <Pressable
             onPress={() => {}}
@@ -1847,7 +1924,12 @@ export default function ChatScreen() {
               },
             ]}
           >
-            <View style={[styles.modalIcon, { backgroundColor: colors.gradientHeroMid }]}>
+            <View
+              style={[
+                styles.modalIcon,
+                { backgroundColor: colors.gradientHeroMid },
+              ]}
+            >
               <Feather name="mic" size={22} color={colors.primary} />
             </View>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
@@ -1872,7 +1954,9 @@ export default function ChatScreen() {
                 ]}
                 testID="voice-cancel"
               >
-                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>
+                <Text
+                  style={[styles.modalBtnText, { color: colors.foreground }]}
+                >
                   Discard
                 </Text>
               </Pressable>
@@ -1880,11 +1964,19 @@ export default function ChatScreen() {
                 onPress={() => void sendPendingVoice()}
                 style={({ pressed }) => [
                   styles.modalBtnPrimary,
-                  { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
                 ]}
                 testID="voice-confirm-send"
               >
-                <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>
+                <Text
+                  style={[
+                    styles.modalBtnText,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
                   Send
                 </Text>
               </Pressable>
@@ -1901,7 +1993,10 @@ export default function ChatScreen() {
       >
         <Pressable
           onPress={() => setRedactTarget(null)}
-          style={[styles.modalBackdrop, { backgroundColor: "rgba(20,16,12,0.55)" }]}
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: "rgba(20,16,12,0.55)" },
+          ]}
         >
           <Pressable
             onPress={() => {}}
@@ -1926,8 +2021,9 @@ export default function ChatScreen() {
               Forget this message?
             </Text>
             <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
-              Your coach will only see a "redacted" placeholder, and any memory the
-              twin formed from this message will be forgotten too. This can't be undone.
+              Your coach will only see a "redacted" placeholder, and any memory
+              the twin formed from this message will be forgotten too. This
+              can't be undone.
             </Text>
             <View style={styles.modalActions}>
               <Pressable
@@ -1937,7 +2033,9 @@ export default function ChatScreen() {
                   { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
                 ]}
               >
-                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>
+                <Text
+                  style={[styles.modalBtnText, { color: colors.foreground }]}
+                >
                   Keep it
                 </Text>
               </Pressable>
@@ -1981,7 +2079,10 @@ export default function ChatScreen() {
       >
         <Pressable
           onPress={() => setConfirmEndOpen(false)}
-          style={[styles.modalBackdrop, { backgroundColor: "rgba(20,16,12,0.55)" }]}
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: "rgba(20,16,12,0.55)" },
+          ]}
         >
           <Pressable
             onPress={() => {}}
@@ -2005,12 +2106,7 @@ export default function ChatScreen() {
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
               End this session?
             </Text>
-            <Text
-              style={[
-                styles.modalBody,
-                { color: colors.mutedForeground },
-              ]}
-            >
+            <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
               We'll save what you talked about and write a short summary you and
               your coach can refer back to.
             </Text>
@@ -2026,10 +2122,7 @@ export default function ChatScreen() {
                 ]}
               >
                 <Text
-                  style={[
-                    styles.modalBtnText,
-                    { color: colors.foreground },
-                  ]}
+                  style={[styles.modalBtnText, { color: colors.foreground }]}
                 >
                   Keep chatting
                 </Text>
@@ -2041,8 +2134,7 @@ export default function ChatScreen() {
                   styles.modalBtnPrimary,
                   {
                     backgroundColor: colors.primary,
-                    opacity:
-                      pressed || finishMutation.isPending ? 0.8 : 1,
+                    opacity: pressed || finishMutation.isPending ? 0.8 : 1,
                   },
                 ]}
                 testID="chat-confirm-end"
@@ -2072,7 +2164,10 @@ export default function ChatScreen() {
         onRequestClose={() => setSummaryOpen(false)}
       >
         <View
-          style={[styles.summaryBackdrop, { backgroundColor: "rgba(20,16,12,0.55)" }]}
+          style={[
+            styles.summaryBackdrop,
+            { backgroundColor: "rgba(20,16,12,0.55)" },
+          ]}
         >
           <View
             style={[
@@ -2093,10 +2188,7 @@ export default function ChatScreen() {
                   Session summary
                 </Text>
                 <Text
-                  style={[
-                    styles.summarySub,
-                    { color: colors.mutedForeground },
-                  ]}
+                  style={[styles.summarySub, { color: colors.mutedForeground }]}
                 >
                   Saved to your shared record with your coach.
                 </Text>
@@ -2105,10 +2197,7 @@ export default function ChatScreen() {
                 onPress={() => setSummaryOpen(false)}
                 hitSlop={10}
                 accessibilityLabel="Close summary"
-                style={[
-                  styles.summaryClose,
-                  { backgroundColor: colors.muted },
-                ]}
+                style={[styles.summaryClose, { backgroundColor: colors.muted }]}
               >
                 <Feather name="x" size={18} color={colors.foreground} />
               </Pressable>
@@ -2150,8 +2239,11 @@ export default function ChatScreen() {
                       "Your reflections were saved."}
                   </Text>
 
-                  {(activeSummary.keyInsights ?? activeSummary.key_insights ?? [])
-                    .length > 0 ? (
+                  {(
+                    activeSummary.keyInsights ??
+                    activeSummary.key_insights ??
+                    []
+                  ).length > 0 ? (
                     <>
                       <Text
                         style={[
@@ -2164,9 +2256,11 @@ export default function ChatScreen() {
                       >
                         Key insights
                       </Text>
-                      {(activeSummary.keyInsights ??
+                      {(
+                        activeSummary.keyInsights ??
                         activeSummary.key_insights ??
-                        []).map((k, i) => (
+                        []
+                      ).map((k, i) => (
                         <View
                           key={`insight-${i}`}
                           style={[
@@ -2202,7 +2296,7 @@ export default function ChatScreen() {
                     </>
                   ) : null}
 
-                  {activeSummary.nextAction ?? activeSummary.next_action ? (
+                  {(activeSummary.nextAction ?? activeSummary.next_action) ? (
                     <>
                       <Text
                         style={[
@@ -2226,15 +2320,22 @@ export default function ChatScreen() {
                     </>
                   ) : null}
 
-                  {activeSummary.assignedStage ?? activeSummary.assigned_stage ? (
+                  {(activeSummary.assignedStage ??
+                  activeSummary.assigned_stage) ? (
                     <View
                       style={[
                         styles.stagePill,
                         { backgroundColor: colors.gradientHeroMid },
                       ]}
                     >
-                      <Feather name="compass" size={12} color={colors.primary} />
-                      <Text style={[styles.stageText, { color: colors.primary }]}>
+                      <Feather
+                        name="compass"
+                        size={12}
+                        color={colors.primary}
+                      />
+                      <Text
+                        style={[styles.stageText, { color: colors.primary }]}
+                      >
                         Stage:{" "}
                         {activeSummary.assignedStage ??
                           activeSummary.assigned_stage}

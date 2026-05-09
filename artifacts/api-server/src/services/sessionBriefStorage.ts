@@ -1,14 +1,25 @@
 import { db } from "../db";
 import { eq, and, desc, isNull } from "drizzle-orm";
-import { sessionBriefs, type SessionBrief, type InsertSessionBrief } from "@workspace/db";
+import {
+  sessionBriefs,
+  type SessionBrief,
+  type InsertSessionBrief,
+} from "@workspace/db";
 
-export async function createSessionBrief(data: InsertSessionBrief): Promise<SessionBrief> {
+export async function createSessionBrief(
+  data: InsertSessionBrief,
+): Promise<SessionBrief> {
   const [row] = await db.insert(sessionBriefs).values(data).returning();
   return row;
 }
 
-export async function getSessionBriefById(id: string): Promise<SessionBrief | undefined> {
-  const [row] = await db.select().from(sessionBriefs).where(eq(sessionBriefs.id, id));
+export async function getSessionBriefById(
+  id: string,
+): Promise<SessionBrief | undefined> {
+  const [row] = await db
+    .select()
+    .from(sessionBriefs)
+    .where(eq(sessionBriefs.id, id));
   return row;
 }
 
@@ -27,7 +38,12 @@ export async function getLatestSessionBriefForEngagement(
   const [row] = await db
     .select()
     .from(sessionBriefs)
-    .where(and(eq(sessionBriefs.engagementId, engagementId), isNull(sessionBriefs.usedAt)))
+    .where(
+      and(
+        eq(sessionBriefs.engagementId, engagementId),
+        isNull(sessionBriefs.usedAt),
+      ),
+    )
     .orderBy(desc(sessionBriefs.generatedAt))
     .limit(1);
   return row;
@@ -62,6 +78,9 @@ export async function markSessionBriefUsed(
     .where(and(eq(sessionBriefs.id, id), isNull(sessionBriefs.usedAt)))
     .returning();
   if (row) return { brief: row };
-  const [existing] = await db.select().from(sessionBriefs).where(eq(sessionBriefs.id, id));
+  const [existing] = await db
+    .select()
+    .from(sessionBriefs)
+    .where(eq(sessionBriefs.id, id));
   return { error: existing ? "already_used" : "not_found" };
 }

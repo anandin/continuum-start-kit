@@ -1,13 +1,13 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   CartesianGrid,
   Line,
@@ -16,8 +16,8 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
-import { Activity, MessageSquareQuote } from 'lucide-react';
+} from "recharts";
+import { Activity, MessageSquareQuote } from "lucide-react";
 
 interface MoodEntry {
   id: string;
@@ -33,11 +33,11 @@ interface MoodEngagementResponse {
 }
 
 const SCORE_LABEL: Record<number, { label: string; emoji: string }> = {
-  1: { label: 'Rough', emoji: '😔' },
-  2: { label: 'Low', emoji: '🙁' },
-  3: { label: 'Okay', emoji: '😐' },
-  4: { label: 'Good', emoji: '🙂' },
-  5: { label: 'Great', emoji: '😄' },
+  1: { label: "Rough", emoji: "😔" },
+  2: { label: "Low", emoji: "🙁" },
+  3: { label: "Okay", emoji: "😐" },
+  4: { label: "Good", emoji: "🙂" },
+  5: { label: "Great", emoji: "😄" },
 };
 
 interface MoodPanelProps {
@@ -48,11 +48,10 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
   const { data, isLoading } = useQuery<MoodEngagementResponse>({
     queryKey: [`/api/engagements/${engagementId}/mood`, 14],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/engagements/${engagementId}/mood?days=14`,
-        { credentials: 'include' },
-      );
-      if (!res.ok) throw new Error('Failed to load mood entries');
+      const res = await fetch(`/api/engagements/${engagementId}/mood?days=14`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load mood entries");
       return res.json();
     },
     enabled: !!engagementId,
@@ -77,7 +76,10 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
       const entry = map.get(ymd);
       slots.push({
         day: ymd,
-        label: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        label: d.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
         score: entry ? entry.score : null,
         note: entry?.note ?? null,
       });
@@ -90,8 +92,8 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
   const latestMeta = latest ? SCORE_LABEL[latest.score] : null;
   const latestDate = latest
     ? new Date(`${latest.day}T00:00:00Z`).toLocaleDateString(undefined, {
-        month: 'long',
-        day: 'numeric',
+        month: "long",
+        day: "numeric",
       })
     : null;
 
@@ -120,8 +122,11 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
             </CardTitle>
             <CardDescription>14-day check-in trend</CardDescription>
           </div>
-          <div className="text-xs text-muted-foreground" data-testid="mood-checkin-count">
-            {checkinCount} check-in{checkinCount === 1 ? '' : 's'} in window
+          <div
+            className="text-xs text-muted-foreground"
+            data-testid="mood-checkin-count"
+          >
+            {checkinCount} check-in{checkinCount === 1 ? "" : "s"} in window
           </div>
         </div>
       </CardHeader>
@@ -156,7 +161,8 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
                   />
                   <Tooltip
                     content={({ active, payload }) => {
-                      if (!active || !payload || payload.length === 0) return null;
+                      if (!active || !payload || payload.length === 0)
+                        return null;
                       const datum = payload[0].payload as {
                         label: string;
                         score: number | null;
@@ -166,7 +172,9 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
                         return (
                           <div className="rounded-md border bg-background px-2 py-1 text-xs shadow-sm">
                             <div className="font-medium">{datum.label}</div>
-                            <div className="text-muted-foreground">No check-in</div>
+                            <div className="text-muted-foreground">
+                              No check-in
+                            </div>
                           </div>
                         );
                       }
@@ -191,7 +199,7 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
                     dataKey="score"
                     stroke="hsl(var(--primary))"
                     strokeWidth={2}
-                    dot={{ r: 3, fill: 'hsl(var(--primary))' }}
+                    dot={{ r: 3, fill: "hsl(var(--primary))" }}
                     activeDot={{ r: 5 }}
                     connectNulls
                     isAnimationActive={false}
@@ -211,7 +219,7 @@ export function MoodPanel({ engagementId }: MoodPanelProps) {
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-foreground">
-                      {latestMeta.label}{' '}
+                      {latestMeta.label}{" "}
                       <span className="text-muted-foreground font-normal">
                         ({latest.score}/5)
                       </span>

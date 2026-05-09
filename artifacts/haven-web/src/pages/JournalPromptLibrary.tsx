@@ -1,20 +1,26 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AppLayout } from '@/components/AppLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AppLayout } from "@/components/AppLayout";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -22,9 +28,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { useToast } from '@/hooks/use-toast';
-import { BookText, Plus, Archive, Pencil, Globe, User, Users } from 'lucide-react';
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import {
+  BookText,
+  Plus,
+  Archive,
+  Pencil,
+  Globe,
+  User,
+  Users,
+} from "lucide-react";
 
 interface JournalPrompt {
   id: string;
@@ -42,7 +56,7 @@ interface EngagementSummary {
   status?: string | null;
 }
 
-const CATEGORIES = ['general', 'daily', 'weekly', 'session-prep'];
+const CATEGORIES = ["general", "daily", "weekly", "session-prep"];
 
 export default function JournalPromptLibrary() {
   const qc = useQueryClient();
@@ -50,32 +64,34 @@ export default function JournalPromptLibrary() {
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<JournalPrompt | null>(null);
-  const [text, setText] = useState('');
-  const [category, setCategory] = useState('general');
-  const [engagementId, setEngagementId] = useState<string>('all');
+  const [text, setText] = useState("");
+  const [category, setCategory] = useState("general");
+  const [engagementId, setEngagementId] = useState<string>("all");
 
   const promptsQ = useQuery<JournalPrompt[]>({
-    queryKey: ['/api/journal/prompts'],
+    queryKey: ["/api/journal/prompts"],
     queryFn: async () => {
-      const res = await fetch('/api/journal/prompts', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load prompts');
+      const res = await fetch("/api/journal/prompts", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load prompts");
       return res.json();
     },
   });
 
   const engagementsQ = useQuery<EngagementSummary[]>({
-    queryKey: ['/api/engagements'],
+    queryKey: ["/api/engagements"],
     queryFn: async () => {
-      const res = await fetch('/api/engagements', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load engagements');
+      const res = await fetch("/api/engagements", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load engagements");
       return res.json();
     },
   });
 
   const resetForm = () => {
-    setText('');
-    setCategory('general');
-    setEngagementId('all');
+    setText("");
+    setCategory("general");
+    setEngagementId("all");
     setEditing(null);
   };
 
@@ -87,29 +103,30 @@ export default function JournalPromptLibrary() {
   const openEdit = (p: JournalPrompt) => {
     setEditing(p);
     setText(p.text);
-    setCategory(p.category ?? 'general');
-    setEngagementId(p.engagementId ?? 'all');
+    setCategory(p.category ?? "general");
+    setEngagementId(p.engagementId ?? "all");
     setComposerOpen(true);
   };
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/journal/prompts', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/journal/prompts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: text.trim(),
           category,
-          engagementId: engagementId === 'all' ? null : engagementId,
+          engagementId: engagementId === "all" ? null : engagementId,
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed to create');
+      if (!res.ok)
+        throw new Error((await res.json()).error || "Failed to create");
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: 'Prompt added' });
-      qc.invalidateQueries({ queryKey: ['/api/journal/prompts'] });
+      toast({ title: "Prompt added" });
+      qc.invalidateQueries({ queryKey: ["/api/journal/prompts"] });
       setComposerOpen(false);
       resetForm();
     },
@@ -117,23 +134,27 @@ export default function JournalPromptLibrary() {
       toast({
         title: "Couldn't add",
         description: e.message,
-        variant: 'destructive',
+        variant: "destructive",
       }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; data: Partial<JournalPrompt> }) => {
+    mutationFn: async (payload: {
+      id: string;
+      data: Partial<JournalPrompt>;
+    }) => {
       const res = await fetch(`/api/journal/prompts/${payload.id}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload.data),
       });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed to update');
+      if (!res.ok)
+        throw new Error((await res.json()).error || "Failed to update");
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['/api/journal/prompts'] });
+      qc.invalidateQueries({ queryKey: ["/api/journal/prompts"] });
       setComposerOpen(false);
       resetForm();
     },
@@ -141,13 +162,13 @@ export default function JournalPromptLibrary() {
       toast({
         title: "Couldn't save",
         description: e.message,
-        variant: 'destructive',
+        variant: "destructive",
       }),
   });
 
   const handleSave = () => {
     if (text.trim().length < 3) {
-      toast({ title: 'Prompt is too short', variant: 'destructive' });
+      toast({ title: "Prompt is too short", variant: "destructive" });
       return;
     }
     if (editing) {
@@ -156,7 +177,7 @@ export default function JournalPromptLibrary() {
         data: {
           text: text.trim(),
           category,
-          engagementId: engagementId === 'all' ? null : engagementId,
+          engagementId: engagementId === "all" ? null : engagementId,
         },
       });
     } else {
@@ -177,7 +198,7 @@ export default function JournalPromptLibrary() {
 
   const engagementLabel = (id: string) => {
     const e = engagements.find((x) => x.id === id);
-    return e?.seekerName ?? 'Client';
+    return e?.seekerName ?? "Client";
   };
 
   return (
@@ -276,7 +297,7 @@ export default function JournalPromptLibrary() {
       <Dialog open={composerOpen} onOpenChange={setComposerOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit prompt' : 'New prompt'}</DialogTitle>
+            <DialogTitle>{editing ? "Edit prompt" : "New prompt"}</DialogTitle>
             <DialogDescription>
               Prompts seed entries in the client's journal. Keep them open-ended
               and inviting.
@@ -299,7 +320,10 @@ export default function JournalPromptLibrary() {
               <div className="space-y-2">
                 <Label htmlFor="prompt-category">Category</Label>
                 <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger id="prompt-category" data-testid="prompt-category-select">
+                  <SelectTrigger
+                    id="prompt-category"
+                    data-testid="prompt-category-select"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -314,7 +338,10 @@ export default function JournalPromptLibrary() {
               <div className="space-y-2">
                 <Label htmlFor="prompt-engagement">Visible to</Label>
                 <Select value={engagementId} onValueChange={setEngagementId}>
-                  <SelectTrigger id="prompt-engagement" data-testid="prompt-engagement-select">
+                  <SelectTrigger
+                    id="prompt-engagement"
+                    data-testid="prompt-engagement-select"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -338,7 +365,7 @@ export default function JournalPromptLibrary() {
               disabled={createMutation.isPending || updateMutation.isPending}
               data-testid="prompt-save"
             >
-              {editing ? 'Save changes' : 'Add prompt'}
+              {editing ? "Save changes" : "Add prompt"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -378,7 +405,9 @@ function PromptSection({
       </CardHeader>
       <CardContent>
         {prompts.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No prompts yet.</p>
+          <p className="text-sm text-muted-foreground italic">
+            No prompts yet.
+          </p>
         ) : (
           <ul className="divide-y">
             {prompts.map((p) => {
@@ -404,7 +433,9 @@ function PromptSection({
                       ) : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">{renderActions(p)}</div>
+                  <div className="flex items-center gap-1">
+                    {renderActions(p)}
+                  </div>
                 </li>
               );
             })}

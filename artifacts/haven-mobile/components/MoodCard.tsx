@@ -85,10 +85,14 @@ export function MoodCard({ engagementId }: MoodCardProps) {
       setNote("");
       qc.invalidateQueries({ queryKey: ["mood", "me"] });
       if (engagementId) {
-        qc.invalidateQueries({ queryKey: ["mood", "engagement", engagementId] });
+        qc.invalidateQueries({
+          queryKey: ["mood", "engagement", engagementId],
+        });
       }
       if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        ).catch(() => {});
       }
     },
   });
@@ -148,7 +152,9 @@ export function MoodCard({ engagementId }: MoodCardProps) {
             accessibilityLabel="Change today's mood"
             testID="mood-edit"
           >
-            <Text style={[styles.editLink, { color: colors.primary }]}>Change</Text>
+            <Text style={[styles.editLink, { color: colors.primary }]}>
+              Change
+            </Text>
           </Pressable>
         ) : null}
       </View>
@@ -246,7 +252,12 @@ export function MoodCard({ engagementId }: MoodCardProps) {
                     { borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
                   ]}
                 >
-                  <Text style={[styles.secondaryLabel, { color: colors.foreground }]}>
+                  <Text
+                    style={[
+                      styles.secondaryLabel,
+                      { color: colors.foreground },
+                    ]}
+                  >
                     Skip note
                   </Text>
                 </Pressable>
@@ -264,7 +275,10 @@ export function MoodCard({ engagementId }: MoodCardProps) {
                   ]}
                 >
                   {submitMutation.isPending ? (
-                    <ActivityIndicator size="small" color={colors.primaryForeground} />
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.primaryForeground}
+                    />
                   ) : (
                     <Text
                       style={[
@@ -326,13 +340,10 @@ function MoodSparkline({ entries }: SparklineProps) {
       if (s.score == null) return null;
       const x = padding + (idx * (width - padding * 2)) / (days - 1);
       // Score 1..5 → bottom..top
-      const y =
-        height - padding - ((s.score - 1) * (height - padding * 2)) / 4;
+      const y = height - padding - ((s.score - 1) * (height - padding * 2)) / 4;
       return { x, y, score: s.score };
     })
-    .filter(
-      (p): p is { x: number; y: number; score: number } => p != null,
-    );
+    .filter((p): p is { x: number; y: number; score: number } => p != null);
 
   if (points.length === 0) {
     return (

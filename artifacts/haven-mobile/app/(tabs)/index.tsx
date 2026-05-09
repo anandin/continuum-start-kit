@@ -133,7 +133,8 @@ export default function HomeScreen() {
 
   const summaryQ = useQuery({
     queryKey: ["session-summary", lastEnded?.id],
-    queryFn: () => api<Summary | null>(`/api/sessions/${lastEnded!.id}/summary`),
+    queryFn: () =>
+      api<Summary | null>(`/api/sessions/${lastEnded!.id}/summary`),
     enabled: !!lastEnded?.id,
   });
 
@@ -337,7 +338,11 @@ export default function HomeScreen() {
 
   return (
     <LinearGradient
-      colors={[colors.gradientHeroStart, colors.gradientHeroMid, colors.gradientHeroEnd]}
+      colors={[
+        colors.gradientHeroStart,
+        colors.gradientHeroMid,
+        colors.gradientHeroEnd,
+      ]}
       style={{ flex: 1 }}
     >
       <ScrollView
@@ -453,13 +458,13 @@ export default function HomeScreen() {
 
             {insightsList.length ? (
               <View
-                style={[
-                  styles.sectionBlock,
-                  { borderTopColor: colors.border },
-                ]}
+                style={[styles.sectionBlock, { borderTopColor: colors.border }]}
               >
                 <Text
-                  style={[styles.sectionEyebrow, { color: colors.mutedForeground }]}
+                  style={[
+                    styles.sectionEyebrow,
+                    { color: colors.mutedForeground },
+                  ]}
                 >
                   {`FROM ${(lastSessionWeekday ?? "your last session").toUpperCase()}`}
                 </Text>
@@ -471,7 +476,10 @@ export default function HomeScreen() {
                       {idx + 1}
                     </Text>
                     <Text
-                      style={[styles.numberedText, { color: colors.foreground }]}
+                      style={[
+                        styles.numberedText,
+                        { color: colors.foreground },
+                      ]}
                     >
                       {text}
                     </Text>
@@ -482,14 +490,14 @@ export default function HomeScreen() {
 
             {activeGoals.length > 0 ? (
               <View
-                style={[
-                  styles.sectionBlock,
-                  { borderTopColor: colors.border },
-                ]}
+                style={[styles.sectionBlock, { borderTopColor: colors.border }]}
               >
                 <View style={styles.commitmentsHeader}>
                   <Text
-                    style={[styles.sectionEyebrow, { color: colors.mutedForeground }]}
+                    style={[
+                      styles.sectionEyebrow,
+                      { color: colors.mutedForeground },
+                    ]}
                   >
                     COMMITMENTS
                   </Text>
@@ -569,10 +577,7 @@ export default function HomeScreen() {
 
             {todaysNudge ? (
               <View
-                style={[
-                  styles.sectionBlock,
-                  { borderTopColor: colors.border },
-                ]}
+                style={[styles.sectionBlock, { borderTopColor: colors.border }]}
               >
                 <Text
                   style={[styles.sectionEyebrow, { color: colors.primary }]}
@@ -660,7 +665,10 @@ export default function HomeScreen() {
                   </View>
                 ) : (
                   <Text
-                    style={[styles.nudgeStatusLine, { color: colors.mutedForeground }]}
+                    style={[
+                      styles.nudgeStatusLine,
+                      { color: colors.mutedForeground },
+                    ]}
                   >
                     {todaysNudge.status === "done"
                       ? "Marked done — see you tomorrow."
@@ -672,10 +680,7 @@ export default function HomeScreen() {
               </View>
             ) : summaryQ.data?.next_action ? (
               <View
-                style={[
-                  styles.sectionBlock,
-                  { borderTopColor: colors.border },
-                ]}
+                style={[styles.sectionBlock, { borderTopColor: colors.border }]}
               >
                 <Text
                   style={[styles.sectionEyebrow, { color: colors.primary }]}
@@ -710,9 +715,7 @@ export default function HomeScreen() {
             <Text style={[styles.coachName, { color: colors.foreground }]}>
               Connect with a coach to get started
             </Text>
-            <Text
-              style={[styles.metaLine, { color: colors.mutedForeground }]}
-            >
+            <Text style={[styles.metaLine, { color: colors.mutedForeground }]}>
               Once you&apos;re paired with a coach, your sessions, commitments,
               and reflections will live here.
             </Text>

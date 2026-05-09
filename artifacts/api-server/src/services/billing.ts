@@ -22,9 +22,10 @@ export type ChargeOutcome =
 
 // Either return the existing connected account, or create a fresh one.
 // We never store sensitive Stripe data — just the account id.
-export async function ensureConnectedAccount(providerId: string): Promise<
-  | { ok: true; accountId: string }
-  | { ok: false; error: BillingError }
+export async function ensureConnectedAccount(
+  providerId: string,
+): Promise<
+  { ok: true; accountId: string } | { ok: false; error: BillingError }
 > {
   const stripe = getStripe();
   if (!stripe) return { ok: false, error: { kind: "not_configured" } };
@@ -54,15 +55,20 @@ export async function ensureConnectedAccount(providerId: string): Promise<
     });
     return { ok: true, accountId: account.id };
   } catch (err: any) {
-    logger.warn({ err: err?.message }, "billing: failed to create connected account");
-    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+    logger.warn(
+      { err: err?.message },
+      "billing: failed to create connected account",
+    );
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: err?.message ?? String(err) },
+    };
   }
 }
 
-export async function createOnboardingLink(providerId: string): Promise<
-  | { ok: true; url: string }
-  | { ok: false; error: BillingError }
-> {
+export async function createOnboardingLink(
+  providerId: string,
+): Promise<{ ok: true; url: string } | { ok: false; error: BillingError }> {
   const stripe = getStripe();
   if (!stripe) return { ok: false, error: { kind: "not_configured" } };
   const ensured = await ensureConnectedAccount(providerId);
@@ -77,15 +83,23 @@ export async function createOnboardingLink(providerId: string): Promise<
     });
     return { ok: true, url: link.url };
   } catch (err: any) {
-    logger.warn({ err: err?.message }, "billing: failed to create onboarding link");
-    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+    logger.warn(
+      { err: err?.message },
+      "billing: failed to create onboarding link",
+    );
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: err?.message ?? String(err) },
+    };
   }
 }
 
 // Refresh local mirror from Stripe. Called on demand from the status
 // endpoint so the coach UI always reflects truth without waiting for
 // the account.updated webhook.
-export async function refreshConnectedAccount(providerId: string): Promise<void> {
+export async function refreshConnectedAccount(
+  providerId: string,
+): Promise<void> {
   const stripe = getStripe();
   if (!stripe) return;
   const row = await billingStorage.getProviderBilling(providerId);
@@ -110,11 +124,14 @@ export async function refreshConnectedAccount(providerId: string): Promise<void>
 async function ensureCustomerForEngagement(opts: {
   engagementId: string;
   seekerUserId: string;
-}): Promise<{ ok: true; customerId: string } | { ok: false; error: BillingError }> {
+}): Promise<
+  { ok: true; customerId: string } | { ok: false; error: BillingError }
+> {
   const stripe = getStripe();
   if (!stripe) return { ok: false, error: { kind: "not_configured" } };
   const eb = await billingStorage.getEngagementBilling(opts.engagementId);
-  if (eb?.stripeCustomerId) return { ok: true, customerId: eb.stripeCustomerId };
+  if (eb?.stripeCustomerId)
+    return { ok: true, customerId: eb.stripeCustomerId };
   const seeker = await storage.getUserById(opts.seekerUserId);
   try {
     const customer = await stripe.customers.create({
@@ -130,7 +147,10 @@ async function ensureCustomerForEngagement(opts: {
     });
     return { ok: true, customerId: customer.id };
   } catch (err: any) {
-    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: err?.message ?? String(err) },
+    };
   }
 }
 
@@ -196,10 +216,14 @@ export async function chargePerSession(opts: {
     // If the customer has a default PM, off_session-confirm so the
     // charge actually settles. Otherwise create an unconfirmed PI; the
     // UI will prompt the seeker to save a card.
-    const customer = (await stripe.customers.retrieve(cust.customerId)) as Stripe.Customer;
+    const customer = (await stripe.customers.retrieve(
+      cust.customerId,
+    )) as Stripe.Customer;
     const defaultPm =
       customer.invoice_settings?.default_payment_method ??
-      (typeof customer.default_source === "string" ? customer.default_source : null);
+      (typeof customer.default_source === "string"
+        ? customer.default_source
+        : null);
     const piParams: Stripe.PaymentIntentCreateParams = {
       amount: tier.amountCents,
       currency: "usd",
@@ -212,11 +236,15 @@ export async function chargePerSession(opts: {
       },
     };
     if (defaultPm) {
-      piParams.payment_method = typeof defaultPm === "string" ? defaultPm : defaultPm.id;
+      piParams.payment_method =
+        typeof defaultPm === "string" ? defaultPm : defaultPm.id;
       piParams.confirm = true;
       piParams.off_session = true;
     } else {
-      piParams.automatic_payment_methods = { enabled: true, allow_redirects: "never" };
+      piParams.automatic_payment_methods = {
+        enabled: true,
+        allow_redirects: "never",
+      };
     }
     const pi = await stripe.paymentIntents.create(piParams);
 
@@ -241,7 +269,12 @@ export async function chargePerSession(opts: {
       tierId: tier.id,
       stripePaymentIntentId: pi.id,
       amountCents: tier.amountCents,
-      status: pi.status === "succeeded" ? "succeeded" : terminalOk ? "pending" : "failed",
+      status:
+        pi.status === "succeeded"
+          ? "succeeded"
+          : terminalOk
+            ? "pending"
+            : "failed",
       failureMessage: terminalOk ? null : `payment_intent ${pi.status}`,
       scheduledSessionId: opts.scheduledSessionId,
     });
@@ -298,11 +331,17 @@ export async function createSetupIntentForEngagement(opts: {
       metadata: { haven_engagement_id: opts.engagementId },
     });
     if (!si.client_secret) {
-      return { ok: false, error: { kind: "stripe_error", message: "no client_secret" } };
+      return {
+        ok: false,
+        error: { kind: "stripe_error", message: "no client_secret" },
+      };
     }
     return { ok: true, clientSecret: si.client_secret };
   } catch (err: any) {
-    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: err?.message ?? String(err) },
+    };
   }
 }
 
@@ -318,7 +357,10 @@ export async function setEngagementDefaultPaymentMethod(opts: {
   if (!stripe) return { ok: false, error: { kind: "not_configured" } };
   const eb = await billingStorage.getEngagementBilling(opts.engagementId);
   if (!eb?.stripeCustomerId) {
-    return { ok: false, error: { kind: "stripe_error", message: "no customer on engagement" } };
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: "no customer on engagement" },
+    };
   }
   try {
     try {
@@ -353,7 +395,10 @@ export async function setEngagementDefaultPaymentMethod(opts: {
     }
     return { ok: true };
   } catch (err: any) {
-    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: err?.message ?? String(err) },
+    };
   }
 }
 
@@ -370,7 +415,8 @@ export async function retryPendingChargeForEngagement(
   const stripe = getStripe();
   if (!stripe) return { attempted: false, reason: "not_configured" };
   const eb = await billingStorage.getEngagementBilling(engagementId);
-  if (!eb?.lastPaymentIntentId) return { attempted: false, reason: "no_pending_pi" };
+  if (!eb?.lastPaymentIntentId)
+    return { attempted: false, reason: "no_pending_pi" };
   // Both `past_due` (per-session decline or subscription invoice failure)
   // and `incomplete` (subscription created but first invoice never paid)
   // unlock retry once the seeker has attached a working card.
@@ -390,7 +436,10 @@ export async function retryPendingChargeForEngagement(
       });
       return { attempted: true, ok: true, paymentIntentId: pi.id };
     }
-    if (pi.status === "requires_payment_method" || pi.status === "requires_confirmation") {
+    if (
+      pi.status === "requires_payment_method" ||
+      pi.status === "requires_confirmation"
+    ) {
       const customer = (await stripe.customers.retrieve(
         eb.stripeCustomerId!,
       )) as Stripe.Customer;
@@ -401,7 +450,10 @@ export async function retryPendingChargeForEngagement(
         payment_method: pmId,
         off_session: true,
       });
-      if (confirmed.status === "succeeded" || confirmed.status === "processing") {
+      if (
+        confirmed.status === "succeeded" ||
+        confirmed.status === "processing"
+      ) {
         await billingStorage.upsertEngagementBilling({
           engagementId,
           status: "active",
@@ -416,7 +468,11 @@ export async function retryPendingChargeForEngagement(
         message: `payment_intent ${confirmed.status}`,
       };
     }
-    return { attempted: true, ok: false, message: `payment_intent ${pi.status}` };
+    return {
+      attempted: true,
+      ok: false,
+      message: `payment_intent ${pi.status}`,
+    };
   } catch (err: any) {
     return { attempted: true, ok: false, message: err?.message ?? String(err) };
   }
@@ -424,9 +480,9 @@ export async function retryPendingChargeForEngagement(
 
 // Lazy-create a Stripe Price object for a monthly tier the first time
 // someone subscribes to it. Per-session tiers never need a Price.
-async function ensureStripePriceForTier(tier: PriceTier): Promise<
-  { ok: true; priceId: string } | { ok: false; error: BillingError }
-> {
+async function ensureStripePriceForTier(
+  tier: PriceTier,
+): Promise<{ ok: true; priceId: string } | { ok: false; error: BillingError }> {
   const stripe = getStripe();
   if (!stripe) return { ok: false, error: { kind: "not_configured" } };
   if (tier.stripePriceId) return { ok: true, priceId: tier.stripePriceId };
@@ -445,7 +501,10 @@ async function ensureStripePriceForTier(tier: PriceTier): Promise<
     await billingStorage.setTierStripePriceId(tier.id, price.id);
     return { ok: true, priceId: price.id };
   } catch (err: any) {
-    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: err?.message ?? String(err) },
+    };
   }
 }
 
@@ -483,7 +542,10 @@ export async function subscribeMonthly(opts: {
     try {
       await stripe.subscriptions.cancel(existing.stripeSubscriptionId);
     } catch (err: any) {
-      logger.warn({ err: err?.message }, "billing: failed cancelling prior sub");
+      logger.warn(
+        { err: err?.message },
+        "billing: failed cancelling prior sub",
+      );
     }
   }
 
@@ -534,7 +596,10 @@ export async function subscribeMonthly(opts: {
       clientSecret: pi?.client_secret ?? null,
     };
   } catch (err: any) {
-    return { ok: false, error: { kind: "stripe_error", message: err?.message ?? String(err) } };
+    return {
+      ok: false,
+      error: { kind: "stripe_error", message: err?.message ?? String(err) },
+    };
   }
 }
 
