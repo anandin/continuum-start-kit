@@ -33,8 +33,7 @@ See `replit.md` for the full command reference. Quick summary:
 | `PORT` | Yes (Haven Web) | Set to `5000` for the Vite dev server |
 | `BASE_PATH` | Yes (Haven Web) | Set to `/` for local dev |
 | `SESSION_SECRET` | Recommended | Express session secret; has a fallback default |
-| `OPENROUTER_API_KEY` | For AI features | Required to use LLM chat/classification |
-| `OPENAI_API_KEY` | Optional | Embeddings, Whisper, TTS, moderation |
+| `OPENROUTER_API_KEY` | For AI features | Powers ALL AI: chat, safety, embeddings, STT (Whisper), TTS, moderation |
 
 ### Dev environment gotchas
 

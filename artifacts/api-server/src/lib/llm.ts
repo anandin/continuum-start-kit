@@ -77,26 +77,21 @@ export async function classify<T>(
 }
 
 /**
- * Best-effort embedding. Returns null if no embedding provider is configured;
+ * Best-effort embedding via OpenRouter. Returns null if no key is configured;
  * callers must handle null and fall back to non-vector retrieval.
- *
- * If `OPENAI_API_KEY` is present we call OpenAI's embeddings API directly
- * (Replit's AI-Integrations OpenAI proxy does not currently expose
- * embeddings). Otherwise we return null and the storage layer falls back to
- * recency / tag-based retrieval.
  */
-const EMBED_MODEL = "text-embedding-3-small"; // 1536 dims — matches schema
-const EMBED_URL = "https://api.openai.com/v1/embeddings";
+const EMBED_MODEL = "openai/text-embedding-3-small"; // 1536 dims — matches schema
+const EMBED_URL = "https://openrouter.ai/api/v1/embeddings";
 
 export function embedConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.OPENROUTER_API_KEY);
 }
 
 export async function embed(text: string): Promise<number[] | null> {
-  const k = process.env.OPENAI_API_KEY;
+  const k = process.env.OPENROUTER_API_KEY;
   if (!k) return null;
   try {
-    const trimmed = text.slice(0, 8000); // safety: stay well under context
+    const trimmed = text.slice(0, 8000);
     const res = await fetch(EMBED_URL, {
       method: "POST",
       headers: {
@@ -126,11 +121,10 @@ export async function embed(text: string): Promise<number[] | null> {
 
 // ---------------------------------------------------------------- moderation
 //
-// OpenAI's content-moderation endpoint. Used by the L1 safety gate as a
-// dedicated harm-categories check, in parallel with our regex prescreen and
-// LLM crisis classifier. Returns null when the key is missing or the call
-// fails — the caller is expected to treat null as "moderation unavailable"
-// and fall back to its own conservative behaviour.
+// LLM-based content moderation via OpenRouter. Replaces the OpenAI moderation
+// endpoint with a classify() call through Gemini. Returns null when the key
+// is missing or the call fails — the caller treats null as "moderation
+// unavailable" and falls back to its own conservative behaviour.
 
 export interface ModerationCategoryScores {
   hate?: number;
@@ -154,26 +148,22 @@ export interface ModerationResult {
   model: string;
 }
 
-const MODERATION_URL = "https://api.openai.com/v1/moderations";
-const MODERATION_MODEL = "omni-moderation-latest";
-
 export function moderationConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.OPENROUTER_API_KEY);
 }
 
 // ---------------------------------------------------------------- transcription
 //
-// OpenAI Whisper for speech-to-text. Used by the seeker mobile app's
-// voice-message flow: recorded audio is shipped as base64, the server
-// decodes it and forwards it to Whisper, and the resulting transcript is
-// then routed through the normal /api/chat L1/L2/L3 pipeline so that all
-// safety/persona/memory invariants still apply to spoken input.
+// Speech-to-text via OpenRouter's STT API (Whisper). Used by the seeker
+// mobile app's voice-message flow: recorded audio is shipped as base64,
+// the server forwards it to Whisper through OpenRouter, and the resulting
+// transcript is routed through the normal /api/chat L1/L2/L3 pipeline.
 
-const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
-const TRANSCRIBE_MODEL = "whisper-1";
+const TRANSCRIBE_URL = "https://openrouter.ai/api/v1/audio/transcriptions";
+const TRANSCRIBE_MODEL = "openai/whisper-large-v3";
 
 export function transcriptionConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.OPENROUTER_API_KEY);
 }
 
 export async function transcribeAudio(opts: {
@@ -182,27 +172,28 @@ export async function transcribeAudio(opts: {
   filename?: string;
   language?: string;
 }): Promise<string | null> {
-  const k = process.env.OPENAI_API_KEY;
+  const k = process.env.OPENROUTER_API_KEY;
   if (!k) return null;
   if (!opts.audioBase64) return null;
   try {
     const buf = Buffer.from(opts.audioBase64, "base64");
     if (buf.length === 0) return null;
     const mime = opts.mimeType || "audio/m4a";
-    const filename =
-      opts.filename || `voice.${(mime.split("/")[1] || "m4a").split(";")[0]}`;
-    const blob = new Blob([new Uint8Array(buf)], { type: mime });
+    const format = (mime.split("/")[1] || "m4a").split(";")[0];
 
-    const form = new FormData();
-    form.append("file", blob, filename);
-    form.append("model", TRANSCRIBE_MODEL);
-    form.append("response_format", "json");
-    if (opts.language) form.append("language", opts.language);
+    const body: Record<string, unknown> = {
+      model: TRANSCRIBE_MODEL,
+      input_audio: { data: opts.audioBase64, format },
+    };
+    if (opts.language) body.language = opts.language;
 
     const res = await fetch(TRANSCRIBE_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${k}` },
-      body: form,
+      headers: {
+        Authorization: `Bearer ${k}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -223,20 +214,17 @@ export async function transcribeAudio(opts: {
 
 // ---------------------------------------------------------------- text-to-speech
 //
-// OpenAI TTS for reading agent replies back to the seeker. Returns base64
-// audio in the requested format so the mobile client can write it to a
-// cache file and hand it to expo-audio for playback. The agent reply has
-// already been safety-gated before persistence, so we only need to guard
-// against runtime/network failures here.
+// TTS via OpenRouter for reading agent replies back to the seeker. Returns
+// base64 audio so the mobile client can hand it to expo-audio for playback.
 
-const TTS_URL = "https://api.openai.com/v1/audio/speech";
-const TTS_MODEL = "gpt-4o-mini-tts";
+const TTS_URL = "https://openrouter.ai/api/v1/audio/speech";
+const TTS_MODEL = "openai/gpt-4o-mini-tts";
 const TTS_VOICE_DEFAULT = "alloy";
 const TTS_FORMAT_DEFAULT: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm" =
   "mp3";
 
 export function ttsConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.OPENROUTER_API_KEY);
 }
 
 export async function synthesizeSpeech(opts: {
@@ -244,7 +232,7 @@ export async function synthesizeSpeech(opts: {
   voice?: string;
   format?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
 }): Promise<{ audioBase64: string; mimeType: string } | null> {
-  const k = process.env.OPENAI_API_KEY;
+  const k = process.env.OPENROUTER_API_KEY;
   if (!k) return null;
   const text = (opts.text || "").trim();
   if (!text) return null;
@@ -265,7 +253,7 @@ export async function synthesizeSpeech(opts: {
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      logger.warn({ status: res.status, errText }, "openai tts failed");
+      logger.warn({ status: res.status, errText }, "openrouter tts failed");
       return null;
     }
     const ab = await res.arrayBuffer();
@@ -273,50 +261,34 @@ export async function synthesizeSpeech(opts: {
     const mimeType = format === "mp3" ? "audio/mpeg" : `audio/${format}`;
     return { audioBase64, mimeType };
   } catch (err) {
-    logger.warn({ err }, "openai tts threw");
+    logger.warn({ err }, "openrouter tts threw");
     return null;
   }
 }
 
+const MODERATION_SCHEMA = `{ "flagged": boolean, "categories": { "hate": boolean, "harassment": boolean, "self-harm": boolean, "sexual": boolean, "violence": boolean }, "category_scores": { "hate": number 0-1, "harassment": number 0-1, "self-harm": number 0-1, "sexual": number 0-1, "violence": number 0-1 } }`;
+
 export async function moderate(text: string): Promise<ModerationResult | null> {
-  const k = process.env.OPENAI_API_KEY;
-  if (!k) return null;
+  if (!process.env.OPENROUTER_API_KEY) return null;
   if (!text || text.trim().length === 0) return null;
   try {
-    const res = await fetch(MODERATION_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${k}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODERATION_MODEL,
-        input: text.slice(0, 8000),
-      }),
-    });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      logger.warn({ status: res.status, errText }, "moderation call failed");
-      return null;
-    }
-    const data = (await res.json()) as {
-      model?: string;
-      results?: Array<{
-        flagged?: boolean;
-        categories?: Record<string, boolean>;
-        category_scores?: ModerationCategoryScores;
-      }>;
-    };
-    const r = data.results?.[0];
-    if (!r) return null;
+    const result = await classify<{
+      flagged: boolean;
+      categories: Record<string, boolean>;
+      category_scores: Record<string, number>;
+    }>(
+      `Classify the following text for content policy violations. Set flagged=true if ANY category is violated. Score each category 0-1.\n\nText: """${text.slice(0, 8000)}"""`,
+      MODERATION_SCHEMA,
+    );
     return {
-      flagged: Boolean(r.flagged),
-      categories: r.categories ?? {},
-      category_scores: r.category_scores ?? {},
-      model: data.model ?? MODERATION_MODEL,
+      flagged: Boolean(result.flagged),
+      categories: result.categories ?? {},
+      category_scores: (result.category_scores ??
+        {}) as ModerationCategoryScores,
+      model: SAFETY_MODEL,
     };
   } catch (err) {
-    logger.warn({ err }, "moderation call threw");
+    logger.warn({ err }, "moderation classify threw");
     return null;
   }
 }
