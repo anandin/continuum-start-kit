@@ -29,9 +29,7 @@ export default function QHAuth() {
       const endpoint =
         mode === "login" ? "/api/auth/login" : "/api/auth/register";
       const body: Record<string, string> =
-        mode === "login"
-          ? { email, password }
-          : { email, password, role };
+        mode === "login" ? { email, password } : { email, password, role };
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -247,8 +245,7 @@ export default function QHAuth() {
                       height: 46,
                       borderRadius: 14,
                       border: `1.5px solid ${role === r ? theme.accent : theme.borderSoft}`,
-                      background:
-                        role === r ? theme.iconChipBg : theme.surface,
+                      background: role === r ? theme.iconChipBg : theme.surface,
                       color: role === r ? theme.accent : theme.muted,
                       fontFamily: FONT,
                       fontSize: 14,

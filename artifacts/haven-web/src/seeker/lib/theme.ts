@@ -126,6 +126,8 @@ function paletteFor(mode: ThemeMode): QHTheme {
 interface QHThemeContext {
   theme: QHTheme;
   mode: ThemeMode;
+  setMode: (m: ThemeMode) => void;
+  toggleMode: () => void;
   reading: boolean;
   setReading: (v: boolean) => void;
 }
@@ -133,12 +135,14 @@ interface QHThemeContext {
 const Ctx = createContext<QHThemeContext | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const mode = useMemo(resolveMode, []);
+  const [mode, setMode] = useState<ThemeMode>("morning");
   const theme = useMemo(() => paletteFor(mode), [mode]);
   const [reading, setReading] = useState(false);
+  const toggleMode = () =>
+    setMode((m) => (m === "morning" ? "night" : "morning"));
 
   const value = useMemo(
-    () => ({ theme, mode, reading, setReading }),
+    () => ({ theme, mode, setMode, toggleMode, reading, setReading }),
     [theme, mode, reading],
   );
 

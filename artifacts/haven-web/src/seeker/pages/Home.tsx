@@ -7,6 +7,7 @@ import QHIcon from "../components/QHIcon";
 import QHButton from "../components/QHButton";
 import LampGlow from "../components/LampGlow";
 import TabBar from "../components/TabBar";
+import ThemeToggle from "../components/ThemeToggle";
 
 type PartOfDay = "morning" | "afternoon" | "evening" | "night";
 
@@ -144,19 +145,22 @@ export default function Home() {
           >
             {getDayLabel()}
           </span>
-          <button
-            onClick={() => navigate("/seeker/you")}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-              lineHeight: 0,
-            }}
-            aria-label="Profile"
-          >
-            <MayaAvatar size={32} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <ThemeToggle />
+            <button
+              onClick={() => navigate("/seeker/you")}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                lineHeight: 0,
+              }}
+              aria-label="Profile"
+            >
+              <MayaAvatar size={32} />
+            </button>
+          </div>
         </div>
 
         {/* Greeting */}

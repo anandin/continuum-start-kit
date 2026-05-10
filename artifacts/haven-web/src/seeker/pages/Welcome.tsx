@@ -4,6 +4,7 @@ import { useQHTheme, FONT, SERIF, HAND } from "../lib/theme";
 import QHIcon from "../components/QHIcon";
 import QHButton from "../components/QHButton";
 import LampGlow from "../components/LampGlow";
+import ThemeToggle from "../components/ThemeToggle";
 
 const FEATURES = [
   {
@@ -53,6 +54,20 @@ export default function Welcome() {
           overflowY: "auto",
         }}
       >
+        {/* Top bar */}
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 32,
+          }}
+        >
+          <div />
+          <ThemeToggle />
+        </div>
+
         {/* Logo */}
         <div
           style={{
