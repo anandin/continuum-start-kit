@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, useId } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQHTheme, FONT, SERIF, HAND } from '../lib/theme';
-import MayaAvatar from '../components/MayaAvatar';
-import QHIcon from '../components/QHIcon';
-import QHButton from '../components/QHButton';
-import LampGlow from '../components/LampGlow';
-import TabBar from '../components/TabBar';
+import React, { useState, useEffect, useCallback, useId } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQHTheme, FONT, SERIF, HAND } from "../lib/theme";
+import MayaAvatar from "../components/MayaAvatar";
+import QHIcon from "../components/QHIcon";
+import QHButton from "../components/QHButton";
+import LampGlow from "../components/LampGlow";
+import TabBar from "../components/TabBar";
 
 interface JournalEntry {
   id: string;
@@ -14,50 +14,52 @@ interface JournalEntry {
   createdAt: string;
 }
 
-type PartOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
+type PartOfDay = "morning" | "afternoon" | "evening" | "night";
 
 function getPartOfDay(): PartOfDay {
   const h = new Date().getHours();
-  if (h >= 5 && h < 12) return 'morning';
-  if (h >= 12 && h < 17) return 'afternoon';
-  if (h >= 17 && h < 21) return 'evening';
-  return 'night';
+  if (h >= 5 && h < 12) return "morning";
+  if (h >= 12 && h < 17) return "afternoon";
+  if (h >= 17 && h < 21) return "evening";
+  return "night";
 }
 
 function isNightish(part: PartOfDay): boolean {
-  return part === 'evening' || part === 'night';
+  return part === "evening" || part === "night";
 }
 
 function formatDateLabel(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-    }).toUpperCase();
+    return d
+      .toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+      })
+      .toUpperCase();
   } catch {
-    return '';
+    return "";
   }
 }
 
 function previewText(content: string, max = 90): string {
-  const trimmed = content.replace(/\n/g, ' ').trim();
-  return trimmed.length > max ? trimmed.slice(0, max) + '…' : trimmed;
+  const trimmed = content.replace(/\n/g, " ").trim();
+  return trimmed.length > max ? trimmed.slice(0, max) + "…" : trimmed;
 }
 
 const PROMPTS = [
-  'What did your body know before your mind caught up?',
+  "What did your body know before your mind caught up?",
   "What are you carrying that isn\u2019t yours?",
-  'Where did you feel the safest today?',
-  'What would rest look like if no one was watching?',
+  "Where did you feel the safest today?",
+  "What would rest look like if no one was watching?",
 ];
 
 const MORNING_PROMPTS = [
-  'What does this morning need from you?',
-  'What are you willing to let go of today?',
-  'If today were gentle, what would it look like?',
-  'What permission do you want to give yourself?',
+  "What does this morning need from you?",
+  "What are you willing to let go of today?",
+  "If today were gentle, what would it look like?",
+  "What permission do you want to give yourself?",
 ];
 
 export default function SeekerJournal() {
@@ -70,7 +72,7 @@ export default function SeekerJournal() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [activeDot, setActiveDot] = useState(0);
 
@@ -81,7 +83,9 @@ export default function SeekerJournal() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch('/api/journal/entries/me', { credentials: 'include' });
+        const res = await fetch("/api/journal/entries/me", {
+          credentials: "include",
+        });
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) setEntries(Array.isArray(data) ? data : []);
@@ -93,7 +97,9 @@ export default function SeekerJournal() {
       }
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -101,16 +107,16 @@ export default function SeekerJournal() {
     if (!text || saving) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/journal/entries', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/journal/entries", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: text, shared: false }),
       });
       if (res.ok) {
         const saved = await res.json();
         setEntries((prev) => [saved, ...prev]);
-        setDraft('');
+        setDraft("");
         setComposerOpen(false);
       }
     } catch {
@@ -123,11 +129,11 @@ export default function SeekerJournal() {
   const handleTabNavigate = useCallback(
     (tab: string) => {
       const routes: Record<string, string> = {
-        today: '/seeker/home',
-        twin: '/seeker/chat',
-        journal: '/seeker/journal',
-        progress: '/seeker/progress',
-        you: '/seeker/you',
+        today: "/seeker/home",
+        twin: "/seeker/chat",
+        journal: "/seeker/journal",
+        progress: "/seeker/progress",
+        you: "/seeker/you",
       };
       navigate(routes[tab] ?? `/seeker/${tab}`);
     },
@@ -137,36 +143,36 @@ export default function SeekerJournal() {
   return (
     <div
       style={{
-        minHeight: '100dvh',
+        minHeight: "100dvh",
         background: theme.pageGrad,
-        position: 'relative',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <LampGlow top={-100} />
 
       <div
         style={{
-          position: 'relative',
+          position: "relative",
           zIndex: 1,
           flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '48px 24px 100px',
-          overflowY: 'auto',
+          display: "flex",
+          flexDirection: "column",
+          padding: "48px 24px 100px",
+          overflowY: "auto",
           maxWidth: 440,
-          width: '100%',
-          margin: '0 auto',
+          width: "100%",
+          margin: "0 auto",
         }}
       >
         {/* Top row */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
             marginBottom: 28,
           }}
         >
@@ -176,24 +182,24 @@ export default function SeekerJournal() {
               fontSize: 11,
               fontWeight: 600,
               color: theme.muted,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
             }}
           >
-            JOURNAL · {loading ? '…' : `${entries.length} entries`}
+            JOURNAL · {loading ? "…" : `${entries.length} entries`}
           </span>
           <button
             onClick={() => setComposerOpen(true)}
             style={{
               width: 34,
               height: 34,
-              borderRadius: '50%',
+              borderRadius: "50%",
               background: theme.iconChipBg,
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               color: theme.accent,
             }}
             aria-label="New entry"
@@ -208,7 +214,7 @@ export default function SeekerJournal() {
             fontFamily: HAND,
             fontSize: 28,
             color: theme.accent,
-            margin: '0 0 6px',
+            margin: "0 0 6px",
           }}
         >
           {night ? "tonight's prompt" : "this morning's prompt"}
@@ -220,7 +226,7 @@ export default function SeekerJournal() {
             fontSize: 32,
             fontWeight: 400,
             color: theme.text,
-            margin: '0 0 24px',
+            margin: "0 0 24px",
             lineHeight: 1.15,
           }}
         >
@@ -232,7 +238,7 @@ export default function SeekerJournal() {
           style={{
             background: theme.cardGrad,
             borderRadius: 22,
-            padding: '22px 22px 24px',
+            padding: "22px 22px 24px",
             marginBottom: 24,
             border: `1px solid ${theme.border}`,
           }}
@@ -240,8 +246,8 @@ export default function SeekerJournal() {
           {/* Pagination dots */}
           <div
             style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
+              display: "flex",
+              justifyContent: "flex-end",
               gap: 6,
               marginBottom: 16,
             }}
@@ -253,12 +259,12 @@ export default function SeekerJournal() {
                 style={{
                   width: 7,
                   height: 7,
-                  borderRadius: '50%',
+                  borderRadius: "50%",
                   background: i === activeDot ? theme.accent : theme.dim,
-                  border: 'none',
-                  cursor: 'pointer',
+                  border: "none",
+                  cursor: "pointer",
                   padding: 0,
-                  transition: 'background 0.2s',
+                  transition: "background 0.2s",
                 }}
                 aria-label={`Prompt ${i + 1}`}
               />
@@ -268,8 +274,8 @@ export default function SeekerJournal() {
           {/* Maya suggests */}
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: 8,
               marginBottom: 14,
             }}
@@ -281,8 +287,8 @@ export default function SeekerJournal() {
                 fontSize: 11,
                 fontWeight: 700,
                 color: theme.muted,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
               }}
             >
               MAYA SUGGESTS
@@ -293,11 +299,11 @@ export default function SeekerJournal() {
           <p
             style={{
               fontFamily: SERIF,
-              fontStyle: 'italic',
+              fontStyle: "italic",
               fontSize: 20,
               lineHeight: 1.45,
               color: theme.text,
-              margin: '0 0 16px',
+              margin: "0 0 16px",
             }}
           >
             {currentPrompt}
@@ -309,7 +315,7 @@ export default function SeekerJournal() {
               fontFamily: FONT,
               fontSize: 12,
               color: theme.muted,
-              margin: '0 0 20px',
+              margin: "0 0 20px",
               lineHeight: 1.5,
             }}
           >
@@ -333,34 +339,37 @@ export default function SeekerJournal() {
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Start writing here…"
                 style={{
-                  width: '100%',
+                  width: "100%",
                   minHeight: 120,
                   background: theme.surface,
                   border: `1px solid ${theme.borderSoft}`,
                   borderRadius: 14,
-                  padding: '14px 16px',
+                  padding: "14px 16px",
                   fontFamily: SERIF,
                   fontSize: 15,
                   lineHeight: 1.6,
                   color: theme.text,
-                  resize: 'vertical',
-                  outline: 'none',
-                  boxSizing: 'border-box',
+                  resize: "vertical",
+                  outline: "none",
+                  boxSizing: "border-box",
                 }}
               />
-              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 <QHButton
                   variant="primary"
                   onClick={handleSave}
                   disabled={!draft.trim() || saving}
-                  style={{ flex: 1, opacity: !draft.trim() || saving ? 0.5 : 1 }}
+                  style={{
+                    flex: 1,
+                    opacity: !draft.trim() || saving ? 0.5 : 1,
+                  }}
                 >
-                  {saving ? 'Saving…' : 'Save entry'}
+                  {saving ? "Saving…" : "Save entry"}
                 </QHButton>
                 <QHButton
                   variant="ghost"
                   onClick={() => setComposerOpen(false)}
-                  style={{ flex: 0, width: 'auto', padding: '0 20px' }}
+                  style={{ flex: 0, width: "auto", padding: "0 20px" }}
                 >
                   Cancel
                 </QHButton>
@@ -376,10 +385,10 @@ export default function SeekerJournal() {
             fontSize: 11,
             fontWeight: 700,
             color: theme.muted,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
             marginBottom: 14,
-            display: 'block',
+            display: "block",
           }}
         >
           RECENT
@@ -391,7 +400,7 @@ export default function SeekerJournal() {
               fontFamily: FONT,
               fontSize: 13,
               color: theme.muted,
-              textAlign: 'center',
+              textAlign: "center",
               marginTop: 20,
             }}
           >
@@ -403,10 +412,10 @@ export default function SeekerJournal() {
           <p
             style={{
               fontFamily: SERIF,
-              fontStyle: 'italic',
+              fontStyle: "italic",
               fontSize: 14,
               color: theme.dim,
-              textAlign: 'center',
+              textAlign: "center",
               marginTop: 20,
               lineHeight: 1.5,
             }}
@@ -426,9 +435,9 @@ export default function SeekerJournal() {
           >
             <div
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
                 marginBottom: 6,
               }}
             >
@@ -438,8 +447,8 @@ export default function SeekerJournal() {
                   fontSize: 10,
                   fontWeight: 600,
                   color: theme.dim,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
                 }}
               >
                 {formatDateLabel(entry.createdAt)}
@@ -453,9 +462,9 @@ export default function SeekerJournal() {
                     color: theme.accent,
                     background: theme.pillActiveBg,
                     borderRadius: 8,
-                    padding: '2px 8px',
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
+                    padding: "2px 8px",
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
                   }}
                 >
                   SHARED
@@ -465,7 +474,7 @@ export default function SeekerJournal() {
             <p
               style={{
                 fontFamily: SERIF,
-                fontStyle: 'italic',
+                fontStyle: "italic",
                 fontSize: 14.5,
                 lineHeight: 1.5,
                 color: theme.textSoft,

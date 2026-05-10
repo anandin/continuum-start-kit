@@ -1,14 +1,14 @@
-import React, { type ButtonHTMLAttributes } from 'react';
-import { useQHTheme, FONT } from '../lib/theme';
+import React, { type ButtonHTMLAttributes } from "react";
+import { useQHTheme, FONT } from "../lib/theme";
 
-type Variant = 'primary' | 'ghost';
+type Variant = "primary" | "ghost";
 
 interface QHButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
 }
 
 export default function QHButton({
-  variant = 'primary',
+  variant = "primary",
   style,
   children,
   ...rest
@@ -16,19 +16,19 @@ export default function QHButton({
   const { theme } = useQHTheme();
 
   const base: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    width: '100%',
+    width: "100%",
     height: 52,
     borderRadius: 26,
     fontSize: 16,
     fontWeight: 600,
     fontFamily: FONT,
-    cursor: 'pointer',
-    transition: 'opacity 0.18s, transform 0.18s',
-    border: 'none',
+    cursor: "pointer",
+    transition: "opacity 0.18s, transform 0.18s",
+    border: "none",
   };
 
   const variants: Record<Variant, React.CSSProperties> = {
@@ -38,10 +38,10 @@ export default function QHButton({
       boxShadow: theme.btnShadow,
     },
     ghost: {
-      background: 'transparent',
+      background: "transparent",
       color: theme.accent,
       border: `1.5px solid ${theme.border}`,
-      boxShadow: 'none',
+      boxShadow: "none",
     },
   };
 

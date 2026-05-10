@@ -1,25 +1,25 @@
-import React, { useId } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQHTheme, FONT, SERIF, HAND } from '../lib/theme';
-import QHIcon from '../components/QHIcon';
-import QHButton from '../components/QHButton';
-import LampGlow from '../components/LampGlow';
+import React, { useId } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQHTheme, FONT, SERIF, HAND } from "../lib/theme";
+import QHIcon from "../components/QHIcon";
+import QHButton from "../components/QHButton";
+import LampGlow from "../components/LampGlow";
 
 const FEATURES = [
   {
-    icon: 'moon',
-    title: 'Always here',
-    desc: '2am, Tuesday lunch, before a meeting.',
+    icon: "moon",
+    title: "Always here",
+    desc: "2am, Tuesday lunch, before a meeting.",
   },
   {
-    icon: 'heart',
-    title: 'Trained by Maya',
-    desc: 'A licensed therapist who reviews everything.',
+    icon: "heart",
+    title: "Trained by Maya",
+    desc: "A licensed therapist who reviews everything.",
   },
   {
-    icon: 'leaf',
-    title: 'Yours, privately',
-    desc: 'Nothing leaves this app without you saying so.',
+    icon: "leaf",
+    title: "Yours, privately",
+    desc: "Nothing leaves this app without you saying so.",
   },
 ] as const;
 
@@ -31,33 +31,33 @@ export default function Welcome() {
   return (
     <div
       style={{
-        minHeight: '100dvh',
+        minHeight: "100dvh",
         background: theme.pageGrad,
-        position: 'relative',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <LampGlow top={-100} />
 
       <div
         style={{
-          position: 'relative',
+          position: "relative",
           zIndex: 1,
           flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '64px 28px 48px',
-          overflowY: 'auto',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "64px 28px 48px",
+          overflowY: "auto",
         }}
       >
         {/* Logo */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 8,
             marginBottom: 48,
           }}
@@ -84,7 +84,7 @@ export default function Welcome() {
               fontSize: 22,
               fontWeight: 400,
               color: theme.text,
-              letterSpacing: '-0.01em',
+              letterSpacing: "-0.01em",
             }}
           >
             Haven
@@ -97,7 +97,7 @@ export default function Welcome() {
             fontFamily: HAND,
             fontSize: 28,
             color: theme.accent,
-            margin: '0 0 8px',
+            margin: "0 0 8px",
           }}
         >
           hi, you.
@@ -110,8 +110,8 @@ export default function Welcome() {
             fontSize: 34,
             fontWeight: 400,
             color: theme.text,
-            margin: '0 0 14px',
-            textAlign: 'center',
+            margin: "0 0 14px",
+            textAlign: "center",
             lineHeight: 1.15,
           }}
         >
@@ -122,13 +122,13 @@ export default function Welcome() {
         <p
           style={{
             fontFamily: SERIF,
-            fontStyle: 'italic',
+            fontStyle: "italic",
             fontSize: 16,
             lineHeight: 1.55,
             color: theme.textSoft,
-            textAlign: 'center',
+            textAlign: "center",
             maxWidth: 340,
-            margin: '0 0 40px',
+            margin: "0 0 40px",
           }}
         >
           Haven is for the slow nights, the hard mornings, and the small
@@ -138,10 +138,10 @@ export default function Welcome() {
         {/* Feature rows */}
         <div
           style={{
-            width: '100%',
+            width: "100%",
             maxWidth: 380,
-            display: 'flex',
-            flexDirection: 'column',
+            display: "flex",
+            flexDirection: "column",
             gap: 20,
             marginBottom: 44,
           }}
@@ -150,8 +150,8 @@ export default function Welcome() {
             <div
               key={f.icon}
               style={{
-                display: 'flex',
-                alignItems: 'center',
+                display: "flex",
+                alignItems: "center",
                 gap: 16,
               }}
             >
@@ -161,9 +161,9 @@ export default function Welcome() {
                   height: 44,
                   borderRadius: 14,
                   background: theme.iconChipBg,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   flexShrink: 0,
                   color: theme.accent,
                 }}
@@ -188,7 +188,7 @@ export default function Welcome() {
                     fontFamily: FONT,
                     fontSize: 13.5,
                     color: theme.muted,
-                    margin: '2px 0 0',
+                    margin: "2px 0 0",
                     lineHeight: 1.4,
                   }}
                 >
@@ -200,8 +200,8 @@ export default function Welcome() {
         </div>
 
         {/* CTA */}
-        <div style={{ width: '100%', maxWidth: 380 }}>
-          <QHButton onClick={() => navigate('/seeker/meet')}>
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          <QHButton onClick={() => navigate("/seeker/meet")}>
             Take the first step
           </QHButton>
         </div>
@@ -212,8 +212,8 @@ export default function Welcome() {
             fontFamily: FONT,
             fontSize: 13,
             color: theme.muted,
-            margin: '16px 0 0',
-            textAlign: 'center',
+            margin: "16px 0 0",
+            textAlign: "center",
           }}
         >
           No rush. You can move at your pace.

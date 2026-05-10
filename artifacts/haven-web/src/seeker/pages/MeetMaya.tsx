@@ -1,23 +1,23 @@
-import React, { useId } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQHTheme, FONT, SERIF, HAND } from '../lib/theme';
-import MayaAvatar from '../components/MayaAvatar';
-import QHIcon from '../components/QHIcon';
-import QHButton from '../components/QHButton';
+import React, { useId } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQHTheme, FONT, SERIF, HAND } from "../lib/theme";
+import MayaAvatar from "../components/MayaAvatar";
+import QHIcon from "../components/QHIcon";
+import QHButton from "../components/QHButton";
 
 function ProgressDots({ total, filled }: { total: number; filled: number }) {
   const { theme } = useQHTheme();
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {Array.from({ length: total }, (_, i) => (
         <div
           key={i}
           style={{
             width: 8,
             height: 8,
-            borderRadius: '50%',
+            borderRadius: "50%",
             background: i < filled ? theme.accent : theme.borderSoft,
-            transition: 'background 0.2s',
+            transition: "background 0.2s",
           }}
         />
       ))}
@@ -29,7 +29,7 @@ function WaveformBars() {
   const { theme } = useQHTheme();
   const heights = [6, 12, 16, 12, 8];
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
       {heights.map((h, i) => (
         <div
           key={i}
@@ -54,27 +54,27 @@ export default function MeetMaya() {
   return (
     <div
       style={{
-        minHeight: '100dvh',
+        minHeight: "100dvh",
         background: theme.pageGrad,
-        display: 'flex',
-        flexDirection: 'column',
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <div
         style={{
           flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '48px 28px 48px',
-          overflowY: 'auto',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "48px 28px 48px",
+          overflowY: "auto",
         }}
       >
         {/* Progress */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 10,
             marginBottom: 36,
           }}
@@ -85,8 +85,8 @@ export default function MeetMaya() {
               fontSize: 12,
               fontWeight: 500,
               color: theme.muted,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
             }}
           >
             Step 3 of 4
@@ -102,10 +102,10 @@ export default function MeetMaya() {
         {/* Status badge */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 8,
-            padding: '6px 14px',
+            padding: "6px 14px",
             borderRadius: 20,
             background: theme.surface,
             marginBottom: 24,
@@ -115,7 +115,7 @@ export default function MeetMaya() {
             style={{
               width: 7,
               height: 7,
-              borderRadius: '50%',
+              borderRadius: "50%",
               background: theme.sage,
               boxShadow: `0 0 6px ${theme.sage}`,
             }}
@@ -126,8 +126,8 @@ export default function MeetMaya() {
               fontSize: 11,
               fontWeight: 700,
               color: theme.sage,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
             }}
           >
             Here now
@@ -141,7 +141,7 @@ export default function MeetMaya() {
             fontFamily: HAND,
             fontSize: 26,
             color: theme.accent,
-            margin: '0 0 4px',
+            margin: "0 0 4px",
           }}
         >
           hi, I'm
@@ -154,7 +154,7 @@ export default function MeetMaya() {
             fontSize: 42,
             fontWeight: 400,
             color: theme.text,
-            margin: '0 0 10px',
+            margin: "0 0 10px",
             lineHeight: 1,
           }}
         >
@@ -167,9 +167,9 @@ export default function MeetMaya() {
             fontFamily: FONT,
             fontSize: 13.5,
             color: theme.muted,
-            margin: '0 0 28px',
-            textAlign: 'center',
-            letterSpacing: '0.01em',
+            margin: "0 0 28px",
+            textAlign: "center",
+            letterSpacing: "0.01em",
           }}
         >
           PhD, LCSW · Trauma-informed CBT · 11 years
@@ -178,19 +178,19 @@ export default function MeetMaya() {
         {/* Philosophy quote card */}
         <div
           style={{
-            width: '100%',
+            width: "100%",
             maxWidth: 380,
             background: theme.surface,
             borderRadius: 18,
-            padding: '22px 24px',
+            padding: "22px 24px",
             marginBottom: 16,
             border: `1px solid ${theme.borderSoft}`,
           }}
         >
           <div
             style={{
-              display: 'flex',
-              alignItems: 'flex-start',
+              display: "flex",
+              alignItems: "flex-start",
               gap: 12,
             }}
           >
@@ -200,7 +200,7 @@ export default function MeetMaya() {
             <p
               style={{
                 fontFamily: SERIF,
-                fontStyle: 'italic',
+                fontStyle: "italic",
                 fontSize: 15.5,
                 lineHeight: 1.55,
                 color: theme.textSoft,
@@ -217,15 +217,15 @@ export default function MeetMaya() {
         {/* How the Twin works card */}
         <div
           style={{
-            width: '100%',
+            width: "100%",
             maxWidth: 380,
             background: theme.cardGrad,
             borderRadius: 18,
-            padding: '18px 22px',
+            padding: "18px 22px",
             marginBottom: 36,
             border: `1px solid ${theme.borderSoft}`,
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 14,
           }}
         >
@@ -235,9 +235,9 @@ export default function MeetMaya() {
               height: 40,
               borderRadius: 12,
               background: theme.iconChipBg,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               flexShrink: 0,
               color: theme.accent,
             }}
@@ -251,9 +251,9 @@ export default function MeetMaya() {
                 fontSize: 11,
                 fontWeight: 700,
                 color: theme.muted,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                margin: '0 0 3px',
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                margin: "0 0 3px",
               }}
             >
               How the Twin works
@@ -274,8 +274,8 @@ export default function MeetMaya() {
         </div>
 
         {/* CTA */}
-        <div style={{ width: '100%', maxWidth: 380 }}>
-          <QHButton onClick={() => navigate('/seeker/home')}>
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          <QHButton onClick={() => navigate("/seeker/home")}>
             Say hi to Maya
           </QHButton>
         </div>
@@ -284,14 +284,14 @@ export default function MeetMaya() {
         <button
           onClick={() => {}}
           style={{
-            background: 'none',
-            border: 'none',
+            background: "none",
+            border: "none",
             fontFamily: FONT,
             fontSize: 14,
             color: theme.accent,
-            cursor: 'pointer',
+            cursor: "pointer",
             marginTop: 16,
-            padding: '4px 8px',
+            padding: "4px 8px",
             opacity: 0.8,
           }}
         >

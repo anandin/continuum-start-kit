@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback, useId } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQHTheme, FONT, SERIF, HAND } from '../lib/theme';
-import QHIcon from '../components/QHIcon';
-import LampGlow from '../components/LampGlow';
-import TabBar from '../components/TabBar';
+import React, { useState, useEffect, useCallback, useId } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQHTheme, FONT, SERIF, HAND } from "../lib/theme";
+import QHIcon from "../components/QHIcon";
+import LampGlow from "../components/LampGlow";
+import TabBar from "../components/TabBar";
 
 interface MoodPoint {
   day: string;
@@ -13,7 +13,7 @@ interface MoodPoint {
 interface ThemeItem {
   label: string;
   note: string;
-  trend: 'easing' | 'new' | 'flat';
+  trend: "easing" | "new" | "flat";
 }
 
 interface ProgressData {
@@ -23,7 +23,7 @@ interface ProgressData {
   themes: ThemeItem[];
 }
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const FALLBACK_MOODS: MoodPoint[] = DAYS.map((day, i) => ({
   day,
@@ -34,11 +34,15 @@ const FALLBACK_PROGRESS: ProgressData = {
   weeksWithMaya: 6,
   insight:
     "You\u2019ve been noticing the difference between what drains you and what quietly restores you \u2014 and that awareness is already a kind of care.",
-  insightHighlight: 'that awareness is already a kind of care',
+  insightHighlight: "that awareness is already a kind of care",
   themes: [
-    { label: 'Self-permission', note: 'Came up 4 times this week', trend: 'easing' },
-    { label: 'Sleep patterns', note: 'First mention Wednesday', trend: 'new' },
-    { label: 'Work boundaries', note: 'Steady since week 3', trend: 'flat' },
+    {
+      label: "Self-permission",
+      note: "Came up 4 times this week",
+      trend: "easing",
+    },
+    { label: "Sleep patterns", note: "First mention Wednesday", trend: "new" },
+    { label: "Work boundaries", note: "Steady since week 3", trend: "flat" },
   ],
 };
 
@@ -47,7 +51,7 @@ function MoodChart({
   theme,
 }: {
   data: MoodPoint[];
-  theme: ReturnType<typeof useQHTheme>['theme'];
+  theme: ReturnType<typeof useQHTheme>["theme"];
 }) {
   const gradId = useId();
   const chartW = 320;
@@ -66,19 +70,19 @@ function MoodChart({
     return { x, y };
   });
 
-  const polyline = points.map((p) => `${p.x},${p.y}`).join(' ');
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(" ");
   const areaPath = [
     `M${points[0].x},${padTop + plotH}`,
     ...points.map((p) => `L${p.x},${p.y}`),
     `L${points[points.length - 1].x},${padTop + plotH}`,
-    'Z',
-  ].join(' ');
+    "Z",
+  ].join(" ");
 
   return (
     <svg
       width="100%"
       viewBox={`0 0 ${chartW} ${chartH}`}
-      style={{ display: 'block' }}
+      style={{ display: "block" }}
     >
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -125,15 +129,18 @@ function MoodChart({
   );
 }
 
-function trendIndicator(trend: ThemeItem['trend'], theme: ReturnType<typeof useQHTheme>['theme']) {
+function trendIndicator(
+  trend: ThemeItem["trend"],
+  theme: ReturnType<typeof useQHTheme>["theme"],
+) {
   switch (trend) {
-    case 'easing':
-      return { symbol: '↓', color: theme.sage, label: 'easing' };
-    case 'new':
-      return { symbol: '·', color: theme.accent, label: 'new' };
-    case 'flat':
+    case "easing":
+      return { symbol: "↓", color: theme.sage, label: "easing" };
+    case "new":
+      return { symbol: "·", color: theme.accent, label: "new" };
+    case "flat":
     default:
-      return { symbol: '—', color: theme.muted, label: 'flat' };
+      return { symbol: "—", color: theme.muted, label: "flat" };
   }
 }
 
@@ -150,14 +157,16 @@ export default function SeekerProgress() {
     let cancelled = false;
     async function loadMoods() {
       try {
-        const res = await fetch('/api/mood/me', { credentials: 'include' });
+        const res = await fetch("/api/mood/me", { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
           if (!cancelled && Array.isArray(data) && data.length > 0) {
-            setMoods(data.slice(-7).map((d: any, i: number) => ({
-              day: DAYS[i % 7],
-              score: typeof d.score === 'number' ? d.score : 3,
-            })));
+            setMoods(
+              data.slice(-7).map((d: any, i: number) => ({
+                day: DAYS[i % 7],
+                score: typeof d.score === "number" ? d.score : 3,
+              })),
+            );
           }
         }
       } catch {
@@ -167,14 +176,18 @@ export default function SeekerProgress() {
       }
     }
     loadMoods();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     async function loadProgress() {
       try {
-        const res = await fetch('/api/seeker/progress', { credentials: 'include' });
+        const res = await fetch("/api/seeker/progress", {
+          credentials: "include",
+        });
         if (res.ok) {
           const data = await res.json();
           if (!cancelled && data) {
@@ -193,17 +206,19 @@ export default function SeekerProgress() {
       }
     }
     loadProgress();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleTabNavigate = useCallback(
     (tab: string) => {
       const routes: Record<string, string> = {
-        today: '/seeker/home',
-        twin: '/seeker/chat',
-        journal: '/seeker/journal',
-        progress: '/seeker/progress',
-        you: '/seeker/you',
+        today: "/seeker/home",
+        twin: "/seeker/chat",
+        journal: "/seeker/journal",
+        progress: "/seeker/progress",
+        you: "/seeker/you",
       };
       navigate(routes[tab] ?? `/seeker/${tab}`);
     },
@@ -221,7 +236,7 @@ export default function SeekerProgress() {
     return (
       <>
         {text.slice(0, idx)}
-        <span style={{ color: theme.accent, fontStyle: 'italic' }}>
+        <span style={{ color: theme.accent, fontStyle: "italic" }}>
           {highlight}
         </span>
         {text.slice(idx + highlight.length)}
@@ -232,28 +247,28 @@ export default function SeekerProgress() {
   return (
     <div
       style={{
-        minHeight: '100dvh',
+        minHeight: "100dvh",
         background: theme.pageGrad,
-        position: 'relative',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <LampGlow top={-100} />
 
       <div
         style={{
-          position: 'relative',
+          position: "relative",
           zIndex: 1,
           flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '48px 24px 100px',
-          overflowY: 'auto',
+          display: "flex",
+          flexDirection: "column",
+          padding: "48px 24px 100px",
+          overflowY: "auto",
           maxWidth: 440,
-          width: '100%',
-          margin: '0 auto',
+          width: "100%",
+          margin: "0 auto",
         }}
       >
         {/* Top label */}
@@ -263,8 +278,8 @@ export default function SeekerProgress() {
             fontSize: 11,
             fontWeight: 600,
             color: theme.muted,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
             marginBottom: 28,
           }}
         >
@@ -277,7 +292,7 @@ export default function SeekerProgress() {
             fontFamily: HAND,
             fontSize: 28,
             color: theme.accent,
-            margin: '0 0 6px',
+            margin: "0 0 6px",
           }}
         >
           look how far you've come
@@ -290,7 +305,7 @@ export default function SeekerProgress() {
             fontSize: 32,
             fontWeight: 400,
             color: theme.text,
-            margin: '0 0 24px',
+            margin: "0 0 24px",
             lineHeight: 1.15,
           }}
         >
@@ -302,15 +317,15 @@ export default function SeekerProgress() {
           style={{
             background: theme.surface,
             borderRadius: 18,
-            padding: '22px 22px 24px',
+            padding: "22px 22px 24px",
             marginBottom: 16,
             border: `1px solid ${theme.borderSoft}`,
           }}
         >
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: 8,
               marginBottom: 14,
             }}
@@ -324,8 +339,8 @@ export default function SeekerProgress() {
                 fontSize: 11,
                 fontWeight: 700,
                 color: theme.muted,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
               }}
             >
               SOMETHING TO HOLD ONTO
@@ -338,7 +353,7 @@ export default function SeekerProgress() {
               fontSize: 15.5,
               lineHeight: 1.55,
               color: theme.textSoft,
-              margin: '0 0 12px',
+              margin: "0 0 12px",
             }}
           >
             {loadingProgress ? (
@@ -366,16 +381,16 @@ export default function SeekerProgress() {
           style={{
             background: theme.surface,
             borderRadius: 18,
-            padding: '20px 22px 18px',
+            padding: "20px 22px 18px",
             marginBottom: 16,
             border: `1px solid ${theme.borderSoft}`,
           }}
         >
           <div
             style={{
-              display: 'flex',
-              alignItems: 'baseline',
-              justifyContent: 'space-between',
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
               marginBottom: 16,
             }}
           >
@@ -392,7 +407,7 @@ export default function SeekerProgress() {
             <span
               style={{
                 fontFamily: SERIF,
-                fontStyle: 'italic',
+                fontStyle: "italic",
                 fontSize: 13,
                 color: theme.muted,
               }}
@@ -405,9 +420,9 @@ export default function SeekerProgress() {
             <div
               style={{
                 height: 100,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <span
@@ -432,10 +447,10 @@ export default function SeekerProgress() {
             fontSize: 11,
             fontWeight: 700,
             color: theme.muted,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
             marginBottom: 14,
-            display: 'block',
+            display: "block",
           }}
         >
           WHAT KEEPS COMING UP
@@ -447,7 +462,7 @@ export default function SeekerProgress() {
               fontFamily: FONT,
               fontSize: 13,
               color: theme.dim,
-              textAlign: 'center',
+              textAlign: "center",
               marginTop: 8,
             }}
           >
@@ -460,14 +475,14 @@ export default function SeekerProgress() {
               <div
                 key={i}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '14px 0',
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "14px 0",
                   borderBottom:
                     i < progress.themes.length - 1
                       ? `1px solid ${theme.borderSoft}`
-                      : 'none',
+                      : "none",
                 }}
               >
                 <div>
@@ -476,7 +491,7 @@ export default function SeekerProgress() {
                       fontFamily: SERIF,
                       fontSize: 15,
                       color: theme.text,
-                      margin: '0 0 3px',
+                      margin: "0 0 3px",
                     }}
                   >
                     {t.label}
@@ -494,8 +509,8 @@ export default function SeekerProgress() {
                 </div>
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
+                    display: "flex",
+                    alignItems: "center",
                     gap: 6,
                     flexShrink: 0,
                     marginLeft: 12,
@@ -517,7 +532,7 @@ export default function SeekerProgress() {
                       fontSize: 10,
                       fontWeight: 500,
                       color: trend.color,
-                      letterSpacing: '0.04em',
+                      letterSpacing: "0.04em",
                     }}
                   >
                     {trend.label}

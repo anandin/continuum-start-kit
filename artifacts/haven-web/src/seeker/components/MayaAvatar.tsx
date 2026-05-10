@@ -1,5 +1,5 @@
-import React from 'react';
-import { useQHTheme } from '../lib/theme';
+import React from "react";
+import { useQHTheme } from "../lib/theme";
 
 interface MayaAvatarProps {
   size?: number;
@@ -9,12 +9,12 @@ interface MayaAvatarProps {
 export default function MayaAvatar({ size = 48, ring }: MayaAvatarProps) {
   const { mode } = useQHTheme();
 
-  const isNight = mode === 'night';
-  const skin = isNight ? '#DBBFA8' : '#C8A68E';
-  const hair = isNight ? '#3B2F42' : '#2A2034';
-  const cloth = isNight ? '#E8A89C' : '#C8786B';
-  const bgFill = isNight ? '#272338' : '#F4EFE3';
-  const lipColor = isNight ? '#D48B7D' : '#B86A5E';
+  const isNight = mode === "night";
+  const skin = isNight ? "#DBBFA8" : "#C8A68E";
+  const hair = isNight ? "#3B2F42" : "#2A2034";
+  const cloth = isNight ? "#E8A89C" : "#C8786B";
+  const bgFill = isNight ? "#272338" : "#F4EFE3";
+  const lipColor = isNight ? "#D48B7D" : "#B86A5E";
 
   const id = `maya-${size}`;
   const r = size / 2;
@@ -38,22 +38,10 @@ export default function MayaAvatar({ size = 48, ring }: MayaAvatarProps) {
         <rect width={size} height={size} fill={bgFill} />
 
         {/* Hair back */}
-        <ellipse
-          cx={r}
-          cy={r * 0.72}
-          rx={r * 0.62}
-          ry={r * 0.58}
-          fill={hair}
-        />
+        <ellipse cx={r} cy={r * 0.72} rx={r * 0.62} ry={r * 0.58} fill={hair} />
 
         {/* Face */}
-        <ellipse
-          cx={r}
-          cy={r * 0.88}
-          rx={r * 0.42}
-          ry={r * 0.48}
-          fill={skin}
-        />
+        <ellipse cx={r} cy={r * 0.88} rx={r * 0.42} ry={r * 0.48} fill={skin} />
 
         {/* Hair front sweep */}
         <path

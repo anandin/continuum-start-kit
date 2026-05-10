@@ -1,5 +1,5 @@
-import React from 'react';
-import { useQHTheme } from '../lib/theme';
+import React from "react";
+import { useQHTheme } from "../lib/theme";
 
 interface LampGlowProps {
   top?: number;
@@ -10,7 +10,7 @@ interface LampGlowProps {
 
 export default function LampGlow({
   top = -80,
-  x = '50%',
+  x = "50%",
   size = 420,
   color,
 }: LampGlowProps) {
@@ -21,15 +21,15 @@ export default function LampGlow({
     <div
       aria-hidden
       style={{
-        position: 'absolute',
+        position: "absolute",
         top,
         left: x,
-        transform: 'translateX(-50%)',
+        transform: "translateX(-50%)",
         width: size,
         height: size,
-        borderRadius: '50%',
+        borderRadius: "50%",
         background: `radial-gradient(circle, ${fill} 0%, transparent 70%)`,
-        pointerEvents: 'none',
+        pointerEvents: "none",
         zIndex: 0,
       }}
     />

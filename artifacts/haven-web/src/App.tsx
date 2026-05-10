@@ -37,6 +37,13 @@ import ReviewQueue from "./pages/twin/ReviewQueue";
 import ProviderBilling from "./pages/ProviderBilling";
 import SeekerPayment from "./pages/SeekerPayment";
 import SeekerMemory from "./pages/SeekerMemory";
+import SeekerLayout from "./seeker/SeekerLayout";
+import Welcome from "./seeker/pages/Welcome";
+import MeetMaya from "./seeker/pages/MeetMaya";
+import SeekerHome from "./seeker/pages/Home";
+import SeekerChat from "./seeker/pages/SeekerChat";
+import SeekerJournal from "./seeker/pages/SeekerJournal";
+import SeekerProgress from "./seeker/pages/SeekerProgress";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -273,6 +280,59 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            {/* Quiet Hours seeker experience */}
+            <Route path="/seeker" element={<SeekerLayout />}>
+              <Route path="welcome" element={<Welcome />} />
+              <Route path="meet" element={<MeetMaya />} />
+              <Route
+                path="home"
+                element={
+                  <ProtectedRoute>
+                    <SeekerHome />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="today"
+                element={
+                  <ProtectedRoute>
+                    <SeekerHome />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="chat"
+                element={
+                  <ProtectedRoute>
+                    <SeekerChat />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="twin"
+                element={
+                  <ProtectedRoute>
+                    <SeekerChat />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="journal"
+                element={
+                  <ProtectedRoute>
+                    <SeekerJournal />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="progress"
+                element={
+                  <ProtectedRoute>
+                    <SeekerProgress />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
