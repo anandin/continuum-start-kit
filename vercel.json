@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm --filter @workspace/api-server run build && PORT=3000 BASE_PATH=/ pnpm --filter @workspace/haven-web run build && ls -la artifacts/haven-web/dist/ && cp -rL artifacts/haven-web/dist/public/ public/",
-  "outputDirectory": "public",
+  "buildCommand": "pnpm --filter @workspace/api-server run build && cd artifacts/haven-web && PORT=3000 BASE_PATH=/ node ../../node_modules/.bin/vite build --config vite.config.ts && ls dist/public/index.html && cp -r dist/public ../../_site",
+  "outputDirectory": "_site",
   "installCommand": "pnpm install",
   "framework": null,
   "rewrites": [
