@@ -23,7 +23,10 @@ async function listSeekerUserIds(): Promise<string[]> {
   return rows.map((r) => r.userId);
 }
 
-export async function runNudgeSweep(): Promise<{ checked: number; sent: number }> {
+export async function runNudgeSweep(): Promise<{
+  checked: number;
+  sent: number;
+}> {
   const seekers = await listSeekerUserIds();
   let sent = 0;
   for (const userId of seekers) {

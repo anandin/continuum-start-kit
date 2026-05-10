@@ -41,7 +41,11 @@ function localHourInZone(zone: string | null | undefined): number {
 // Window predicate that handles wrap-around (e.g. start=22, end=2 means
 // 22:00-02:00 local). When start === end, treat as "always within window"
 // so an explicit equal-bounds setting doesn't silently disable nudges.
-function isHourInWindow(hour: number, startHour: number, endHour: number): boolean {
+function isHourInWindow(
+  hour: number,
+  startHour: number,
+  endHour: number,
+): boolean {
   if (startHour === endHour) return true;
   if (startHour < endHour) return hour >= startHour && hour < endHour;
   // Wrap-around overnight window.
@@ -63,15 +67,29 @@ interface NudgeContext {
 async function gatherContext(seekerUserId: string): Promise<NudgeContext> {
   const seeker = await storage.getSeekerByOwnerId(seekerUserId);
   if (!seeker) {
-    return { seekerUserId, engagement: null, lastSession: null, summary: null, activeGoals: [] };
+    return {
+      seekerUserId,
+      engagement: null,
+      lastSession: null,
+      summary: null,
+      activeGoals: [],
+    };
   }
 
   const engagements = await storage.getEngagementsBySeekerId(seeker.id);
   const engagement =
-    engagements.find((e) => (e.status ?? "active") === "active") ?? engagements[0] ?? null;
+    engagements.find((e) => (e.status ?? "active") === "active") ??
+    engagements[0] ??
+    null;
 
   if (!engagement) {
-    return { seekerUserId, engagement: null, lastSession: null, summary: null, activeGoals: [] };
+    return {
+      seekerUserId,
+      engagement: null,
+      lastSession: null,
+      summary: null,
+      activeGoals: [],
+    };
   }
 
   const sessions = await storage.getSessionsByEngagementId(engagement.id);
@@ -103,7 +121,9 @@ function pickFallback(seed: string): string {
   return FALLBACK_NUDGES[idx];
 }
 
-async function composeWithLlm(ctx: NudgeContext): Promise<{ body: string; source: string }> {
+async function composeWithLlm(
+  ctx: NudgeContext,
+): Promise<{ body: string; source: string }> {
   if (!llmConfigured()) {
     return { body: pickFallback(ctx.seekerUserId), source: "fallback" };
   }
@@ -112,7 +132,7 @@ async function composeWithLlm(ctx: NudgeContext): Promise<{ body: string; source
   const goalTitles = ctx.activeGoals.slice(0, 3).map((g) => g.title);
   const insights = Array.isArray(ctx.summary?.keyInsights)
     ? (ctx.summary?.keyInsights as Array<string | { insight?: string }>)
-        .map((it) => (typeof it === "string" ? it : it?.insight ?? ""))
+        .map((it) => (typeof it === "string" ? it : (it?.insight ?? "")))
         .filter(Boolean)
         .slice(0, 3)
     : [];
@@ -128,11 +148,16 @@ async function composeWithLlm(ctx: NudgeContext): Promise<{ body: string; source
   };
 
   const contextLines: string[] = [];
-  if (nextAction) contextLines.push(`Coach's suggested next step: ${nextAction}`);
-  if (insights.length) contextLines.push(`Recent session insights:\n- ${insights.join("\n- ")}`);
-  if (goalTitles.length) contextLines.push(`Active goals:\n- ${goalTitles.join("\n- ")}`);
+  if (nextAction)
+    contextLines.push(`Coach's suggested next step: ${nextAction}`);
+  if (insights.length)
+    contextLines.push(`Recent session insights:\n- ${insights.join("\n- ")}`);
+  if (goalTitles.length)
+    contextLines.push(`Active goals:\n- ${goalTitles.join("\n- ")}`);
   if (!contextLines.length) {
-    contextLines.push("No prior session yet — write a gentle, generic centering prompt.");
+    contextLines.push(
+      "No prior session yet — write a gentle, generic centering prompt.",
+    );
   }
 
   const user: ChatMessage = {
@@ -145,10 +170,15 @@ async function composeWithLlm(ctx: NudgeContext): Promise<{ body: string; source
   else if (goalTitles.length) preferredSource = "goal";
 
   try {
-    const raw = (await chat({ messages: [system, user], temperature: 0.7 })).trim();
+    const raw = (
+      await chat({ messages: [system, user], temperature: 0.7 })
+    ).trim();
     // Strip surrounding quotes the model sometimes adds despite instructions.
-    const cleaned = raw.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, "").trim();
-    if (!cleaned) return { body: pickFallback(ctx.seekerUserId), source: "fallback" };
+    const cleaned = raw
+      .replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, "")
+      .trim();
+    if (!cleaned)
+      return { body: pickFallback(ctx.seekerUserId), source: "fallback" };
     return { body: cleaned, source: preferredSource };
   } catch (err) {
     logger.warn({ err }, "nudge LLM compose failed; using fallback");
@@ -162,7 +192,9 @@ async function composeWithLlm(ctx: NudgeContext): Promise<{ body: string; source
  * severity safety event in the last 24h) and no row exists for today — the
  * client should treat null as "no nudge today".
  */
-export async function generateOrFetchTodaysNudge(seekerUserId: string): Promise<Nudge | null> {
+export async function generateOrFetchTodaysNudge(
+  seekerUserId: string,
+): Promise<Nudge | null> {
   const today = todayYmdUtc();
 
   const existing = await getTodaysNudgeForSeeker(seekerUserId, today);
@@ -176,7 +208,8 @@ export async function generateOrFetchTodaysNudge(seekerUserId: string): Promise<
 
   const user = await storage.getUserById(seekerUserId);
   const localHour = localHourInZone(user?.timezone);
-  const windowStart = prefs?.windowStartHour ?? DEFAULT_NUDGE_PREFS.windowStartHour;
+  const windowStart =
+    prefs?.windowStartHour ?? DEFAULT_NUDGE_PREFS.windowStartHour;
   const windowEnd = prefs?.windowEndHour ?? DEFAULT_NUDGE_PREFS.windowEndHour;
   if (!isHourInWindow(localHour, windowStart, windowEnd)) {
     return null;
@@ -185,7 +218,10 @@ export async function generateOrFetchTodaysNudge(seekerUserId: string): Promise<
   // Crisis suppression — never push small "try this" prompts in a crisis.
   const inCrisis = await hasRecentHighSeveritySafetyEvent(seekerUserId);
   if (inCrisis) {
-    logger.info({ seekerUserId }, "nudge: skipped (recent high-severity safety event)");
+    logger.info(
+      { seekerUserId },
+      "nudge: skipped (recent high-severity safety event)",
+    );
     return null;
   }
 
@@ -218,7 +254,10 @@ export async function generateOrFetchTodaysNudge(seekerUserId: string): Promise<
       blockedReason = verdict.reason ?? null;
     }
   } catch (err) {
-    logger.warn({ err, seekerUserId }, "nudge: L1 output gate threw; using safe fallback");
+    logger.warn(
+      { err, seekerUserId },
+      "nudge: L1 output gate threw; using safe fallback",
+    );
     verdictDecision = "block";
     blockedReason = "safety_service_error";
   }
@@ -238,11 +277,15 @@ export async function generateOrFetchTodaysNudge(seekerUserId: string): Promise<
       },
       today,
     );
-    logger.warn({ seekerUserId, reason: blockedReason }, "nudge blocked by L1 output gate");
+    logger.warn(
+      { seekerUserId, reason: blockedReason },
+      "nudge blocked by L1 output gate",
+    );
     return null;
   }
 
-  const sourceGoalId = source === "goal" ? ctx.activeGoals[0]?.id ?? null : null;
+  const sourceGoalId =
+    source === "goal" ? (ctx.activeGoals[0]?.id ?? null) : null;
 
   const created = await createOrGetTodaysNudge(
     {

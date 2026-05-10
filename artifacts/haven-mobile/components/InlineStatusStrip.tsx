@@ -88,7 +88,9 @@ export function InlineStatusStrip({
           </Text>
           <Text style={[styles.score, { color: colors.foreground }]}>
             {todayScore != null ? todayScore : "—"}
-            <Text style={[styles.scoreDenom, { color: colors.mutedForeground }]}>
+            <Text
+              style={[styles.scoreDenom, { color: colors.mutedForeground }]}
+            >
               /5
             </Text>
           </Text>
@@ -105,7 +107,9 @@ export function InlineStatusStrip({
             <Text style={[styles.factValue, { color: colors.foreground }]}>
               {sessionsCompleted}
             </Text>
-            <Text style={[styles.dot, { color: colors.border }]}>{"  ·  "}</Text>
+            <Text style={[styles.dot, { color: colors.border }]}>
+              {"  ·  "}
+            </Text>
             <Text style={styles.label}>STAGE </Text>
             <Text style={[styles.factValue, { color: colors.foreground }]}>
               {stage}

@@ -13,7 +13,13 @@ import { writeClientMemory, topClientMemory } from "./twinStorage";
 import type { ClientMemory, Message } from "@workspace/db";
 
 export interface ReflectionEntry {
-  kind: "preference" | "boundary" | "fact" | "trigger" | "goal_progress" | "rapport";
+  kind:
+    | "preference"
+    | "boundary"
+    | "fact"
+    | "trigger"
+    | "goal_progress"
+    | "rapport";
   content: string;
   tags: string[];
   importance: number; // 0..1
@@ -81,10 +87,16 @@ export async function reflectAndWrite(opts: {
     if (guarded.templated) {
       // Safety gate replaced the output with a template — don't ingest it
       // as memory; just skip reflection for this session.
-      logger.warn({ sessionId: opts.sessionId }, "reflection blocked by safety gate; skipping memory write");
+      logger.warn(
+        { sessionId: opts.sessionId },
+        "reflection blocked by safety gate; skipping memory write",
+      );
       return [];
     }
-    const cleaned = guarded.content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const cleaned = guarded.content
+      .replace(/```json\s*/g, "")
+      .replace(/```\s*/g, "")
+      .trim();
     parsed = JSON.parse(cleaned);
   } catch (err) {
     logger.error({ err }, "reflection LLM call failed");
@@ -129,12 +141,20 @@ export async function buildMemoryContext(opts: {
   k?: number;
 }): Promise<{ block: string; entryIds: string[] }> {
   const queryEmbedding = await embed(opts.query);
-  const top = await topClientMemory(opts.engagementId, opts.query, queryEmbedding, opts.k ?? 6);
+  const top = await topClientMemory(
+    opts.engagementId,
+    opts.query,
+    queryEmbedding,
+    opts.k ?? 6,
+  );
   if (top.length === 0) return { block: "", entryIds: [] };
 
   const lines = ["## What I Remember About This Client"];
   for (const m of top) {
-    const tags = Array.isArray(m.tags) && m.tags.length > 0 ? ` [${(m.tags as string[]).join(", ")}]` : "";
+    const tags =
+      Array.isArray(m.tags) && m.tags.length > 0
+        ? ` [${(m.tags as string[]).join(", ")}]`
+        : "";
     lines.push(`- (${m.kind})${tags} ${m.content}`);
   }
   lines.push(

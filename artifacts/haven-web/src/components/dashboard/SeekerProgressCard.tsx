@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Calendar,
@@ -6,7 +6,7 @@ import {
   ChevronRight,
   TrendingUp,
   Zap,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   Line,
   LineChart,
@@ -14,12 +14,12 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+} from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
-type StreakStatus = 'active' | 'keep-going' | 'none';
+type StreakStatus = "active" | "keep-going" | "none";
 
 interface MoodPoint {
   day: string;
@@ -40,21 +40,23 @@ interface SeekerProgressSnapshot {
 }
 
 async function fetchSeekerProgress(): Promise<SeekerProgressSnapshot> {
-  const res = await fetch('/api/seeker/progress', { credentials: 'include' });
-  if (!res.ok) throw new Error('Failed to load progress');
+  const res = await fetch("/api/seeker/progress", { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load progress");
   return res.json();
 }
 
-export type SeekerProgressTile = 'sessions' | 'streak' | 'goals' | 'mood';
+export type SeekerProgressTile = "sessions" | "streak" | "goals" | "mood";
 
 interface SeekerProgressCardProps {
   onTileNavigate?: (tile: SeekerProgressTile) => void;
 }
 
-export function SeekerProgressCard({ onTileNavigate }: SeekerProgressCardProps = {}) {
+export function SeekerProgressCard({
+  onTileNavigate,
+}: SeekerProgressCardProps = {}) {
   const handleNav = (tile: SeekerProgressTile) => onTileNavigate?.(tile);
   const progressQ = useQuery({
-    queryKey: ['seeker-progress'],
+    queryKey: ["seeker-progress"],
     queryFn: fetchSeekerProgress,
   });
 
@@ -113,17 +115,20 @@ export function SeekerProgressCard({ onTileNavigate }: SeekerProgressCardProps =
             value={String(snapshot.sessionsCompleted)}
             isEmpty={snapshot.sessionsCompleted === 0}
             emptyHint="Start your first session"
-            onClick={() => handleNav('sessions')}
+            onClick={() => handleNav("sessions")}
             testId="progress-tile-sessions"
           />
-          <StreakTile streak={snapshot.streak} onClick={() => handleNav('streak')} />
+          <StreakTile
+            streak={snapshot.streak}
+            onClick={() => handleNav("streak")}
+          />
           <ProgressTile
             icon={<CheckSquare className="h-4 w-4 text-primary" />}
             label="Goal check-ins this week"
             value={String(snapshot.goalsThisWeek)}
             isEmpty={snapshot.goalsThisWeek === 0}
             emptyHint="Add a goal with your coach"
-            onClick={() => handleNav('goals')}
+            onClick={() => handleNav("goals")}
             testId="progress-tile-goals"
           />
           <ProgressTile
@@ -132,7 +137,7 @@ export function SeekerProgressCard({ onTileNavigate }: SeekerProgressCardProps =
             value={String(snapshot.moodSeries.length)}
             isEmpty={snapshot.moodSeries.length === 0}
             emptyHint="Log a mood from your phone"
-            onClick={() => handleNav('mood')}
+            onClick={() => handleNav("mood")}
             testId="progress-tile-mood"
           />
         </div>
@@ -147,7 +152,7 @@ export function SeekerProgressCard({ onTileNavigate }: SeekerProgressCardProps =
             </div>
             <span className="text-xs text-muted-foreground">
               {snapshot.moodSeries.length} check-in
-              {snapshot.moodSeries.length === 1 ? '' : 's'}
+              {snapshot.moodSeries.length === 1 ? "" : "s"}
             </span>
           </div>
           <MoodTrendChart entries={snapshot.moodSeries} />
@@ -216,13 +221,13 @@ function StreakTile({
   streak,
   onClick,
 }: {
-  streak: SeekerProgressSnapshot['streak'];
+  streak: SeekerProgressSnapshot["streak"];
   onClick: () => void;
 }) {
-  const isEmpty = streak.status === 'none';
+  const isEmpty = streak.status === "none";
   const valueText = isEmpty
-    ? '0 days'
-    : `${streak.current} day${streak.current === 1 ? '' : 's'}`;
+    ? "0 days"
+    : `${streak.current} day${streak.current === 1 ? "" : "s"}`;
 
   return (
     <button
@@ -249,7 +254,7 @@ function StreakTile({
           <span className="text-2xl font-semibold text-foreground">
             {valueText}
           </span>
-          {streak.status === 'keep-going' && (
+          {streak.status === "keep-going" && (
             <Badge
               variant="outline"
               className="text-[10px] px-2 py-0.5 border-accent/40 text-accent-foreground bg-accent/15"
@@ -257,7 +262,7 @@ function StreakTile({
               Keep going
             </Badge>
           )}
-          {streak.status === 'active' && (
+          {streak.status === "active" && (
             <Badge
               variant="outline"
               className="text-[10px] px-2 py-0.5 border-primary/30 text-primary bg-primary/10"
@@ -283,14 +288,17 @@ function MoodTrendChart({ entries }: { entries: MoodPoint[] }) {
     const day = d.toISOString().slice(0, 10);
     slots.push({
       day,
-      label: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      label: d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      }),
       score: null,
     });
   }
   const map = new Map(entries.map((e) => [e.day, e.score]));
   for (const slot of slots) {
     const v = map.get(slot.day);
-    if (typeof v === 'number') slot.score = v;
+    if (typeof v === "number") slot.score = v;
   }
 
   const hasAnyPoint = slots.some((s) => s.score != null);
@@ -314,29 +322,29 @@ function MoodTrendChart({ entries }: { entries: MoodPoint[] }) {
           <XAxis
             dataKey="label"
             interval={6}
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
             stroke="hsl(var(--muted-foreground) / 0.2)"
           />
           <YAxis
             domain={[1, 5]}
             ticks={[1, 2, 3, 4, 5]}
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
             stroke="hsl(var(--muted-foreground) / 0.2)"
           />
           <Tooltip
             contentStyle={{
               borderRadius: 12,
-              border: '1px solid hsl(var(--border))',
+              border: "1px solid hsl(var(--border))",
               fontSize: 12,
             }}
-            formatter={(value) => [value == null ? '—' : String(value), 'Mood']}
+            formatter={(value) => [value == null ? "—" : String(value), "Mood"]}
           />
           <Line
             type="monotone"
             dataKey="score"
             stroke="hsl(var(--primary))"
             strokeWidth={2}
-            dot={{ r: 3, fill: 'hsl(var(--primary))', strokeWidth: 0 }}
+            dot={{ r: 3, fill: "hsl(var(--primary))", strokeWidth: 0 }}
             activeDot={{ r: 4 }}
             connectNulls
             isAnimationActive={false}

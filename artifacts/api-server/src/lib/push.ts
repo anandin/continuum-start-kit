@@ -32,7 +32,9 @@ export async function sendPushToUser(
 ): Promise<{ sent: number; skipped: number; attempted: number }> {
   let tokens: { token: string }[] = [];
   try {
-    const rows = await storage.getPushTokensByUserId(userId, { onlyEnabled: true });
+    const rows = await storage.getPushTokensByUserId(userId, {
+      onlyEnabled: true,
+    });
     tokens = rows.map((r) => ({ token: r.token }));
   } catch (err) {
     logger.warn({ err, userId }, "push: failed to load tokens");
@@ -77,7 +79,11 @@ export async function sendPushToUser(
       return { sent: 0, skipped, attempted: valid.length };
     }
     const json = (await res.json()) as {
-      data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
+      data?: Array<{
+        status: string;
+        message?: string;
+        details?: { error?: string };
+      }>;
     };
     const tickets = Array.isArray(json.data) ? json.data : [];
 
@@ -89,7 +95,8 @@ export async function sendPushToUser(
         if (
           ticket?.status === "error" &&
           tok &&
-          (errCode === "DeviceNotRegistered" || errCode === "InvalidCredentials")
+          (errCode === "DeviceNotRegistered" ||
+            errCode === "InvalidCredentials")
         ) {
           try {
             await storage.deletePushToken(tok, userId);

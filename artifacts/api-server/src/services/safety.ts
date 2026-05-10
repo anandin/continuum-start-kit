@@ -7,7 +7,13 @@
 
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { classify, chat as rawChat, moderate, type ChatMessage, type ModerationResult } from "../lib/llm";
+import {
+  classify,
+  chat as rawChat,
+  moderate,
+  type ChatMessage,
+  type ModerationResult,
+} from "../lib/llm";
 import { logSafetyEvent } from "./twinStorage";
 import { db } from "../db";
 import { users } from "@workspace/db";
@@ -22,7 +28,10 @@ async function resolveRegionForUser(userId: string): Promise<SafetyRegion> {
       .limit(1);
     return row?.region === "INTL" ? "INTL" : "US";
   } catch (err) {
-    logger.warn({ err, userId }, "resolveRegionForUser failed; defaulting to US");
+    logger.warn(
+      { err, userId },
+      "resolveRegionForUser failed; defaulting to US",
+    );
     return "US";
   }
 }
@@ -96,7 +105,11 @@ discuss it together.
 
 // ---------------------------------------------------------------- types
 
-export type SafetyDecision = "allow" | "soften" | "block_with_template" | "escalate";
+export type SafetyDecision =
+  | "allow"
+  | "soften"
+  | "block_with_template"
+  | "escalate";
 export type SafetySeverity = "info" | "low" | "medium" | "high" | "critical";
 
 export type SafetyRegion = "US" | "INTL";
@@ -150,7 +163,10 @@ const HARMFUL_REQUEST_PATTERNS: RegExp[] = [
   /\bchild\s+sexual/i,
 ];
 
-function regexPrescreen(text: string): { crisis: boolean; harmfulRequest: boolean } {
+function regexPrescreen(text: string): {
+  crisis: boolean;
+  harmfulRequest: boolean;
+} {
   return {
     crisis: HARD_CRISIS_PATTERNS.some((r) => r.test(text)),
     harmfulRequest: HARMFUL_REQUEST_PATTERNS.some((r) => r.test(text)),
@@ -178,7 +194,11 @@ function interpretModeration(
   const cat = result.categories;
 
   // Self-harm: escalate (input) or soften with crisis template (output).
-  if (cat["self-harm"] || cat["self-harm/intent"] || cat["self-harm/instructions"]) {
+  if (
+    cat["self-harm"] ||
+    cat["self-harm/intent"] ||
+    cat["self-harm/instructions"]
+  ) {
     return {
       decision: side === "input" ? "escalate" : "soften",
       severity: "critical",
@@ -198,7 +218,11 @@ function interpretModeration(
       alertProvider: true,
     };
   }
-  if (cat["hate/threatening"] || cat["harassment/threatening"] || cat["violence/graphic"]) {
+  if (
+    cat["hate/threatening"] ||
+    cat["harassment/threatening"] ||
+    cat["violence/graphic"]
+  ) {
     return {
       decision: "block_with_template",
       severity: "high",
@@ -214,7 +238,8 @@ function interpretModeration(
       decision: side === "output" ? "block_with_template" : "soften",
       severity: "medium",
       reason: `moderation_general:${side}`,
-      template: side === "output" ? HARMFUL_REQUEST_TEMPLATE : SOFT_REDIRECT_TEMPLATE,
+      template:
+        side === "output" ? HARMFUL_REQUEST_TEMPLATE : SOFT_REDIRECT_TEMPLATE,
       alertProvider: side === "output",
     };
   }
@@ -243,7 +268,10 @@ async function classifyMessage(text: string): Promise<ClassifierOutput | null> {
     );
     return out;
   } catch (err) {
-    logger.error({ err }, "safety classifier failed; defaulting to conservative verdict");
+    logger.error(
+      { err },
+      "safety classifier failed; defaulting to conservative verdict",
+    );
     return null;
   }
 }
@@ -256,7 +284,10 @@ export function crisisTemplateFor(ctx: SafetyContext): string {
 // ---------------------------------------------------------------- public API
 
 /** L1 input gate. Caller MUST short-circuit on any non-allow verdict. */
-export async function checkInput(text: string, ctx: SafetyContext): Promise<SafetyVerdict> {
+export async function checkInput(
+  text: string,
+  ctx: SafetyContext,
+): Promise<SafetyVerdict> {
   const pre = regexPrescreen(text);
 
   if (pre.crisis) {
@@ -406,9 +437,10 @@ export async function checkOutput(
   const lc = outputText.toLowerCase();
 
   // Identity violations
-  const claimsHuman = /\b(i\s+am|i'm)\s+(a\s+)?(licensed\s+)?(therapist|psychiatrist|doctor|counselor|human)\b/i.test(
-    outputText,
-  );
+  const claimsHuman =
+    /\b(i\s+am|i'm)\s+(a\s+)?(licensed\s+)?(therapist|psychiatrist|doctor|counselor|human)\b/i.test(
+      outputText,
+    );
   if (claimsHuman) {
     const verdict: SafetyVerdict = {
       decision: "block_with_template",
@@ -423,7 +455,11 @@ export async function checkOutput(
   }
 
   // System prompt leakage
-  if (lc.includes("constitutional identity") || lc.includes("system prompt") || lc.includes("you are not a licensed therapist")) {
+  if (
+    lc.includes("constitutional identity") ||
+    lc.includes("system prompt") ||
+    lc.includes("you are not a licensed therapist")
+  ) {
     const verdict: SafetyVerdict = {
       decision: "block_with_template",
       severity: "medium",
@@ -503,11 +539,16 @@ async function persist(
       classifierLabels: verdict.labels,
       inputSnippet: inputText?.slice(0, 500) ?? null,
       outputSnippet: outputText?.slice(0, 500) ?? null,
-      templateUsed: verdict.templatedResponse ? verdict.templatedResponse.slice(0, 80) : null,
+      templateUsed: verdict.templatedResponse
+        ? verdict.templatedResponse.slice(0, 80)
+        : null,
       agentVersionId: ctx.agentVersionId ?? null,
     });
   } catch (err) {
-    logger.error({ err, decision: verdict.decision, stage }, "failed to persist safety event");
+    logger.error(
+      { err, decision: verdict.decision, stage },
+      "failed to persist safety event",
+    );
     // Fail closed for all decisions; orchestrator renders the fail-closed template.
     throw new Error(`safety_audit_persist_failed:${stage}:${verdict.decision}`);
   }
@@ -548,7 +589,10 @@ export async function logSystemFailureEvent(
       agentVersionId: ctx.agentVersionId ?? null,
     });
   } catch (err) {
-    logger.error({ err, reason }, "failed to persist system_failure safety event");
+    logger.error(
+      { err, reason },
+      "failed to persist system_failure safety event",
+    );
   }
 }
 
@@ -585,7 +629,9 @@ function representativeInput(messages: ChatMessage[]): string {
   return messages.map((m) => `${m.role}: ${m.content}`).join("\n");
 }
 
-export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLMResult> {
+export async function runGuardedLLM(
+  opts: RunGuardedLLMOpts,
+): Promise<GuardedLLMResult> {
   const inputText = representativeInput(opts.messages);
 
   const ctx: SafetyContext = { ...opts.ctx };
@@ -609,9 +655,15 @@ export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLM
   const guardedMessages: ChatMessage[] = (() => {
     const msgs = [...opts.messages];
     if (msgs.length > 0 && msgs[0].role === "system") {
-      return [{ role: "system" as const, content: withConstitution(msgs[0].content) }, ...msgs.slice(1)];
+      return [
+        { role: "system" as const, content: withConstitution(msgs[0].content) },
+        ...msgs.slice(1),
+      ];
     }
-    return [{ role: "system" as const, content: withConstitution("") }, ...msgs];
+    return [
+      { role: "system" as const, content: withConstitution("") },
+      ...msgs,
+    ];
   })();
 
   const raw = await rawChat({
@@ -635,10 +687,16 @@ export async function runGuardedLLM(opts: RunGuardedLLMOpts): Promise<GuardedLLM
       decision: outVerdict.decision,
       severity: outVerdict.severity,
       reason: `guarded_llm:${opts.purpose}:${opts.kind}`,
-      classifierLabels: { internal: true, purpose: opts.purpose, kind: opts.kind },
+      classifierLabels: {
+        internal: true,
+        purpose: opts.purpose,
+        kind: opts.kind,
+      },
       inputSnippet: null,
       outputSnippet: null,
-      templateUsed: outVerdict.templatedResponse ? outVerdict.templatedResponse.slice(0, 80) : null,
+      templateUsed: outVerdict.templatedResponse
+        ? outVerdict.templatedResponse.slice(0, 80)
+        : null,
       agentVersionId: opts.ctx.agentVersionId ?? null,
     });
   }

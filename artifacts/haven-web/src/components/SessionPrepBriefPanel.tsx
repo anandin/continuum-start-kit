@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,14 +72,22 @@ function relTime(iso: string | null): string {
 function StatusBadge({ brief }: { brief: SessionBriefDTO }) {
   if (brief.status === "templated_safety") {
     return (
-      <Badge variant="destructive" className="gap-1" data-testid="badge-brief-status">
+      <Badge
+        variant="destructive"
+        className="gap-1"
+        data-testid="badge-brief-status"
+      >
         <ShieldAlert className="h-3 w-3" /> Withheld by safety gate
       </Badge>
     );
   }
   if (brief.status === "failed") {
     return (
-      <Badge variant="secondary" className="gap-1" data-testid="badge-brief-status">
+      <Badge
+        variant="secondary"
+        className="gap-1"
+        data-testid="badge-brief-status"
+      >
         <AlertTriangle className="h-3 w-3" /> Fallback (LLM unavailable)
       </Badge>
     );
@@ -85,7 +99,11 @@ function StatusBadge({ brief }: { brief: SessionBriefDTO }) {
   );
 }
 
-export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }) {
+export function SessionPrepBriefPanel({
+  engagementId,
+}: {
+  engagementId: string;
+}) {
   const qc = useQueryClient();
   const [showHistory, setShowHistory] = useState(false);
 
@@ -102,7 +120,8 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
     queryKey: latestKey,
     queryFn: async () => {
       const res = await fetch(latestKey[0], { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed to load latest brief (${res.status})`);
+      if (!res.ok)
+        throw new Error(`Failed to load latest brief (${res.status})`);
       return res.json();
     },
   });
@@ -111,7 +130,8 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
     queryKey: historyKey,
     queryFn: async () => {
       const res = await fetch(historyKey[0], { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed to load brief history (${res.status})`);
+      if (!res.ok)
+        throw new Error(`Failed to load brief history (${res.status})`);
       return res.json();
     },
     enabled: showHistory,
@@ -130,9 +150,13 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
       qc.setQueryData<LatestResponse>(latestKey, { brief: data.brief });
       qc.invalidateQueries({ queryKey: historyKey });
       if (data.brief.status === "templated_safety") {
-        toast.warning("Brief was withheld by the safety gate. Review the audit log.");
+        toast.warning(
+          "Brief was withheld by the safety gate. Review the audit log.",
+        );
       } else if (data.brief.status === "failed") {
-        toast.warning("Used a fallback brief — the AI service was unavailable.");
+        toast.warning(
+          "Used a fallback brief — the AI service was unavailable.",
+        );
       } else {
         toast.success("Fresh prep brief ready.");
       }
@@ -145,7 +169,10 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
   const markUsedMut = useMutation({
     mutationFn: async (briefId: string) => {
       const res = await apiRequest("POST", `/api/briefs/${briefId}/used`, {});
-      return (await res.json()) as { brief: SessionBriefDTO; alreadyUsed?: boolean };
+      return (await res.json()) as {
+        brief: SessionBriefDTO;
+        alreadyUsed?: boolean;
+      };
     },
     // Once a brief is used, it should disappear from the active panel —
     // the backend's "latest" endpoint excludes used briefs, so we clear the
@@ -156,7 +183,9 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
       qc.invalidateQueries({ queryKey: latestKey });
       qc.invalidateQueries({ queryKey: historyKey });
       toast.success(
-        data.alreadyUsed ? "Already marked used." : "Marked as used in session.",
+        data.alreadyUsed
+          ? "Already marked used."
+          : "Marked as used in session.",
       );
     },
     onError: (err: any) => {
@@ -177,9 +206,9 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
                 Session prep brief
               </CardTitle>
               <CardDescription>
-                A short, AI-composed brief drawn from this client's recent sessions, mood,
-                journal, goals, and safety signals. Saved between visits — refresh when
-                you're about to meet.
+                A short, AI-composed brief drawn from this client's recent
+                sessions, mood, journal, goals, and safety signals. Saved
+                between visits — refresh when you're about to meet.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -190,7 +219,8 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
               >
                 {generateMut.isPending ? (
                   <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Generating…
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />{" "}
+                    Generating…
                   </>
                 ) : brief ? (
                   <>
@@ -224,11 +254,15 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
               <Skeleton className="h-20 w-full" />
             </div>
           ) : !brief ? (
-            <div className="text-center py-10 text-muted-foreground" data-testid="empty-brief">
+            <div
+              className="text-center py-10 text-muted-foreground"
+              data-testid="empty-brief"
+            >
               <Sparkles className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="font-medium">No brief yet for this client.</p>
               <p className="text-sm mt-1">
-                Click <strong>Generate brief</strong> to compose one from recent context.
+                Click <strong>Generate brief</strong> to compose one from recent
+                context.
               </p>
             </div>
           ) : (
@@ -240,8 +274,13 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
                   Generated {relTime(brief.generatedAt)}
                 </span>
                 {brief.usedAt && (
-                  <Badge variant="outline" className="gap-1" data-testid="badge-brief-used">
-                    <CheckCircle2 className="h-3 w-3" /> Used {relTime(brief.usedAt)}
+                  <Badge
+                    variant="outline"
+                    className="gap-1"
+                    data-testid="badge-brief-used"
+                  >
+                    <CheckCircle2 className="h-3 w-3" /> Used{" "}
+                    {relTime(brief.usedAt)}
                   </Badge>
                 )}
                 {brief.model && (
@@ -276,8 +315,9 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
               />
 
               <p className="text-xs text-muted-foreground italic border-t pt-3">
-                AI-composed assistive summary, not a clinical record. Verify against the
-                source tabs (Sessions, Mood, Journal) before relying on it in session.
+                AI-composed assistive summary, not a clinical record. Verify
+                against the source tabs (Sessions, Mood, Journal) before relying
+                on it in session.
               </p>
             </div>
           )}
@@ -304,7 +344,9 @@ export function SessionPrepBriefPanel({ engagementId }: { engagementId: string }
             {historyQ.isLoading ? (
               <Skeleton className="h-32 w-full" />
             ) : !historyQ.data || historyQ.data.briefs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No past briefs yet.</p>
+              <p className="text-sm text-muted-foreground">
+                No past briefs yet.
+              </p>
             ) : (
               <ScrollArea className="max-h-[420px] pr-3">
                 <ul className="space-y-3">

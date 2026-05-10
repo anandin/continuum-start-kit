@@ -49,34 +49,230 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/coach/:providerId" element={<ProviderProfile />} />
-            <Route path="/auth/role" element={<ProtectedRoute><RolePicker /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/provider/onboarding" element={<ProtectedRoute><ProviderOnboarding /></ProtectedRoute>} />
-            <Route path="/provider/setup" element={<ProtectedRoute><ProviderSetup /></ProtectedRoute>} />
-            <Route path="/provider/agent-setup" element={<ProtectedRoute><AgentSetup /></ProtectedRoute>} />
-            <Route path="/provider/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
-            <Route path="/provider/dashboard" element={<ProtectedRoute><ProviderDashboard /></ProtectedRoute>} />
-            <Route path="/provider/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
-            <Route path="/provider/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
-            <Route path="/provider/journal-prompts" element={<ProtectedRoute><JournalPromptLibrary /></ProtectedRoute>} />
-            <Route path="/provider/intake-forms" element={<ProtectedRoute><IntakeForms /></ProtectedRoute>} />
-            <Route path="/provider/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-            <Route path="/provider/engagement/:engagementId" element={<ProtectedRoute><ProviderEngagement /></ProtectedRoute>} />
-            <Route path="/provider/client/:clientId" element={<ProtectedRoute><ClientSessionSummary /></ProtectedRoute>} />
-            <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
-            <Route path="/journal" element={<ProtectedRoute><Journal /></ProtectedRoute>} />
-            <Route path="/chat/:sessionId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
-            <Route path="/session-summary/:sessionId" element={<ProtectedRoute><SessionSummary /></ProtectedRoute>} />
-            <Route path="/provider/twin/calibration" element={<ProtectedRoute><Calibration /></ProtectedRoute>} />
-            <Route path="/provider/twin/persona" element={<ProtectedRoute><PersonaLibrary /></ProtectedRoute>} />
-            <Route path="/provider/twin/playbooks" element={<ProtectedRoute><Playbooks /></ProtectedRoute>} />
-            <Route path="/provider/twin/playbooks/:playbookId" element={<ProtectedRoute><PersonaLibrary /></ProtectedRoute>} />
-            <Route path="/provider/twin/review" element={<ProtectedRoute><ReviewQueue /></ProtectedRoute>} />
-            <Route path="/provider/twin/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
-            <Route path="/provider/twin/memory/:engagementId" element={<ProtectedRoute><MemoryInspector /></ProtectedRoute>} />
-            <Route path="/provider/billing" element={<ProtectedRoute><ProviderBilling /></ProtectedRoute>} />
-            <Route path="/payment" element={<ProtectedRoute><SeekerPayment /></ProtectedRoute>} />
-            <Route path="/memory" element={<ProtectedRoute><SeekerMemory /></ProtectedRoute>} />
+            <Route
+              path="/auth/role"
+              element={
+                <ProtectedRoute>
+                  <RolePicker />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/onboarding"
+              element={
+                <ProtectedRoute>
+                  <ProviderOnboarding />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/setup"
+              element={
+                <ProtectedRoute>
+                  <ProviderSetup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/agent-setup"
+              element={
+                <ProtectedRoute>
+                  <AgentSetup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/inbox"
+              element={
+                <ProtectedRoute>
+                  <Inbox />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/dashboard"
+              element={
+                <ProtectedRoute>
+                  <ProviderDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/schedule"
+              element={
+                <ProtectedRoute>
+                  <Schedule />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/resources"
+              element={
+                <ProtectedRoute>
+                  <Resources />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/journal-prompts"
+              element={
+                <ProtectedRoute>
+                  <JournalPromptLibrary />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/intake-forms"
+              element={
+                <ProtectedRoute>
+                  <IntakeForms />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/analytics"
+              element={
+                <ProtectedRoute>
+                  <Analytics />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/engagement/:engagementId"
+              element={
+                <ProtectedRoute>
+                  <ProviderEngagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/client/:clientId"
+              element={
+                <ProtectedRoute>
+                  <ClientSessionSummary />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute>
+                  <Onboarding />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/journal"
+              element={
+                <ProtectedRoute>
+                  <Journal />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chat/:sessionId"
+              element={
+                <ProtectedRoute>
+                  <Chat />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/session-summary/:sessionId"
+              element={
+                <ProtectedRoute>
+                  <SessionSummary />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/twin/calibration"
+              element={
+                <ProtectedRoute>
+                  <Calibration />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/twin/persona"
+              element={
+                <ProtectedRoute>
+                  <PersonaLibrary />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/twin/playbooks"
+              element={
+                <ProtectedRoute>
+                  <Playbooks />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/twin/playbooks/:playbookId"
+              element={
+                <ProtectedRoute>
+                  <PersonaLibrary />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/twin/review"
+              element={
+                <ProtectedRoute>
+                  <ReviewQueue />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/twin/audit"
+              element={
+                <ProtectedRoute>
+                  <AuditLog />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/twin/memory/:engagementId"
+              element={
+                <ProtectedRoute>
+                  <MemoryInspector />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/provider/billing"
+              element={
+                <ProtectedRoute>
+                  <ProviderBilling />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/payment"
+              element={
+                <ProtectedRoute>
+                  <SeekerPayment />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/memory"
+              element={
+                <ProtectedRoute>
+                  <SeekerMemory />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

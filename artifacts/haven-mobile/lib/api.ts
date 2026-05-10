@@ -4,10 +4,9 @@ import { Platform } from "react-native";
 const SESSION_COOKIE_KEY = "haven.session";
 const isNative = Platform.OS !== "web";
 
-const baseUrl =
-  process.env.EXPO_PUBLIC_DOMAIN
-    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-    : "";
+const baseUrl = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
 
 let cachedCookie: string | null = null;
 let cookieLoaded = false;

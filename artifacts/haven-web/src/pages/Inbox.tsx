@@ -1,7 +1,16 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { Sparkles, AlertTriangle, Bell, Clock, MessageCircle, Check, ChevronRight, Inbox as InboxIcon } from "lucide-react";
+import {
+  Sparkles,
+  AlertTriangle,
+  Bell,
+  Clock,
+  MessageCircle,
+  Check,
+  ChevronRight,
+  Inbox as InboxIcon,
+} from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -39,7 +48,8 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 
 const SEVERITY_PILL: Record<Severity, string> = {
   critical: "bg-destructive/15 text-destructive border-destructive/30",
-  elevated: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  elevated:
+    "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
   quiet: "bg-muted text-muted-foreground border-border",
 };
 
@@ -54,7 +64,12 @@ export default function Inbox() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: rows = [], isLoading, isError, refetch } = useQuery<InboxRow[]>({
+  const {
+    data: rows = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<InboxRow[]>({
     queryKey: ["/api/coach/inbox"],
     refetchInterval: 60_000,
   });
@@ -89,26 +104,48 @@ export default function Inbox() {
   };
 
   return (
-    <AppLayout title="Inbox" subtitle="Today's triage — who needs your attention first">
+    <AppLayout
+      title="Inbox"
+      subtitle="Today's triage — who needs your attention first"
+    >
       <div className="mx-auto w-full max-w-4xl space-y-6">
         <div className="flex flex-wrap items-center gap-3">
-          <Badge variant="outline" className={SEVERITY_PILL.critical} data-testid="count-critical">
-            <AlertTriangle className="mr-1 h-3 w-3" /> {counts.critical} critical
+          <Badge
+            variant="outline"
+            className={SEVERITY_PILL.critical}
+            data-testid="count-critical"
+          >
+            <AlertTriangle className="mr-1 h-3 w-3" /> {counts.critical}{" "}
+            critical
           </Badge>
-          <Badge variant="outline" className={SEVERITY_PILL.elevated} data-testid="count-elevated">
+          <Badge
+            variant="outline"
+            className={SEVERITY_PILL.elevated}
+            data-testid="count-elevated"
+          >
             <Bell className="mr-1 h-3 w-3" /> {counts.elevated} elevated
           </Badge>
-          <Badge variant="outline" className={SEVERITY_PILL.quiet} data-testid="count-quiet">
+          <Badge
+            variant="outline"
+            className={SEVERITY_PILL.quiet}
+            data-testid="count-quiet"
+          >
             <Clock className="mr-1 h-3 w-3" /> {counts.quiet} overdue check-in
           </Badge>
         </div>
 
         {isLoading ? (
-          <Card className="p-10 text-center text-sm text-muted-foreground">Loading your inbox…</Card>
+          <Card className="p-10 text-center text-sm text-muted-foreground">
+            Loading your inbox…
+          </Card>
         ) : isError ? (
           <Card className="p-10 text-center">
-            <p className="mb-3 text-sm text-muted-foreground">We couldn't load your inbox.</p>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>Try again</Button>
+            <p className="mb-3 text-sm text-muted-foreground">
+              We couldn't load your inbox.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Try again
+            </Button>
           </Card>
         ) : rows.length === 0 ? (
           <EmptyState />
@@ -120,7 +157,9 @@ export default function Inbox() {
                 row={row}
                 onOpen={() => openEngagement(row)}
                 onDismiss={() => dismiss.mutate(row.engagementId)}
-                dismissing={dismiss.isPending && dismiss.variables === row.engagementId}
+                dismissing={
+                  dismiss.isPending && dismiss.variables === row.engagementId
+                }
               />
             ))}
           </div>
@@ -147,11 +186,18 @@ function InboxCard({
       data-testid={`inbox-row-${row.engagementId}`}
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <Badge variant="outline" className={SEVERITY_PILL[row.severity]} data-testid={`pill-${row.severity}`}>
+        <Badge
+          variant="outline"
+          className={SEVERITY_PILL[row.severity]}
+          data-testid={`pill-${row.severity}`}
+        >
           {SEVERITY_LABEL[row.severity]}
         </Badge>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground" data-testid="text-alias">
+          <p
+            className="truncate text-sm font-semibold text-foreground"
+            data-testid="text-alias"
+          >
             {row.seekerAlias}
           </p>
           <ul className="mt-1 space-y-0.5">
@@ -193,14 +239,17 @@ function InboxCard({
 
 function EmptyState() {
   return (
-    <Card className="flex flex-col items-center gap-3 p-12 text-center" data-testid="empty-state">
+    <Card
+      className="flex flex-col items-center gap-3 p-12 text-center"
+      data-testid="empty-state"
+    >
       <div className="rounded-full bg-primary/10 p-4 text-primary">
         <Sparkles className="h-8 w-8" />
       </div>
       <h2 className="text-lg font-semibold">Inbox zero — nice work.</h2>
       <p className="max-w-md text-sm text-muted-foreground">
-        Every client has been checked in on, no safety events need review, and there are no unread alerts.
-        Take a breath.
+        Every client has been checked in on, no safety events need review, and
+        there are no unread alerts. Take a breath.
       </p>
       <InboxIcon className="mt-1 h-6 w-6 text-muted-foreground/40" />
     </Card>

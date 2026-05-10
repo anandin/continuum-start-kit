@@ -33,7 +33,14 @@ const KIND_LABELS: Record<string, string> = {
   rapport: "Rapport",
 };
 
-const KIND_ORDER = ["boundary", "trigger", "preference", "goal_progress", "rapport", "fact"];
+const KIND_ORDER = [
+  "boundary",
+  "trigger",
+  "preference",
+  "goal_progress",
+  "rapport",
+  "fact",
+];
 
 export default function MemoryInspector() {
   const { engagementId } = useParams();
@@ -44,18 +51,23 @@ export default function MemoryInspector() {
 
   const memQ = useQuery<Memory[]>({
     queryKey: [`/api/twin/memory/${engagementId}`],
-    queryFn: async () => (await apiRequest("GET", `/api/twin/memory/${engagementId}`)).json(),
+    queryFn: async () =>
+      (await apiRequest("GET", `/api/twin/memory/${engagementId}`)).json(),
     enabled: !!engagementId,
   });
 
   const redactMut = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/twin/memory/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [`/api/twin/memory/${engagementId}`] }),
+    mutationFn: async (id: string) =>
+      apiRequest("DELETE", `/api/twin/memory/${id}`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: [`/api/twin/memory/${engagementId}`] }),
   });
 
   const editMut = useMutation({
     mutationFn: async (args: { id: string; content: string }) =>
-      apiRequest("PATCH", `/api/twin/memory/${args.id}`, { content: args.content }),
+      apiRequest("PATCH", `/api/twin/memory/${args.id}`, {
+        content: args.content,
+      }),
     onSuccess: () => {
       setEditId(null);
       setDraft("");
@@ -66,7 +78,9 @@ export default function MemoryInspector() {
   const safetyEventsQ = useQuery<unknown[]>({
     queryKey: [`/api/clients/${engagementId}/safety-events`],
     queryFn: async () =>
-      (await apiRequest("GET", `/api/clients/${engagementId}/safety-events`)).json(),
+      (
+        await apiRequest("GET", `/api/clients/${engagementId}/safety-events`)
+      ).json(),
     enabled: !!engagementId,
   });
 
@@ -75,22 +89,32 @@ export default function MemoryInspector() {
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-stone-900">Client Memory</h1>
+            <h1 className="text-2xl font-semibold text-stone-900">
+              Client Memory
+            </h1>
             <p className="text-stone-600 text-sm">
-              Everything the twin remembers about this client. Edit or redact anything that shouldn't be there.
+              Everything the twin remembers about this client. Edit or redact
+              anything that shouldn't be there.
             </p>
           </div>
           <div className="flex gap-3 items-center">
             {engagementId && (
               <button
-                onClick={() => navigate(`/provider/twin/audit?engagementId=${engagementId}`)}
+                onClick={() =>
+                  navigate(`/provider/twin/audit?engagementId=${engagementId}`)
+                }
                 className="text-sm text-stone-600 hover:text-stone-900"
                 data-testid="link-client-safety-events"
               >
                 Safety events ({safetyEventsQ.data?.length ?? 0})
               </button>
             )}
-            <button onClick={() => navigate(-1)} className="text-sm text-stone-600 hover:text-stone-900">← Back</button>
+            <button
+              onClick={() => navigate(-1)}
+              className="text-sm text-stone-600 hover:text-stone-900"
+            >
+              ← Back
+            </button>
           </div>
         </div>
 
@@ -110,30 +134,46 @@ export default function MemoryInspector() {
           }
           const orderedKinds = [
             ...KIND_ORDER.filter((k) => grouped.has(k)),
-            ...Array.from(grouped.keys()).filter((k) => !KIND_ORDER.includes(k)),
+            ...Array.from(grouped.keys()).filter(
+              (k) => !KIND_ORDER.includes(k),
+            ),
           ];
           return (
             <div className="space-y-6">
               {orderedKinds.map((kind) => (
                 <section key={kind} data-testid={`section-${kind}`}>
                   <h2 className="text-sm font-medium text-stone-700 mb-2 flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded ${KIND_COLORS[kind] || "bg-stone-100 text-stone-700"}`}>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${KIND_COLORS[kind] || "bg-stone-100 text-stone-700"}`}
+                    >
                       {KIND_LABELS[kind] || kind}
                     </span>
-                    <span className="text-xs text-stone-400">{grouped.get(kind)!.length}</span>
+                    <span className="text-xs text-stone-400">
+                      {grouped.get(kind)!.length}
+                    </span>
                   </h2>
                   <div className="space-y-3">
                     {grouped.get(kind)!.map((m) => {
                       const isEditing = editId === m.id;
                       return (
-                        <div key={m.id} className="bg-white rounded-lg p-4 shadow-sm">
+                        <div
+                          key={m.id}
+                          className="bg-white rounded-lg p-4 shadow-sm"
+                        >
                           <div className="flex justify-between items-start gap-4">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-2">
                                 {m.tags?.map((t) => (
-                                  <span key={t} className="text-xs px-2 py-0.5 rounded bg-stone-100 text-stone-600">{t}</span>
+                                  <span
+                                    key={t}
+                                    className="text-xs px-2 py-0.5 rounded bg-stone-100 text-stone-600"
+                                  >
+                                    {t}
+                                  </span>
                                 ))}
-                                <span className="text-xs text-stone-400">importance {m.importance.toFixed(2)}</span>
+                                <span className="text-xs text-stone-400">
+                                  importance {m.importance.toFixed(2)}
+                                </span>
                               </div>
                               {isEditing ? (
                                 <textarea
@@ -144,16 +184,29 @@ export default function MemoryInspector() {
                                   data-testid={`edit-textarea-${m.id}`}
                                 />
                               ) : (
-                                <p className="text-stone-900 whitespace-pre-wrap">{m.content}</p>
+                                <p className="text-stone-900 whitespace-pre-wrap">
+                                  {m.content}
+                                </p>
                               )}
-                              <p className="text-xs text-stone-400 mt-1">{new Date(m.createdAt).toLocaleString()}</p>
+                              <p className="text-xs text-stone-400 mt-1">
+                                {new Date(m.createdAt).toLocaleString()}
+                              </p>
                             </div>
                             <div className="flex flex-col gap-2 shrink-0 items-end">
                               {isEditing ? (
                                 <>
                                   <button
-                                    onClick={() => editMut.mutate({ id: m.id, content: draft })}
-                                    disabled={editMut.isPending || !draft.trim() || draft === m.content}
+                                    onClick={() =>
+                                      editMut.mutate({
+                                        id: m.id,
+                                        content: draft,
+                                      })
+                                    }
+                                    disabled={
+                                      editMut.isPending ||
+                                      !draft.trim() ||
+                                      draft === m.content
+                                    }
                                     className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                                     data-testid={`save-${m.id}`}
                                   >

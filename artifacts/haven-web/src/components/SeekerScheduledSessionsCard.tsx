@@ -111,7 +111,10 @@ export function SeekerScheduledSessionsCard() {
   });
 
   const rows = sessionsQ.data?.scheduledSessions ?? [];
-  const proposed = useMemo(() => rows.filter((r) => r.status === "proposed"), [rows]);
+  const proposed = useMemo(
+    () => rows.filter((r) => r.status === "proposed"),
+    [rows],
+  );
   const upcomingConfirmed = useMemo(
     () =>
       rows
@@ -189,7 +192,10 @@ export function SeekerScheduledSessionsCard() {
                       variant="destructive"
                       disabled={!cancelReason.trim() || cancelMut.isPending}
                       onClick={() =>
-                        cancelMut.mutate({ id: row.id, reason: cancelReason.trim() })
+                        cancelMut.mutate({
+                          id: row.id,
+                          reason: cancelReason.trim(),
+                        })
                       }
                       data-testid={`seeker-cancel-confirm-${row.id}`}
                     >
@@ -275,7 +281,10 @@ export function SeekerScheduledSessionsCard() {
                     variant="destructive"
                     disabled={!cancelReason.trim() || cancelMut.isPending}
                     onClick={() =>
-                      cancelMut.mutate({ id: row.id, reason: cancelReason.trim() })
+                      cancelMut.mutate({
+                        id: row.id,
+                        reason: cancelReason.trim(),
+                      })
                     }
                   >
                     Decline all

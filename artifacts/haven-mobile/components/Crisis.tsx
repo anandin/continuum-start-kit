@@ -124,7 +124,8 @@ export function CrisisProvider({ children }: { children: React.ReactNode }) {
 function CrisisFAB({ onPress }: { onPress: () => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const bottom = Math.max(insets.bottom, 12) + (Platform.OS === "ios" ? 78 : 70);
+  const bottom =
+    Math.max(insets.bottom, 12) + (Platform.OS === "ios" ? 78 : 70);
 
   return (
     <Pressable
@@ -197,9 +198,9 @@ function CrisisSheet({
     Linking.openURL(`tel:${num}`).catch(() => {});
   };
   const sms = (num: string) => {
-    Linking.openURL(Platform.OS === "ios" ? `sms:&addresses=${num}` : `sms:${num}`).catch(
-      () => {},
-    );
+    Linking.openURL(
+      Platform.OS === "ios" ? `sms:&addresses=${num}` : `sms:${num}`,
+    ).catch(() => {});
   };
 
   const messageCoach = async () => {
@@ -232,15 +233,10 @@ function CrisisSheet({
           },
         ]}
       >
-        <View
-          style={[styles.handle, { backgroundColor: colors.muted }]}
-        />
+        <View style={[styles.handle, { backgroundColor: colors.muted }]} />
         <View style={styles.headerRow}>
           <View
-            style={[
-              styles.crisisBadge,
-              { backgroundColor: colors.crisisSoft },
-            ]}
+            style={[styles.crisisBadge, { backgroundColor: colors.crisisSoft }]}
           >
             <Feather name="life-buoy" size={20} color={colors.crisis} />
           </View>
@@ -281,7 +277,9 @@ function CrisisSheet({
               ]}
             >
               <View style={styles.lineHeader}>
-                <Text style={[styles.lineRegion, { color: colors.mutedForeground }]}>
+                <Text
+                  style={[styles.lineRegion, { color: colors.mutedForeground }]}
+                >
                   {line.region}
                 </Text>
                 <Text style={[styles.lineName, { color: colors.foreground }]}>
@@ -325,7 +323,11 @@ function CrisisSheet({
                       },
                     ]}
                   >
-                    <Feather name="message-circle" size={16} color={colors.primary} />
+                    <Feather
+                      name="message-circle"
+                      size={16}
+                      color={colors.primary}
+                    />
                     <Text
                       style={[styles.lineBtnText, { color: colors.primary }]}
                     >
@@ -354,8 +356,8 @@ function CrisisSheet({
               <Text
                 style={[styles.lineDesc, { color: colors.mutedForeground }]}
               >
-                Open your mail app with a pre-written note to your coach.
-                For an emergency, please use a hotline above first.
+                Open your mail app with a pre-written note to your coach. For an
+                emergency, please use a hotline above first.
               </Text>
               {status.kind === "sent" ? (
                 <Text style={[styles.statusText, { color: colors.success }]}>
@@ -382,7 +384,12 @@ function CrisisSheet({
               ]}
             >
               <Feather name="send" size={16} color={colors.accentForeground} />
-              <Text style={[styles.coachBtnText, { color: colors.accentForeground }]}>
+              <Text
+                style={[
+                  styles.coachBtnText,
+                  { color: colors.accentForeground },
+                ]}
+              >
                 {status.kind === "sending" ? "Sending…" : "Notify"}
               </Text>
             </Pressable>

@@ -1,49 +1,61 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { apiRequest } from '@/lib/queryClient';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner';
-import { Loader2, Save, User, Sparkles, ArrowLeft, Bot } from 'lucide-react';
-import { AppLayout } from '@/components/AppLayout';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import { Loader2, Save, User, Sparkles, ArrowLeft, Bot } from "lucide-react";
+import { AppLayout } from "@/components/AppLayout";
 
 export default function AgentSetup() {
   const { user, role } = useAuth();
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasExistingConfig, setHasExistingConfig] = useState(false);
   const [providerConfig, setProviderConfig] = useState<any>(null);
-  
-  const [providerName, setProviderName] = useState('');
-  const [providerTitle, setProviderTitle] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
-  const [coreIdentity, setCoreIdentity] = useState('');
-  const [guidingPrinciples, setGuidingPrinciples] = useState('');
-  const [tone, setTone] = useState('');
-  const [voice, setVoice] = useState('');
-  const [rules, setRules] = useState('');
-  const [boundaries, setBoundaries] = useState('');
-  const [selectedModel, setSelectedModel] = useState('google/gemini-2.5-flash');
+
+  const [providerName, setProviderName] = useState("");
+  const [providerTitle, setProviderTitle] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [coreIdentity, setCoreIdentity] = useState("");
+  const [guidingPrinciples, setGuidingPrinciples] = useState("");
+  const [tone, setTone] = useState("");
+  const [voice, setVoice] = useState("");
+  const [rules, setRules] = useState("");
+  const [boundaries, setBoundaries] = useState("");
+  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-flash");
 
   useEffect(() => {
     if (!user) {
-      navigate('/auth');
-    } else if (role && role !== 'provider') {
-      toast.error('Only providers can access this page');
-      navigate('/dashboard');
+      navigate("/auth");
+    } else if (role && role !== "provider") {
+      toast.error("Only providers can access this page");
+      navigate("/dashboard");
     }
   }, [user, role, navigate]);
 
   useEffect(() => {
-    if (user && role === 'provider') {
+    if (user && role === "provider") {
       loadBothConfigs();
     }
   }, [user, role]);
@@ -52,8 +64,8 @@ export default function AgentSetup() {
     setLoading(true);
     try {
       const [providerRes, agentRes] = await Promise.all([
-        fetch('/api/provider-config', { credentials: 'include' }),
-        fetch('/api/provider-agent-config', { credentials: 'include' }),
+        fetch("/api/provider-config", { credentials: "include" }),
+        fetch("/api/provider-agent-config", { credentials: "include" }),
       ]);
 
       let providerConfigData = null;
@@ -64,37 +76,56 @@ export default function AgentSetup() {
         }
       }
 
-      if (!agentRes.ok) throw new Error('Failed to load agent config');
+      if (!agentRes.ok) throw new Error("Failed to load agent config");
       const agentConfigData = await agentRes.json();
 
       if (agentConfigData) {
         setHasExistingConfig(true);
-        setProviderName(agentConfigData.providerName || agentConfigData.provider_name || '');
-        setProviderTitle(agentConfigData.providerTitle || agentConfigData.provider_title || '');
-        setAvatarUrl(agentConfigData.avatarUrl || agentConfigData.avatar_url || '');
-        setCoreIdentity(agentConfigData.coreIdentity || agentConfigData.core_identity || '');
-        setGuidingPrinciples(agentConfigData.guidingPrinciples || agentConfigData.guiding_principles || '');
-        setTone(agentConfigData.tone || '');
-        setVoice(agentConfigData.voice || '');
-        setRules(agentConfigData.rules || '');
-        setBoundaries(agentConfigData.boundaries || '');
-        setSelectedModel(agentConfigData.selectedModel || agentConfigData.selected_model || 'google/gemini-2.5-flash');
+        setProviderName(
+          agentConfigData.providerName || agentConfigData.provider_name || "",
+        );
+        setProviderTitle(
+          agentConfigData.providerTitle || agentConfigData.provider_title || "",
+        );
+        setAvatarUrl(
+          agentConfigData.avatarUrl || agentConfigData.avatar_url || "",
+        );
+        setCoreIdentity(
+          agentConfigData.coreIdentity || agentConfigData.core_identity || "",
+        );
+        setGuidingPrinciples(
+          agentConfigData.guidingPrinciples ||
+            agentConfigData.guiding_principles ||
+            "",
+        );
+        setTone(agentConfigData.tone || "");
+        setVoice(agentConfigData.voice || "");
+        setRules(agentConfigData.rules || "");
+        setBoundaries(agentConfigData.boundaries || "");
+        setSelectedModel(
+          agentConfigData.selectedModel ||
+            agentConfigData.selected_model ||
+            "google/gemini-2.5-flash",
+        );
       } else if (providerConfigData) {
-        const autoPopulated = generateGuidingPrinciplesFromConfig(providerConfigData);
+        const autoPopulated =
+          generateGuidingPrinciplesFromConfig(providerConfigData);
         setGuidingPrinciples(autoPopulated);
-        setProviderTitle(providerConfigData.title || '');
-        setCoreIdentity(`You are an AI coaching assistant for ${providerConfigData.title}.`);
+        setProviderTitle(providerConfigData.title || "");
+        setCoreIdentity(
+          `You are an AI coaching assistant for ${providerConfigData.title}.`,
+        );
       }
     } catch (error: any) {
-      console.error('Error loading configs:', error);
-      toast.error('Failed to load configuration');
+      console.error("Error loading configs:", error);
+      toast.error("Failed to load configuration");
     } finally {
       setLoading(false);
     }
   };
 
   const generateGuidingPrinciplesFromConfig = (config: any) => {
-    let text = '';
+    let text = "";
     if (config.methodology) {
       text += `Methodology: ${config.methodology}\n\n`;
     }
@@ -103,17 +134,17 @@ export default function AgentSetup() {
       config.stages.forEach((stage: any, index: number) => {
         text += `${index + 1}. ${stage.name}: ${stage.description}\n`;
       });
-      text += '\n';
+      text += "\n";
     }
     if (config.labels && Array.isArray(config.labels)) {
-      text += `Focus Areas: ${config.labels.join(', ')}\n`;
+      text += `Focus Areas: ${config.labels.join(", ")}\n`;
     }
     return text;
   };
 
   const handleSave = async () => {
     if (!guidingPrinciples.trim()) {
-      toast.error('Please add guiding principles for your AI agent');
+      toast.error("Please add guiding principles for your AI agent");
       return;
     }
 
@@ -132,15 +163,15 @@ export default function AgentSetup() {
         selectedModel,
       };
 
-      await apiRequest('POST', '/api/provider-agent-config', configData);
-      toast.success('Agent configuration saved successfully!');
-      
+      await apiRequest("POST", "/api/provider-agent-config", configData);
+      toast.success("Agent configuration saved successfully!");
+
       setTimeout(() => {
-        navigate('/dashboard');
+        navigate("/dashboard");
       }, 1500);
     } catch (error: any) {
-      console.error('Error saving agent config:', error);
-      toast.error(error.message || 'Failed to save agent configuration');
+      console.error("Error saving agent config:", error);
+      toast.error(error.message || "Failed to save agent configuration");
     } finally {
       setSaving(false);
     }
@@ -157,7 +188,10 @@ export default function AgentSetup() {
   }
 
   return (
-    <AppLayout title="Agent personality" subtitle="Shape how Haven sounds and shows up for clients">
+    <AppLayout
+      title="Agent personality"
+      subtitle="Shape how Haven sounds and shows up for clients"
+    >
       <div className="space-y-6 animate-fade-in max-w-4xl">
         <Card className="shadow-warm bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
           <CardContent className="flex items-center justify-between gap-4 flex-wrap p-5">
@@ -166,17 +200,33 @@ export default function AgentSetup() {
                 <Sparkles className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="font-medium text-foreground">Want a fresh start?</p>
-                <p className="text-sm text-muted-foreground">Re-run the setup conversation to redefine your agent.</p>
+                <p className="font-medium text-foreground">
+                  Want a fresh start?
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Re-run the setup conversation to redefine your agent.
+                </p>
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Button onClick={() => navigate('/provider/onboarding')} data-testid="button-rerun-setup">
+              <Button
+                onClick={() => navigate("/provider/onboarding")}
+                data-testid="button-rerun-setup"
+              >
                 <Sparkles className="mr-2 h-4 w-4" /> Re-run setup chat
               </Button>
-              <Button variant="outline" onClick={handleSave} disabled={saving} data-testid="button-save-agent">
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                {saving ? 'Saving...' : 'Save'}
+              <Button
+                variant="outline"
+                onClick={handleSave}
+                disabled={saving}
+                data-testid="button-save-agent"
+              >
+                {saving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                {saving ? "Saving..." : "Save"}
               </Button>
             </div>
           </CardContent>
@@ -185,7 +235,9 @@ export default function AgentSetup() {
           <Card>
             <CardHeader>
               <CardTitle>Provider Profile</CardTitle>
-              <CardDescription>How your AI assistant will present itself to clients</CardDescription>
+              <CardDescription>
+                How your AI assistant will present itself to clients
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-4 flex-wrap">
@@ -258,16 +310,15 @@ export default function AgentSetup() {
                     <SelectItem value="google/gemini-2.5-flash-lite">
                       Gemini 2.5 Flash Lite
                     </SelectItem>
-                    <SelectItem value="openai/gpt-5">
-                      GPT-5
-                    </SelectItem>
+                    <SelectItem value="openai/gpt-5">GPT-5</SelectItem>
                     <SelectItem value="openai/gpt-5-mini">
                       GPT-5 Mini
                     </SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-2">
-                  This model will be used for all coaching sessions with your clients.
+                  This model will be used for all coaching sessions with your
+                  clients.
                 </p>
               </div>
             </CardContent>
@@ -276,18 +327,23 @@ export default function AgentSetup() {
           <Card>
             <CardHeader>
               <CardTitle>Agent System Prompt Configuration</CardTitle>
-              <CardDescription>Shape your AI assistant's personality and behavior</CardDescription>
+              <CardDescription>
+                Shape your AI assistant's personality and behavior
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
-                <Label htmlFor="core-identity" className="text-base font-semibold">
+                <Label
+                  htmlFor="core-identity"
+                  className="text-base font-semibold"
+                >
                   Core Identity
                 </Label>
                 <Textarea
                   id="core-identity"
                   value={coreIdentity}
                   onChange={(e) => setCoreIdentity(e.target.value)}
-                  placeholder={`You are ${providerName || 'a coaching'} AI assistant specializing in ${providerTitle || providerConfig?.title || 'professional development'}. Your role is to guide clients through their growth journey.`}
+                  placeholder={`You are ${providerName || "a coaching"} AI assistant specializing in ${providerTitle || providerConfig?.title || "professional development"}. Your role is to guide clients through their growth journey.`}
                   rows={4}
                   className="mt-2"
                   data-testid="input-core-identity"
@@ -295,14 +351,20 @@ export default function AgentSetup() {
               </div>
 
               <div>
-                <Label htmlFor="guiding-principles" className="text-base font-semibold">
+                <Label
+                  htmlFor="guiding-principles"
+                  className="text-base font-semibold"
+                >
                   Guiding Principles
                 </Label>
                 <Textarea
                   id="guiding-principles"
                   value={guidingPrinciples}
                   onChange={(e) => setGuidingPrinciples(e.target.value)}
-                  placeholder={providerConfig?.methodology || "Define your coaching methodology and approach..."}
+                  placeholder={
+                    providerConfig?.methodology ||
+                    "Define your coaching methodology and approach..."
+                  }
                   rows={6}
                   className="mt-2"
                   data-testid="input-guiding-principles"
@@ -310,10 +372,14 @@ export default function AgentSetup() {
               </div>
 
               <div className="space-y-4">
-                <Label className="text-base font-semibold">Communication Style</Label>
-                
+                <Label className="text-base font-semibold">
+                  Communication Style
+                </Label>
+
                 <div>
-                  <Label htmlFor="tone" className="text-sm">Tone</Label>
+                  <Label htmlFor="tone" className="text-sm">
+                    Tone
+                  </Label>
                   <Input
                     id="tone"
                     value={tone}
@@ -325,7 +391,9 @@ export default function AgentSetup() {
                 </div>
 
                 <div>
-                  <Label htmlFor="voice" className="text-sm">Voice</Label>
+                  <Label htmlFor="voice" className="text-sm">
+                    Voice
+                  </Label>
                   <Input
                     id="voice"
                     value={voice}
@@ -337,7 +405,9 @@ export default function AgentSetup() {
                 </div>
 
                 <div>
-                  <Label htmlFor="rules" className="text-sm">Rules</Label>
+                  <Label htmlFor="rules" className="text-sm">
+                    Rules
+                  </Label>
                   <Textarea
                     id="rules"
                     value={rules}

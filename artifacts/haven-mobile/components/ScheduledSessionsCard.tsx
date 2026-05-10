@@ -187,7 +187,12 @@ export function ScheduledSessionsCard() {
 
   if (sessionsQ.isLoading) {
     return (
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -221,9 +226,7 @@ export function ScheduledSessionsCard() {
           <Text style={[styles.modalTitle, { color: colors.foreground }]}>
             {cancelTarget?.label ?? "Cancel session"}
           </Text>
-          <Text
-            style={[styles.modalHint, { color: colors.mutedForeground }]}
-          >
+          <Text style={[styles.modalHint, { color: colors.mutedForeground }]}>
             Tell your coach why — they&apos;ll see this.
           </Text>
           <TextInput
@@ -335,16 +338,12 @@ export function ScheduledSessionsCard() {
           {fmtSlot(confirmed.confirmedAt!, tz)}
         </Text>
         {imminent ? (
-          <Text
-            style={[styles.countdown, { color: colors.primaryForeground }]}
-          >
+          <Text style={[styles.countdown, { color: colors.primaryForeground }]}>
             Starts in {Math.max(1, minutes)} min ·{" "}
             {fmtTimeOnly(confirmed.confirmedAt!, tz)}
           </Text>
         ) : (
-          <Text
-            style={[styles.metaLine, { color: colors.mutedForeground }]}
-          >
+          <Text style={[styles.metaLine, { color: colors.mutedForeground }]}>
             {confirmed.durationMinutes} min
           </Text>
         )}
@@ -355,9 +354,7 @@ export function ScheduledSessionsCard() {
           style={({ pressed }) => [
             styles.cancelBtn,
             {
-              borderColor: imminent
-                ? colors.primaryForeground
-                : colors.border,
+              borderColor: imminent ? colors.primaryForeground : colors.border,
               opacity: pressed || cancelMut.isPending ? 0.7 : 1,
             },
           ]}
@@ -439,9 +436,7 @@ export function ScheduledSessionsCard() {
         </Text>
         <Pressable
           testID={`decline-proposed-${proposed.id}`}
-          onPress={() =>
-            openCancel(proposed.id, "None of these times work?")
-          }
+          onPress={() => openCancel(proposed.id, "None of these times work?")}
           disabled={cancelMut.isPending}
           style={({ pressed }) => [
             styles.cancelBtn,
@@ -451,9 +446,7 @@ export function ScheduledSessionsCard() {
             },
           ]}
         >
-          <Text
-            style={[styles.cancelText, { color: colors.mutedForeground }]}
-          >
+          <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>
             None of these work — decline
           </Text>
         </Pressable>

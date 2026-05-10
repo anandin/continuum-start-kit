@@ -37,10 +37,12 @@ export default function InviteScreen() {
 
   const acceptMutation = useMutation({
     mutationFn: async () => {
-      if (!providerId) throw new Error("This invitation link is missing a coach.");
+      if (!providerId)
+        throw new Error("This invitation link is missing a coach.");
       const existing = await api<Engagement[]>("/api/engagements");
       const already = existing.find(
-        (e) => e.providerId === providerId && (e.status ?? "active") === "active",
+        (e) =>
+          e.providerId === providerId && (e.status ?? "active") === "active",
       );
       if (already) return { engagement: already, alreadyMember: true };
       const engagement = await api<Engagement>("/api/engagements", {
@@ -69,9 +71,7 @@ export default function InviteScreen() {
 
   if (loading) {
     return (
-      <View
-        style={[styles.center, { backgroundColor: colors.background }]}
-      >
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -87,11 +87,16 @@ export default function InviteScreen() {
   if (!providerId) {
     return (
       <View
-        style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}
+        style={[
+          styles.center,
+          { backgroundColor: colors.background, padding: 24 },
+        ]}
       >
         <Stack.Screen options={{ title: "Invitation" }} />
         <HavenLogo size={56} />
-        <Text style={[styles.title, { color: colors.foreground, marginTop: 16 }]}>
+        <Text
+          style={[styles.title, { color: colors.foreground, marginTop: 16 }]}
+        >
           Invitation link is incomplete
         </Text>
         <Text
@@ -132,17 +137,19 @@ export default function InviteScreen() {
   if (acceptMutation.isSuccess) {
     return (
       <View
-        style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}
+        style={[
+          styles.center,
+          { backgroundColor: colors.background, padding: 24 },
+        ]}
       >
         <View
-          style={[
-            styles.iconWrap,
-            { backgroundColor: colors.gradientHeroMid },
-          ]}
+          style={[styles.iconWrap, { backgroundColor: colors.gradientHeroMid }]}
         >
           <Feather name="check" size={28} color={colors.primary} />
         </View>
-        <Text style={[styles.title, { color: colors.foreground, marginTop: 16 }]}>
+        <Text
+          style={[styles.title, { color: colors.foreground, marginTop: 16 }]}
+        >
           You're connected
         </Text>
         <Text
@@ -150,17 +157,17 @@ export default function InviteScreen() {
         >
           Taking you to your chat with {coachName}…
         </Text>
-        <ActivityIndicator
-          color={colors.primary}
-          style={{ marginTop: 20 }}
-        />
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
       </View>
     );
   }
 
   return (
     <View
-      style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}
+      style={[
+        styles.center,
+        { backgroundColor: colors.background, padding: 24 },
+      ]}
     >
       <Stack.Screen options={{ title: "Coach Invitation" }} />
       <HavenLogo size={64} />

@@ -187,7 +187,12 @@ export default function GoalsScreen() {
         >
           <Feather name="target" size={22} color={colors.primary} />
         </View>
-        <Text style={[styles.emptyTitle, { color: colors.foreground, marginTop: 12 }]}>
+        <Text
+          style={[
+            styles.emptyTitle,
+            { color: colors.foreground, marginTop: 12 },
+          ]}
+        >
           No goals yet
         </Text>
         <Text
@@ -249,9 +254,7 @@ export default function GoalsScreen() {
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               No goals yet
             </Text>
-            <Text
-              style={[styles.emptyBody, { color: colors.mutedForeground }]}
-            >
+            <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
               Your coach will add growth goals as your work together unfolds.
             </Text>
           </View>
@@ -286,7 +289,11 @@ export default function GoalsScreen() {
                 ]}
               >
                 {checked ? (
-                  <Feather name="check" size={14} color={colors.primaryForeground} />
+                  <Feather
+                    name="check"
+                    size={14}
+                    color={colors.primaryForeground}
+                  />
                 ) : null}
               </View>
               <View style={{ flex: 1 }}>
@@ -303,10 +310,7 @@ export default function GoalsScreen() {
                 </Text>
                 {item.description ? (
                   <Text
-                    style={[
-                      styles.goalDesc,
-                      { color: colors.mutedForeground },
-                    ]}
+                    style={[styles.goalDesc, { color: colors.mutedForeground }]}
                   >
                     {item.description}
                   </Text>
@@ -319,7 +323,10 @@ export default function GoalsScreen() {
                   </Text>
                 ) : !completed && seekerDone[item.id] ? (
                   <Text
-                    style={[styles.pendingTag, { color: colors.mutedForeground }]}
+                    style={[
+                      styles.pendingTag,
+                      { color: colors.mutedForeground },
+                    ]}
                   >
                     Sent to your coach — waiting for confirmation
                   </Text>

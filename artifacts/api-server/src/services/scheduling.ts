@@ -18,7 +18,10 @@ function isValidIanaZone(tz: string): boolean {
   }
 }
 
-export function normalizeTimezone(tz: string | null | undefined, fallback = "UTC"): string {
+export function normalizeTimezone(
+  tz: string | null | undefined,
+  fallback = "UTC",
+): string {
   if (!tz || typeof tz !== "string") return fallback;
   return isValidIanaZone(tz) ? tz : fallback;
 }
@@ -65,7 +68,10 @@ async function loadRecipients(row: ScheduledSession): Promise<Recipients> {
   // Per-recipient zone: prefer the user's stored IANA tz, fall back to
   // the row's snapshot (set at proposal time) and finally UTC. This
   // ensures each side sees the start time in *their own* local zone.
-  const providerTz = normalizeTimezone(provider?.timezone, row.timezone || "UTC");
+  const providerTz = normalizeTimezone(
+    provider?.timezone,
+    row.timezone || "UTC",
+  );
   const seekerTz = normalizeTimezone(seeker?.timezone, row.timezone || "UTC");
   return {
     providerEmail: provider?.email ?? null,
@@ -94,13 +100,28 @@ function buildEvent(
     durationMinutes: row.durationMinutes,
     summary: row.title,
     description,
-    organizer: { email: recipients.organizerEmail, name: recipients.providerName },
+    organizer: {
+      email: recipients.organizerEmail,
+      name: recipients.providerName,
+    },
     attendees: [
       ...(recipients.seekerEmail
-        ? [{ email: recipients.seekerEmail, name: recipients.seekerName, rsvp: true }]
+        ? [
+            {
+              email: recipients.seekerEmail,
+              name: recipients.seekerName,
+              rsvp: true,
+            },
+          ]
         : []),
       ...(recipients.providerEmail
-        ? [{ email: recipients.providerEmail, name: recipients.providerName, rsvp: false }]
+        ? [
+            {
+              email: recipients.providerEmail,
+              name: recipients.providerName,
+              rsvp: false,
+            },
+          ]
         : []),
     ],
     timezone: row.timezone,
@@ -178,7 +199,8 @@ async function dispatchInvite(
   // (withdraw the prior confirmed event). A reschedule is followed
   // later by a fresh confirmSlot once the seeker picks a new time,
   // which sends a new REQUEST.
-  const method: "REQUEST" | "CANCEL" = kind === "confirm" ? "REQUEST" : "CANCEL";
+  const method: "REQUEST" | "CANCEL" =
+    kind === "confirm" ? "REQUEST" : "CANCEL";
 
   if (recipients.seekerEmail) {
     await sendInviteToOne(
@@ -217,7 +239,9 @@ export type ProposeSlotsInput = {
   createdBy: string;
 };
 
-export async function proposeSlots(input: ProposeSlotsInput): Promise<ScheduledSession> {
+export async function proposeSlots(
+  input: ProposeSlotsInput,
+): Promise<ScheduledSession> {
   return scheduledSessionStorage.create({
     engagementId: input.engagementId,
     providerId: input.providerId,
@@ -313,7 +337,10 @@ async function fireReminderForRow(row: ScheduledSession): Promise<boolean> {
     pushSent = res?.sent ?? 0;
     pushAttempted = res?.attempted ?? 0;
   } catch (err) {
-    logger.warn({ err, scheduledSessionId: row.id }, "scheduling: reminder push threw; will retry");
+    logger.warn(
+      { err, scheduledSessionId: row.id },
+      "scheduling: reminder push threw; will retry",
+    );
     return false;
   }
   if (pushSent > 0) {
@@ -362,7 +389,9 @@ export async function runReminderTick(): Promise<number> {
 // Per-seeker lazy trigger kept for fast path when the seeker is
 // already polling (mobile home screen, web banner) — gives within-
 // seconds accuracy even between cron ticks.
-export async function maybeFireReminderForSeeker(seekerUserId: string): Promise<number> {
+export async function maybeFireReminderForSeeker(
+  seekerUserId: string,
+): Promise<number> {
   let fired = 0;
   try {
     const due = await scheduledSessionStorage.findDueForReminder(seekerUserId);

@@ -9,13 +9,21 @@
  */
 
 import { storage } from "../storage";
-import { topPersonaExamples, listPersonaExamplesByProvider, bumpAgentVersion } from "./twinStorage";
+import {
+  topPersonaExamples,
+  listPersonaExamplesByProvider,
+  bumpAgentVersion,
+} from "./twinStorage";
 import { getDefaultPlaybookForProvider } from "./playbookStorage";
 import { db } from "../db";
 import { engagements } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { embed } from "../lib/llm";
-import type { PersonaExample, ProviderConfig, ProviderAgentConfig } from "@workspace/db";
+import type {
+  PersonaExample,
+  ProviderConfig,
+  ProviderAgentConfig,
+} from "@workspace/db";
 
 export interface CompiledPersona {
   systemPrompt: string;
@@ -30,23 +38,31 @@ function renderAgentConfig(agent: ProviderAgentConfig | undefined): string {
   if (!agent) return "";
   const parts: string[] = [];
   if (agent.providerName || agent.providerTitle) {
-    parts.push(`## Therapist Identity\nYou are modeled on ${agent.providerName ?? "the therapist"}${
-      agent.providerTitle ? `, ${agent.providerTitle}` : ""
-    }. Speak as that practice's companion, not as that person.`);
+    parts.push(
+      `## Therapist Identity\nYou are modeled on ${agent.providerName ?? "the therapist"}${
+        agent.providerTitle ? `, ${agent.providerTitle}` : ""
+      }. Speak as that practice's companion, not as that person.`,
+    );
   }
   if (agent.coreIdentity) parts.push(`## Core Identity\n${agent.coreIdentity}`);
-  if (agent.guidingPrinciples) parts.push(`## Guiding Principles\n${agent.guidingPrinciples}`);
+  if (agent.guidingPrinciples)
+    parts.push(`## Guiding Principles\n${agent.guidingPrinciples}`);
   if (agent.tone || agent.voice) {
     const tone = agent.tone ? `Tone: ${agent.tone}` : "";
     const voice = agent.voice ? `Voice: ${agent.voice}` : "";
-    parts.push(`## Communication Style\n${[tone, voice].filter(Boolean).join("\n")}`);
+    parts.push(
+      `## Communication Style\n${[tone, voice].filter(Boolean).join("\n")}`,
+    );
   }
   if (agent.rules) parts.push(`## Rules\n${agent.rules}`);
   if (agent.boundaries) parts.push(`## Boundaries\n${agent.boundaries}`);
   return parts.join("\n\n");
 }
 
-function renderProviderProgram(provider: ProviderConfig | undefined, currentStage?: string | null): string {
+function renderProviderProgram(
+  provider: ProviderConfig | undefined,
+  currentStage?: string | null,
+): string {
   if (!provider) return "";
   const parts: string[] = ["## Program Context"];
   if (provider.title) parts.push(`Program: ${provider.title}`);
@@ -57,12 +73,16 @@ function renderProviderProgram(provider: ProviderConfig | undefined, currentStag
 
 function renderExamples(examples: PersonaExample[]): string {
   if (examples.length === 0) return "";
-  const lines = ["## Therapist-Approved Examples", "Use these as STRONG guidance for tone, structure, and what to say:"];
+  const lines = [
+    "## Therapist-Approved Examples",
+    "Use these as STRONG guidance for tone, structure, and what to say:",
+  ];
   examples.forEach((ex, i) => {
     lines.push(`\nExample ${i + 1}:`);
     lines.push(`Client said: ${ex.scenario}`);
     lines.push(`Therapist (good response): ${ex.approvedResponse}`);
-    if (ex.rejectedResponse) lines.push(`AVOID this kind of response: ${ex.rejectedResponse}`);
+    if (ex.rejectedResponse)
+      lines.push(`AVOID this kind of response: ${ex.rejectedResponse}`);
     if (ex.notes) lines.push(`Note: ${ex.notes}`);
   });
   return lines.join("\n");
@@ -98,7 +118,13 @@ export async function compilePersonaForTurn(opts: {
   }
 
   const queryEmbedding = await embed(opts.query);
-  const examples = await topPersonaExamples(opts.providerId, opts.query, queryEmbedding, 4, activePlaybookId);
+  const examples = await topPersonaExamples(
+    opts.providerId,
+    opts.query,
+    queryEmbedding,
+    4,
+    activePlaybookId,
+  );
 
   const sections = [
     renderAgentConfig(agentConfig),
@@ -106,8 +132,10 @@ export async function compilePersonaForTurn(opts: {
     renderExamples(examples),
   ].filter(Boolean);
 
-  const baseFallback = "You are a warm, attentive AI companion supporting a human therapist's practice.";
-  const systemPrompt = sections.length > 0 ? sections.join("\n\n") : baseFallback;
+  const baseFallback =
+    "You are a warm, attentive AI companion supporting a human therapist's practice.";
+  const systemPrompt =
+    sections.length > 0 ? sections.join("\n\n") : baseFallback;
   const selectedModel = agentConfig?.selectedModel || "google/gemini-2.5-flash";
 
   return {
@@ -152,7 +180,8 @@ export async function snapshotAgentVersion(opts: {
       reason: opts.reason,
       createdBy: opts.createdBy ?? null,
       agentConfig: (agentConfig as unknown as Record<string, unknown>) ?? null,
-      providerConfig: (providerConfig as unknown as Record<string, unknown>) ?? null,
+      providerConfig:
+        (providerConfig as unknown as Record<string, unknown>) ?? null,
       compiledSystemPrompt,
       exampleIds: examples.map((e) => e.id),
     });

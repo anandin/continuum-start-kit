@@ -1,18 +1,24 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
-import { ArrowLeft, Heart, Shield, Sparkles } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { ArrowLeft, Heart, Shield, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export default function Auth() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const { user, role, loading, signIn, signUp } = useAuth();
   const navigate = useNavigate();
@@ -20,9 +26,9 @@ export default function Auth() {
   useEffect(() => {
     if (!loading && user) {
       if (role) {
-        navigate('/dashboard');
+        navigate("/dashboard");
       } else {
-        navigate('/auth/role');
+        navigate("/auth/role");
       }
     }
   }, [user, role, loading, navigate]);
@@ -34,12 +40,12 @@ export default function Auth() {
     try {
       const { error } = await signUp(email, password);
       if (error) throw new Error(error);
-      
-      toast.success('Welcome to Haven! Your journey begins now.');
-      setEmail('');
-      setPassword('');
+
+      toast.success("Welcome to Haven! Your journey begins now.");
+      setEmail("");
+      setPassword("");
     } catch (error: any) {
-      toast.error(error.message || 'Failed to sign up');
+      toast.error(error.message || "Failed to sign up");
     } finally {
       setAuthLoading(false);
     }
@@ -52,10 +58,10 @@ export default function Auth() {
     try {
       const { error } = await signIn(email, password);
       if (error) throw new Error(error);
-      
-      toast.success('Welcome back! Great to see you again.');
+
+      toast.success("Welcome back! Great to see you again.");
     } catch (error: any) {
-      toast.error(error.message || 'Failed to sign in');
+      toast.error(error.message || "Failed to sign in");
     } finally {
       setAuthLoading(false);
     }
@@ -80,24 +86,40 @@ export default function Auth() {
               <Sparkles className="h-4 w-4 text-accent" />
             </div>
             <CardTitle className="text-3xl font-bold">
-              <span className="text-gradient-primary" data-testid="text-auth-title">
+              <span
+                className="text-gradient-primary"
+                data-testid="text-auth-title"
+              >
                 Haven
               </span>
             </CardTitle>
-            <CardDescription className="text-muted-foreground" data-testid="text-auth-description">
+            <CardDescription
+              className="text-muted-foreground"
+              data-testid="text-auth-description"
+            >
               A safe space for your growth journey
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="signin" className="w-full">
-              <TabsList className="grid w-full grid-cols-2" data-testid="tabs-auth">
-                <TabsTrigger value="signin" data-testid="tab-signin">Welcome Back</TabsTrigger>
-                <TabsTrigger value="signup" data-testid="tab-signup">Get Started</TabsTrigger>
+              <TabsList
+                className="grid w-full grid-cols-2"
+                data-testid="tabs-auth"
+              >
+                <TabsTrigger value="signin" data-testid="tab-signin">
+                  Welcome Back
+                </TabsTrigger>
+                <TabsTrigger value="signup" data-testid="tab-signup">
+                  Get Started
+                </TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="signin">
                 <form onSubmit={handleSignIn} className="space-y-4">
-                  <p className="text-sm text-muted-foreground text-center" data-testid="text-signin-prompt">
+                  <p
+                    className="text-sm text-muted-foreground text-center"
+                    data-testid="text-signin-prompt"
+                  >
                     We're glad you're here. Sign in to continue your journey.
                   </p>
                   <div className="space-y-2">
@@ -126,15 +148,23 @@ export default function Auth() {
                       data-testid="input-signin-password"
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={authLoading} data-testid="button-signin">
-                    {authLoading ? 'Signing in...' : 'Sign In'}
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={authLoading}
+                    data-testid="button-signin"
+                  >
+                    {authLoading ? "Signing in..." : "Sign In"}
                   </Button>
                 </form>
               </TabsContent>
-              
+
               <TabsContent value="signup">
                 <form onSubmit={handleSignUp} className="space-y-4">
-                  <p className="text-sm text-muted-foreground text-center" data-testid="text-signup-prompt">
+                  <p
+                    className="text-sm text-muted-foreground text-center"
+                    data-testid="text-signup-prompt"
+                  >
                     Take the first step. Creating an account is quick and easy.
                   </p>
                   <div className="space-y-2">
@@ -164,14 +194,24 @@ export default function Auth() {
                       data-testid="input-signup-password"
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={authLoading} data-testid="button-signup">
-                    {authLoading ? 'Creating your space...' : 'Create My Account'}
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={authLoading}
+                    data-testid="button-signup"
+                  >
+                    {authLoading
+                      ? "Creating your space..."
+                      : "Create My Account"}
                   </Button>
                 </form>
               </TabsContent>
             </Tabs>
 
-            <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground" data-testid="text-privacy-note">
+            <div
+              className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground"
+              data-testid="text-privacy-note"
+            >
               <Shield className="h-3.5 w-3.5" />
               <span>Your privacy and safety are our priority</span>
             </div>

@@ -8,7 +8,15 @@ import { AlertsBell } from "@/components/AlertsBell";
 import { SessionReminderBanner } from "@/components/SessionReminderBanner";
 import { cn } from "@/lib/utils";
 
-export function AppLayout({ children, title, subtitle }: { children: ReactNode; title?: string; subtitle?: string }) {
+export function AppLayout({
+  children,
+  title,
+  subtitle,
+}: {
+  children: ReactNode;
+  title?: string;
+  subtitle?: string;
+}) {
   const { user, role, signOut } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -20,7 +28,9 @@ export function AppLayout({ children, title, subtitle }: { children: ReactNode; 
   useEffect(() => {
     if (!user) return;
     let tz = "UTC";
-    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch {}
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {}
     fetch("/api/user/timezone", {
       method: "PATCH",
       credentials: "include",
@@ -40,16 +50,22 @@ export function AppLayout({ children, title, subtitle }: { children: ReactNode; 
                 variant="ghost"
                 size="sm"
                 className="lg:hidden"
-                onClick={() => setMobileOpen(o => !o)}
+                onClick={() => setMobileOpen((o) => !o)}
                 aria-label="Toggle menu"
                 data-testid="button-menu"
               >
-                {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                {mobileOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Menu className="h-5 w-5" />
+                )}
               </Button>
             )}
             <button
               className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-              onClick={() => navigate(isProvider ? "/provider/dashboard" : "/dashboard")}
+              onClick={() =>
+                navigate(isProvider ? "/provider/dashboard" : "/dashboard")
+              }
               data-testid="button-home"
             >
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
@@ -57,7 +73,11 @@ export function AppLayout({ children, title, subtitle }: { children: ReactNode; 
               </div>
               <div className="text-left">
                 <h1 className="text-lg font-semibold text-foreground">Haven</h1>
-                {subtitle && <p className="text-xs text-muted-foreground hidden sm:block">{subtitle}</p>}
+                {subtitle && (
+                  <p className="text-xs text-muted-foreground hidden sm:block">
+                    {subtitle}
+                  </p>
+                )}
               </div>
             </button>
           </div>
@@ -66,7 +86,9 @@ export function AppLayout({ children, title, subtitle }: { children: ReactNode; 
             <Button
               variant="ghost"
               size="sm"
-              onClick={async () => { await signOut(); }}
+              onClick={async () => {
+                await signOut();
+              }}
               className="text-muted-foreground hover:text-foreground"
               data-testid="button-signout"
             >
@@ -88,15 +110,24 @@ export function AppLayout({ children, title, subtitle }: { children: ReactNode; 
               <ProviderSidebar />
             </aside>
             {/* Mobile drawer */}
-            <div className={cn(
-              "lg:hidden fixed inset-0 z-20 transition-opacity",
-              mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-            )}>
-              <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-              <aside className={cn(
-                "absolute left-0 top-14 bottom-0 w-64 bg-card border-r border-border/60 transition-transform",
-                mobileOpen ? "translate-x-0" : "-translate-x-full"
-              )}>
+            <div
+              className={cn(
+                "lg:hidden fixed inset-0 z-20 transition-opacity",
+                mobileOpen
+                  ? "opacity-100 pointer-events-auto"
+                  : "opacity-0 pointer-events-none",
+              )}
+            >
+              <div
+                className="absolute inset-0 bg-black/40"
+                onClick={() => setMobileOpen(false)}
+              />
+              <aside
+                className={cn(
+                  "absolute left-0 top-14 bottom-0 w-64 bg-card border-r border-border/60 transition-transform",
+                  mobileOpen ? "translate-x-0" : "-translate-x-full",
+                )}
+              >
                 <div onClick={() => setMobileOpen(false)}>
                   <ProviderSidebar />
                 </div>
@@ -110,8 +141,14 @@ export function AppLayout({ children, title, subtitle }: { children: ReactNode; 
           <div className="container mx-auto px-4 py-6 sm:py-8 max-w-7xl">
             {title && (
               <div className="mb-6 animate-fade-in">
-                <h2 className="text-2xl sm:text-3xl font-semibold text-foreground">{title}</h2>
-                {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+                <h2 className="text-2xl sm:text-3xl font-semibold text-foreground">
+                  {title}
+                </h2>
+                {subtitle && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {subtitle}
+                  </p>
+                )}
               </div>
             )}
             {children}

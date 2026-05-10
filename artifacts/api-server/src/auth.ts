@@ -39,7 +39,8 @@ export async function setupAuth(app: Express): Promise<void> {
   const PgSession = connectPgSimple(session);
 
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "bloom-session-secret-change-in-production",
+    secret:
+      process.env.SESSION_SECRET || "bloom-session-secret-change-in-production",
     resave: false,
     saveUninitialized: false,
     store: new PgSession({
@@ -78,8 +79,8 @@ export async function setupAuth(app: Express): Promise<void> {
         } catch (error) {
           return done(error);
         }
-      }
-    )
+      },
+    ),
   );
 
   passport.serializeUser((user, done) => {
@@ -103,7 +104,9 @@ export async function setupAuth(app: Express): Promise<void> {
       const { email, password, role } = req.body ?? {};
 
       if (!email || !password) {
-        return res.status(400).json({ error: "Email and password are required" });
+        return res
+          .status(400)
+          .json({ error: "Email and password are required" });
       }
 
       // Role defaults to "seeker" so a fresh signup lands in a fully usable
@@ -120,7 +123,10 @@ export async function setupAuth(app: Express): Promise<void> {
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const user = await storage.createUser({ email, password: hashedPassword });
+      const user = await storage.createUser({
+        email,
+        password: hashedPassword,
+      });
 
       await storage.createProfile({ userId: user.id, email: user.email });
       try {
@@ -135,37 +141,44 @@ export async function setupAuth(app: Express): Promise<void> {
         console.warn("register: role bootstrap failed", roleErr);
       }
 
-      req.login({ id: user.id, email: user.email }, (err) => {
+      return req.login({ id: user.id, email: user.email }, (err) => {
         if (err) return next(err);
-        res.status(201).json({
+        return res.status(201).json({
           user: { id: user.id, email: user.email },
           role: normalizedRole,
         });
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Registration failed" });
+      return res
+        .status(500)
+        .json({ error: error.message || "Registration failed" });
     }
   });
 
   app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: Express.User | false, info: { message: string }) => {
-      if (err) return next(err);
-      if (!user) {
-        return res.status(401).json({ error: info?.message || "Authentication failed" });
-      }
-      req.login(user, (err) => {
+    passport.authenticate(
+      "local",
+      (err: any, user: Express.User | false, info: { message: string }) => {
         if (err) return next(err);
-        res.json({ user: { id: user.id, email: user.email } });
-      });
-    })(req, res, next);
+        if (!user) {
+          return res
+            .status(401)
+            .json({ error: info?.message || "Authentication failed" });
+        }
+        req.login(user, (err) => {
+          if (err) return next(err);
+          res.json({ user: { id: user.id, email: user.email } });
+        });
+      },
+    )(req, res, next);
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    req.logout((err) => {
+    return req.logout((err) => {
       if (err) {
         return res.status(500).json({ error: "Logout failed" });
       }
-      res.json({ message: "Logged out successfully" });
+      return res.json({ message: "Logged out successfully" });
     });
   });
 

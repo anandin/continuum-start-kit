@@ -104,7 +104,9 @@ function SetupIntentForm(props: {
       );
       const body = await res.json();
       if (body?.retry?.attempted && body.retry.ok === false) {
-        toast.warning(`Card saved, but retry failed: ${body.retry.message ?? "unknown"}`);
+        toast.warning(
+          `Card saved, but retry failed: ${body.retry.message ?? "unknown"}`,
+        );
       } else if (body?.retry?.attempted && body.retry.ok) {
         toast.success("Card saved and pending charge retried");
       } else {
@@ -120,13 +122,30 @@ function SetupIntentForm(props: {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3" data-testid="setup-intent-form">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-3"
+      data-testid="setup-intent-form"
+    >
       <PaymentElement options={{ layout: "tabs" }} />
       {errorMsg && (
-        <div className="text-xs text-destructive" data-testid="setup-intent-error">{errorMsg}</div>
+        <div
+          className="text-xs text-destructive"
+          data-testid="setup-intent-error"
+        >
+          {errorMsg}
+        </div>
       )}
-      <Button type="submit" disabled={!stripe || submitting} data-testid="button-save-card">
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+      <Button
+        type="submit"
+        disabled={!stripe || submitting}
+        data-testid="button-save-card"
+      >
+        {submitting ? (
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+        ) : (
+          <CreditCard className="h-4 w-4 mr-2" />
+        )}
         Save card
       </Button>
     </form>
@@ -181,7 +200,8 @@ function PaymentMethodCard(props: {
       <CardContent>
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-            <Loader2 className="h-4 w-4 animate-spin" /> Preparing secure card form…
+            <Loader2 className="h-4 w-4 animate-spin" /> Preparing secure card
+            form…
           </div>
         ) : error ? (
           <div className="text-sm text-destructive">{error}</div>
@@ -190,10 +210,15 @@ function PaymentMethodCard(props: {
             stripe={stripePromise}
             options={{ clientSecret, appearance: { theme: "stripe" } }}
           >
-            <SetupIntentForm engagementId={props.engagementId} onSaved={props.onSaved} />
+            <SetupIntentForm
+              engagementId={props.engagementId}
+              onSaved={props.onSaved}
+            />
           </Elements>
         ) : (
-          <div className="text-sm text-muted-foreground">Card setup unavailable.</div>
+          <div className="text-sm text-muted-foreground">
+            Card setup unavailable.
+          </div>
         )}
       </CardContent>
     </Card>
@@ -203,7 +228,10 @@ function PaymentMethodCard(props: {
 export default function SeekerPayment() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { engagements, loading: engLoading } = useEngagements(user?.id ?? "", "seeker");
+  const { engagements, loading: engLoading } = useEngagements(
+    user?.id ?? "",
+    "seeker",
+  );
   const [searchParams] = useSearchParams();
   const requestedEngagementId = useMemo(() => {
     const fromQuery = searchParams.get("engagementId");
@@ -250,9 +278,15 @@ export default function SeekerPayment() {
     setLoading(true);
     try {
       const [s, h, cfg] = await Promise.all([
-        fetch(`/api/engagements/${engagementId}/billing`, { credentials: "include" }).then((r) => r.json()),
-        fetch(`/api/engagements/${engagementId}/billing/history`, { credentials: "include" }).then((r) => r.json()),
-        fetch(`/api/billing/config`, { credentials: "include" }).then((r) => r.json()),
+        fetch(`/api/engagements/${engagementId}/billing`, {
+          credentials: "include",
+        }).then((r) => r.json()),
+        fetch(`/api/engagements/${engagementId}/billing/history`, {
+          credentials: "include",
+        }).then((r) => r.json()),
+        fetch(`/api/billing/config`, { credentials: "include" }).then((r) =>
+          r.json(),
+        ),
       ]);
       setSummary(s);
       setHistory(h.payments ?? []);
@@ -304,13 +338,16 @@ export default function SeekerPayment() {
       // Stripe wants the seeker to confirm the first invoice's payment
       // (e.g. SCA / 3DS). Confirm it here so the subscription doesn't
       // sit in "incomplete" forever.
-      const subClientSecret: string | null = body?.subscription?.clientSecret ?? null;
+      const subClientSecret: string | null =
+        body?.subscription?.clientSecret ?? null;
       if (subClientSecret && publishableKey) {
         const stripe = await getStripePromise(publishableKey);
         if (stripe) {
           const { error } = await stripe.confirmCardPayment(subClientSecret);
           if (error) {
-            toast.error(`Subscription needs a card: ${error.message ?? "save a card below"}`);
+            toast.error(
+              `Subscription needs a card: ${error.message ?? "save a card below"}`,
+            );
           } else {
             toast.success("Subscription started");
           }
@@ -329,7 +366,7 @@ export default function SeekerPayment() {
   return (
     <AppLayout title="Payment" subtitle="Your tier and history">
       <div className="container mx-auto max-w-3xl px-4 py-6 space-y-6">
-        {(engLoading || loading) ? (
+        {engLoading || loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
@@ -342,7 +379,9 @@ export default function SeekerPayment() {
         ) : (
           <>
             <Card>
-              <CardHeader><CardTitle>Current tier</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Current tier</CardTitle>
+              </CardHeader>
               <CardContent className="space-y-3">
                 {summary?.pastDue && (
                   <div
@@ -358,7 +397,8 @@ export default function SeekerPayment() {
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground mt-1">
-                        Save a new card below — we'll retry automatically. New sessions are paused until this clears.
+                        Save a new card below — we'll retry automatically. New
+                        sessions are paused until this clears.
                       </div>
                     </div>
                   </div>
@@ -369,7 +409,9 @@ export default function SeekerPayment() {
                       {summary.tier.label}{" "}
                       <span className="text-muted-foreground font-normal">
                         — {fmtUsd(summary.tier.amountCents)}{" "}
-                        {summary.tier.billingCadence === "monthly" ? "/ month" : "/ session"}
+                        {summary.tier.billingCadence === "monthly"
+                          ? "/ month"
+                          : "/ session"}
                       </span>
                     </div>
                     {summary.tier.description && (
@@ -378,22 +420,27 @@ export default function SeekerPayment() {
                       </div>
                     )}
                     <Badge
-                      variant={summary.status === "active" ? "default" : "secondary"}
+                      variant={
+                        summary.status === "active" ? "default" : "secondary"
+                      }
                       className="mt-2 gap-1"
                     >
-                      {summary.status === "active" && <CheckCircle2 className="h-3.5 w-3.5" />}
+                      {summary.status === "active" && (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      )}
                       {summary.status === "active"
                         ? "Active"
                         : summary.status === "past_due"
-                        ? "Past due"
-                        : summary.status === "incomplete"
-                        ? "Awaiting payment"
-                        : summary.status}
+                          ? "Past due"
+                          : summary.status === "incomplete"
+                            ? "Awaiting payment"
+                            : summary.status}
                     </Badge>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    No tier selected yet. Pick one below to enable session booking.
+                    No tier selected yet. Pick one below to enable session
+                    booking.
                   </p>
                 )}
               </CardContent>
@@ -408,7 +455,9 @@ export default function SeekerPayment() {
             )}
 
             <Card>
-              <CardHeader><CardTitle>Choose a tier</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Choose a tier</CardTitle>
+              </CardHeader>
               <CardContent className="space-y-3">
                 {(summary?.tiers ?? []).length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">
@@ -435,9 +484,13 @@ export default function SeekerPayment() {
                             )}
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="font-semibold">{fmtUsd(t.amountCents)}</div>
+                            <div className="font-semibold">
+                              {fmtUsd(t.amountCents)}
+                            </div>
                             <div className="text-xs text-muted-foreground">
-                              {t.billingCadence === "monthly" ? "per month" : "per session"}
+                              {t.billingCadence === "monthly"
+                                ? "per month"
+                                : "per session"}
                             </div>
                           </div>
                         </div>
@@ -449,14 +502,21 @@ export default function SeekerPayment() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Payment history</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Payment history</CardTitle>
+              </CardHeader>
               <CardContent>
                 {history.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No payments yet.</p>
+                  <p className="text-sm text-muted-foreground italic">
+                    No payments yet.
+                  </p>
                 ) : (
                   <div className="divide-y">
                     {history.map((p) => (
-                      <div key={p.id} className="flex justify-between items-center py-2 text-sm">
+                      <div
+                        key={p.id}
+                        className="flex justify-between items-center py-2 text-sm"
+                      >
                         <div>
                           <div>{new Date(p.createdAt).toLocaleString()}</div>
                           {p.failureMessage && (
@@ -472,8 +532,8 @@ export default function SeekerPayment() {
                               p.status === "succeeded"
                                 ? "default"
                                 : p.status === "failed"
-                                ? "destructive"
-                                : "secondary"
+                                  ? "destructive"
+                                  : "secondary"
                             }
                           >
                             {p.status}

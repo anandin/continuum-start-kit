@@ -3,7 +3,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { AppLayout } from "@/components/AppLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,7 +49,8 @@ export default function PersonaLibrary() {
 
   const playbookQ = useQuery<Playbook>({
     queryKey: ["/api/twin/playbooks", playbookId],
-    queryFn: async () => (await apiRequest("GET", `/api/twin/playbooks/${playbookId}`)).json(),
+    queryFn: async () =>
+      (await apiRequest("GET", `/api/twin/playbooks/${playbookId}`)).json(),
     enabled: !!playbookId,
   });
 
@@ -59,23 +66,31 @@ export default function PersonaLibrary() {
 
   const createMut = useMutation({
     mutationFn: async () =>
-      (await apiRequest("POST", "/api/twin/persona-examples", {
-        scenario,
-        approvedResponse,
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-        source: "manual",
-        playbookId,
-      })).json(),
+      (
+        await apiRequest("POST", "/api/twin/persona-examples", {
+          scenario,
+          approvedResponse,
+          tags: tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
+          source: "manual",
+          playbookId,
+        })
+      ).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/twin/persona-examples"] });
-      setScenario(""); setApprovedResponse(""); setTags("");
+      setScenario("");
+      setApprovedResponse("");
+      setTags("");
       toast.success("Example added");
     },
     onError: (e: any) => toast.error(e?.message || "Failed to add example"),
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/twin/persona-examples/${id}`),
+    mutationFn: async (id: string) =>
+      apiRequest("DELETE", `/api/twin/persona-examples/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/twin/persona-examples"] });
       toast.success("Example removed");
@@ -84,16 +99,25 @@ export default function PersonaLibrary() {
 
   const setDefaultMut = useMutation({
     mutationFn: async () =>
-      (await apiRequest("POST", `/api/twin/playbooks/${playbookId}/default`, {})).json(),
+      (
+        await apiRequest(
+          "POST",
+          `/api/twin/playbooks/${playbookId}/default`,
+          {},
+        )
+      ).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/twin/playbooks"] });
       toast.success("Set as default playbook");
     },
   });
 
-  const headerTitle = playbookQ.data?.title ?? (playbookId ? "Playbook" : "Persona Library (all examples)");
+  const headerTitle =
+    playbookQ.data?.title ??
+    (playbookId ? "Playbook" : "Persona Library (all examples)");
   const headerSubtitle = playbookId
-    ? (playbookQ.data?.description ?? "Add the scenarios you want this playbook to handle.")
+    ? (playbookQ.data?.description ??
+      "Add the scenarios you want this playbook to handle.")
     : "All your examples across every playbook. To organize new examples, open a specific playbook.";
 
   return (
@@ -109,21 +133,26 @@ export default function PersonaLibrary() {
             <ArrowLeft className="mr-1 h-4 w-4" /> All playbooks
           </Button>
           {playbookQ.data?.isDefault && (
-            <Badge variant="outline" className="border-amber-400 text-amber-700">
+            <Badge
+              variant="outline"
+              className="border-amber-400 text-amber-700"
+            >
               <Star className="mr-1 h-3 w-3" /> Default playbook
             </Badge>
           )}
-          {playbookQ.data && !playbookQ.data.isDefault && !playbookQ.data.isArchived && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setDefaultMut.mutate()}
-              disabled={setDefaultMut.isPending}
-              data-testid="button-set-default-here"
-            >
-              <Star className="mr-1 h-4 w-4" /> Set as default
-            </Button>
-          )}
+          {playbookQ.data &&
+            !playbookQ.data.isDefault &&
+            !playbookQ.data.isArchived && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDefaultMut.mutate()}
+                disabled={setDefaultMut.isPending}
+                data-testid="button-set-default-here"
+              >
+                <Star className="mr-1 h-4 w-4" /> Set as default
+              </Button>
+            )}
         </div>
 
         <Card className="shadow-warm-md">
@@ -168,36 +197,61 @@ export default function PersonaLibrary() {
 
         <div className="space-y-3">
           {examplesQ.isLoading && (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">Loading…</CardContent></Card>
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                Loading…
+              </CardContent>
+            </Card>
           )}
           {!examplesQ.isLoading && examplesQ.data?.length === 0 && (
-            <Card><CardContent className="p-8 text-center text-muted-foreground" data-testid="empty-examples">
-              No examples yet. Add one above, or run a calibration session.
-            </CardContent></Card>
+            <Card>
+              <CardContent
+                className="p-8 text-center text-muted-foreground"
+                data-testid="empty-examples"
+              >
+                No examples yet. Add one above, or run a calibration session.
+              </CardContent>
+            </Card>
           )}
           {examplesQ.data?.map((ex) => (
-            <Card key={ex.id} className="shadow-warm-md" data-testid={`card-example-${ex.id}`}>
+            <Card
+              key={ex.id}
+              className="shadow-warm-md"
+              data-testid={`card-example-${ex.id}`}
+            >
               <CardContent className="p-4">
                 <div className="flex justify-between items-start gap-4">
                   <div className="flex-1 min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">{ex.source}</Badge>
                       {ex.tags?.map((t) => (
-                        <Badge key={t} variant="secondary">{t}</Badge>
+                        <Badge key={t} variant="secondary">
+                          {t}
+                        </Badge>
                       ))}
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Client said</p>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Client said
+                      </p>
                       <p className="text-sm text-foreground">{ex.scenario}</p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Approved response</p>
-                      <p className="text-sm text-foreground whitespace-pre-wrap">{ex.approvedResponse}</p>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Approved response
+                      </p>
+                      <p className="text-sm text-foreground whitespace-pre-wrap">
+                        {ex.approvedResponse}
+                      </p>
                     </div>
                     {ex.rejectedResponse && (
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Avoid</p>
-                        <p className="text-sm text-muted-foreground italic">{ex.rejectedResponse}</p>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Avoid
+                        </p>
+                        <p className="text-sm text-muted-foreground italic">
+                          {ex.rejectedResponse}
+                        </p>
                       </div>
                     )}
                   </div>

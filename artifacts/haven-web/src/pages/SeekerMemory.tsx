@@ -1,12 +1,18 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { apiRequest } from '@/lib/queryClient';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Brain, Loader2, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Brain, Loader2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +22,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 
 interface MemoryEntry {
   id: string;
@@ -38,7 +44,7 @@ export default function SeekerMemory() {
 
   useEffect(() => {
     if (!user) {
-      navigate('/auth');
+      navigate("/auth");
       return;
     }
     void load();
@@ -47,11 +53,11 @@ export default function SeekerMemory() {
   async function load() {
     setLoading(true);
     try {
-      const res = await apiRequest('GET', '/api/seeker/memory');
+      const res = await apiRequest("GET", "/api/seeker/memory");
       const rows = (await res.json()) as MemoryEntry[];
       setEntries(rows);
     } catch (err: any) {
-      toast.error(err?.message || 'Could not load memory');
+      toast.error(err?.message || "Could not load memory");
     } finally {
       setLoading(false);
     }
@@ -61,11 +67,11 @@ export default function SeekerMemory() {
     if (!target) return;
     setForgetting(true);
     try {
-      await apiRequest('POST', `/api/seeker/memory/${target.id}/redact`);
+      await apiRequest("POST", `/api/seeker/memory/${target.id}/redact`);
       setEntries((prev) => prev.filter((e) => e.id !== target.id));
-      toast.success('Forgotten');
+      toast.success("Forgotten");
     } catch (err: any) {
-      toast.error(err?.message || 'Could not forget entry');
+      toast.error(err?.message || "Could not forget entry");
     } finally {
       setForgetting(false);
       setTarget(null);
@@ -79,15 +85,18 @@ export default function SeekerMemory() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate("/dashboard")}
             data-testid="button-back"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Manage memory</h1>
+            <h1 className="text-lg font-semibold text-foreground">
+              Manage memory
+            </h1>
             <p className="text-xs text-muted-foreground">
-              Everything your twin remembers about you. Forget anything, anytime.
+              Everything your twin remembers about you. Forget anything,
+              anytime.
             </p>
           </div>
         </div>
@@ -106,23 +115,32 @@ export default function SeekerMemory() {
               </div>
               <CardTitle>Nothing remembered yet</CardTitle>
               <CardDescription>
-                After your sessions, the twin may save short notes here so it can pick up where
-                you left off. You'll see them as soon as they're written.
+                After your sessions, the twin may save short notes here so it
+                can pick up where you left off. You'll see them as soon as
+                they're written.
               </CardDescription>
             </CardHeader>
           </Card>
         ) : (
           entries.map((e) => (
-            <Card key={e.id} className="shadow-warm" data-testid={`memory-${e.id}`}>
+            <Card
+              key={e.id}
+              className="shadow-warm"
+              data-testid={`memory-${e.id}`}
+            >
               <CardContent className="py-4 flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="secondary" className="text-xs">{e.kind}</Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {e.kind}
+                    </Badge>
                     <span className="text-xs text-muted-foreground">
                       {new Date(e.createdAt).toLocaleDateString()}
                     </span>
                   </div>
-                  <p className="text-sm text-foreground leading-relaxed">{e.content}</p>
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {e.content}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
@@ -139,7 +157,10 @@ export default function SeekerMemory() {
         )}
       </div>
 
-      <AlertDialog open={!!target} onOpenChange={(open) => !open && setTarget(null)}>
+      <AlertDialog
+        open={!!target}
+        onOpenChange={(open) => !open && setTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Forget this memory?</AlertDialogTitle>
@@ -148,13 +169,19 @@ export default function SeekerMemory() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-forget">Keep it</AlertDialogCancel>
+            <AlertDialogCancel data-testid="button-cancel-forget">
+              Keep it
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={forget}
               disabled={forgetting}
               data-testid="button-confirm-forget"
             >
-              {forgetting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Forget'}
+              {forgetting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Forget"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

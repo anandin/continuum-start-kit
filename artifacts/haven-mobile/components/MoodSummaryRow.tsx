@@ -67,9 +67,7 @@ export function MoodSummaryRow({ engagementId }: MoodSummaryRowProps) {
         ]}
       >
         <View style={styles.left}>
-          <Text style={styles.emoji}>
-            {todayInfo ? todayInfo.emoji : "·"}
-          </Text>
+          <Text style={styles.emoji}>{todayInfo ? todayInfo.emoji : "·"}</Text>
           <View style={{ flexShrink: 1 }}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
               TODAY
@@ -129,8 +127,7 @@ function Sparkline({ entries }: SparklineProps) {
       if (typeof score === "number") {
         const idx = days - 1 - i;
         const x = padding + (idx * (width - padding * 2)) / (days - 1);
-        const y =
-          height - padding - ((score - 1) * (height - padding * 2)) / 4;
+        const y = height - padding - ((score - 1) * (height - padding * 2)) / 4;
         result.push({ x, y });
       }
     }

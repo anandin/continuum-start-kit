@@ -36,7 +36,10 @@ export async function logRedaction(data: InsertRedaction): Promise<Redaction> {
   return row;
 }
 
-export async function listRedactionsForSeeker(seekerUserId: string, limit = 200): Promise<Redaction[]> {
+export async function listRedactionsForSeeker(
+  seekerUserId: string,
+  limit = 200,
+): Promise<Redaction[]> {
   return db
     .select()
     .from(redactions)
@@ -46,12 +49,17 @@ export async function listRedactionsForSeeker(seekerUserId: string, limit = 200)
 }
 
 // ============ Safety events (L1 audit log) ============
-export async function logSafetyEvent(data: InsertSafetyEvent): Promise<SafetyEvent> {
+export async function logSafetyEvent(
+  data: InsertSafetyEvent,
+): Promise<SafetyEvent> {
   const [row] = await db.insert(safetyEvents).values(data).returning();
   return row;
 }
 
-export async function listSafetyEventsByProvider(providerId: string, limit = 200): Promise<SafetyEvent[]> {
+export async function listSafetyEventsByProvider(
+  providerId: string,
+  limit = 200,
+): Promise<SafetyEvent[]> {
   return db
     .select()
     .from(safetyEvents)
@@ -74,27 +82,43 @@ export async function listSafetyEventsByEngagement(
 }
 
 // ============ Agent versions (L2 reproducibility) ============
-export async function createAgentVersion(data: InsertAgentVersion): Promise<AgentVersion> {
+export async function createAgentVersion(
+  data: InsertAgentVersion,
+): Promise<AgentVersion> {
   const [row] = await db.insert(agentVersions).values(data).returning();
   return row;
 }
 
-export async function getActiveAgentVersionForProvider(providerId: string): Promise<AgentVersion | undefined> {
+export async function getActiveAgentVersionForProvider(
+  providerId: string,
+): Promise<AgentVersion | undefined> {
   const [row] = await db
     .select()
     .from(agentVersions)
-    .where(and(eq(agentVersions.providerId, providerId), eq(agentVersions.isActive, true)))
+    .where(
+      and(
+        eq(agentVersions.providerId, providerId),
+        eq(agentVersions.isActive, true),
+      ),
+    )
     .orderBy(desc(agentVersions.version))
     .limit(1);
   return row;
 }
 
 // Ensure exactly one active version per provider; called before inserting a new active row.
-async function deactivateAllAgentVersionsForProvider(providerId: string): Promise<void> {
+async function deactivateAllAgentVersionsForProvider(
+  providerId: string,
+): Promise<void> {
   await db
     .update(agentVersions)
     .set({ isActive: false })
-    .where(and(eq(agentVersions.providerId, providerId), eq(agentVersions.isActive, true)));
+    .where(
+      and(
+        eq(agentVersions.providerId, providerId),
+        eq(agentVersions.isActive, true),
+      ),
+    );
 }
 
 // Snapshot current persona config + active example IDs on material change
@@ -141,21 +165,37 @@ export async function createPersonaExample(
   return row;
 }
 
-export async function listPersonaExamplesByProvider(providerId: string): Promise<PersonaExample[]> {
+export async function listPersonaExamplesByProvider(
+  providerId: string,
+): Promise<PersonaExample[]> {
   return db
     .select()
     .from(personaExamples)
-    .where(and(eq(personaExamples.providerId, providerId), eq(personaExamples.isActive, true)))
+    .where(
+      and(
+        eq(personaExamples.providerId, providerId),
+        eq(personaExamples.isActive, true),
+      ),
+    )
     .orderBy(desc(personaExamples.createdAt));
 }
 
-export async function getPersonaExampleById(id: string): Promise<PersonaExample | undefined> {
-  const [row] = await db.select().from(personaExamples).where(eq(personaExamples.id, id)).limit(1);
+export async function getPersonaExampleById(
+  id: string,
+): Promise<PersonaExample | undefined> {
+  const [row] = await db
+    .select()
+    .from(personaExamples)
+    .where(eq(personaExamples.id, id))
+    .limit(1);
   return row;
 }
 
 export async function deactivatePersonaExample(id: string): Promise<void> {
-  await db.update(personaExamples).set({ isActive: false }).where(eq(personaExamples.id, id));
+  await db
+    .update(personaExamples)
+    .set({ isActive: false })
+    .where(eq(personaExamples.id, id));
 }
 
 // Top-K most relevant persona examples for a query (vector search if embedding given,
@@ -189,38 +229,63 @@ export async function topPersonaExamples(
     `);
     const ids = (ranked.rows as { id: string }[]).map((r) => r.id);
     if (ids.length === 0) return [];
-    const rows = await db.select().from(personaExamples).where(inArray(personaExamples.id, ids));
+    const rows = await db
+      .select()
+      .from(personaExamples)
+      .where(inArray(personaExamples.id, ids));
     const byId = new Map(rows.map((r) => [r.id, r]));
-    return ids.map((id) => byId.get(id)).filter((r): r is PersonaExample => Boolean(r));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((r): r is PersonaExample => Boolean(r));
   }
   // Lexical fallback. When scoped to a playbook, only consider rows in that playbook.
   const allBase = await listPersonaExamplesByProvider(providerId);
-  const all = playbookId ? allBase.filter((e) => e.playbookId === playbookId) : allBase;
+  const all = playbookId
+    ? allBase.filter((e) => e.playbookId === playbookId)
+    : allBase;
   if (all.length === 0) return [];
   const lc = query.toLowerCase();
   const scored = all.map((ex) => {
     const tagHits = Array.isArray(ex.tags)
-      ? (ex.tags as string[]).filter((t) => lc.includes(String(t).toLowerCase())).length
+      ? (ex.tags as string[]).filter((t) =>
+          lc.includes(String(t).toLowerCase()),
+        ).length
       : 0;
-    const scenarioHit = ex.scenario.toLowerCase().split(/\W+/).some((w: string) => w.length > 4 && lc.includes(w));
-    return { ex, score: tagHits * 2 + (scenarioHit ? 1 : 0) + (ex.weight ?? 1) * 0.1 };
+    const scenarioHit = ex.scenario
+      .toLowerCase()
+      .split(/\W+/)
+      .some((w: string) => w.length > 4 && lc.includes(w));
+    return {
+      ex,
+      score: tagHits * 2 + (scenarioHit ? 1 : 0) + (ex.weight ?? 1) * 0.1,
+    };
   });
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, k).map((s) => s.ex);
 }
 
 // ============ Calibration sessions ============
-export async function createCalibrationSession(data: InsertCalibrationSession): Promise<CalibrationSession> {
+export async function createCalibrationSession(
+  data: InsertCalibrationSession,
+): Promise<CalibrationSession> {
   const [row] = await db.insert(calibrationSessions).values(data).returning();
   return row;
 }
 
-export async function getCalibrationSession(id: string): Promise<CalibrationSession | undefined> {
-  const [row] = await db.select().from(calibrationSessions).where(eq(calibrationSessions.id, id)).limit(1);
+export async function getCalibrationSession(
+  id: string,
+): Promise<CalibrationSession | undefined> {
+  const [row] = await db
+    .select()
+    .from(calibrationSessions)
+    .where(eq(calibrationSessions.id, id))
+    .limit(1);
   return row;
 }
 
-export async function listCalibrationSessionsByProvider(providerId: string): Promise<CalibrationSession[]> {
+export async function listCalibrationSessionsByProvider(
+  providerId: string,
+): Promise<CalibrationSession[]> {
   return db
     .select()
     .from(calibrationSessions)
@@ -230,9 +295,17 @@ export async function listCalibrationSessionsByProvider(providerId: string): Pro
 
 export async function updateCalibrationSession(
   id: string,
-  data: Partial<{ transcript: unknown; status: "in_progress" | "completed" | "abandoned"; completedAt: Date }>,
+  data: Partial<{
+    transcript: unknown;
+    status: "in_progress" | "completed" | "abandoned";
+    completedAt: Date;
+  }>,
 ): Promise<CalibrationSession | undefined> {
-  const [row] = await db.update(calibrationSessions).set(data).where(eq(calibrationSessions.id, id)).returning();
+  const [row] = await db
+    .update(calibrationSessions)
+    .set(data)
+    .where(eq(calibrationSessions.id, id))
+    .returning();
   return row;
 }
 
@@ -246,16 +319,29 @@ export async function writeClientMemory(
   return row;
 }
 
-export async function getClientMemoryById(id: string): Promise<ClientMemory | undefined> {
-  const [row] = await db.select().from(clientMemory).where(eq(clientMemory.id, id)).limit(1);
+export async function getClientMemoryById(
+  id: string,
+): Promise<ClientMemory | undefined> {
+  const [row] = await db
+    .select()
+    .from(clientMemory)
+    .where(eq(clientMemory.id, id))
+    .limit(1);
   return row;
 }
 
-export async function listClientMemoryByEngagement(engagementId: string): Promise<ClientMemory[]> {
+export async function listClientMemoryByEngagement(
+  engagementId: string,
+): Promise<ClientMemory[]> {
   return db
     .select()
     .from(clientMemory)
-    .where(and(eq(clientMemory.engagementId, engagementId), isNull(clientMemory.redactedAt)))
+    .where(
+      and(
+        eq(clientMemory.engagementId, engagementId),
+        isNull(clientMemory.redactedAt),
+      ),
+    )
     .orderBy(desc(clientMemory.createdAt));
 }
 
@@ -264,7 +350,10 @@ export async function listClientMemoryByEngagement(engagementId: string): Promis
 // itself is kept (with redactedAt set) so the cascade audit + UI hiding
 // still work, and so the seeker's own "forgotten items" list can show that
 // something was removed without storing what it was.
-export async function redactClientMemory(id: string, redactedBy: string): Promise<void> {
+export async function redactClientMemory(
+  id: string,
+  redactedBy: string,
+): Promise<void> {
   await db
     .update(clientMemory)
     .set({
@@ -330,20 +419,24 @@ export interface SeekerMemoryRow {
 export async function listClientMemoryForSeekerOwner(
   ownerUserId: string,
 ): Promise<SeekerMemoryRow[]> {
-  return db
-    // Seeker-facing shape only — never expose embedding or attribution.
-    .select({
-      id: clientMemory.id,
-      engagementId: clientMemory.engagementId,
-      kind: clientMemory.kind,
-      content: clientMemory.content,
-      createdAt: clientMemory.createdAt,
-    })
-    .from(clientMemory)
-    .innerJoin(engagements, eq(engagements.id, clientMemory.engagementId))
-    .innerJoin(seekers, eq(seekers.id, engagements.seekerId))
-    .where(and(eq(seekers.ownerId, ownerUserId), isNull(clientMemory.redactedAt)))
-    .orderBy(desc(clientMemory.createdAt));
+  return (
+    db
+      // Seeker-facing shape only — never expose embedding or attribution.
+      .select({
+        id: clientMemory.id,
+        engagementId: clientMemory.engagementId,
+        kind: clientMemory.kind,
+        content: clientMemory.content,
+        createdAt: clientMemory.createdAt,
+      })
+      .from(clientMemory)
+      .innerJoin(engagements, eq(engagements.id, clientMemory.engagementId))
+      .innerJoin(seekers, eq(seekers.id, engagements.seekerId))
+      .where(
+        and(eq(seekers.ownerId, ownerUserId), isNull(clientMemory.redactedAt)),
+      )
+      .orderBy(desc(clientMemory.createdAt))
+  );
 }
 
 export async function topClientMemory(
@@ -365,19 +458,31 @@ export async function topClientMemory(
     `);
     const ids = (ranked.rows as { id: string }[]).map((r) => r.id);
     if (ids.length === 0) return [];
-    const rows = await db.select().from(clientMemory).where(inArray(clientMemory.id, ids));
+    const rows = await db
+      .select()
+      .from(clientMemory)
+      .where(inArray(clientMemory.id, ids));
     const byId = new Map(rows.map((r) => [r.id, r]));
-    return ids.map((id) => byId.get(id)).filter((r): r is ClientMemory => Boolean(r));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((r): r is ClientMemory => Boolean(r));
   }
   const all = await listClientMemoryByEngagement(engagementId);
   if (all.length === 0) return [];
   const lc = query.toLowerCase();
   const scored = all.map((m) => {
     const tagHits = Array.isArray(m.tags)
-      ? (m.tags as string[]).filter((t) => lc.includes(String(t).toLowerCase())).length
+      ? (m.tags as string[]).filter((t) => lc.includes(String(t).toLowerCase()))
+          .length
       : 0;
-    const contentHit = m.content.toLowerCase().split(/\W+/).some((w: string) => w.length > 4 && lc.includes(w));
-    return { m, score: tagHits * 2 + (contentHit ? 1 : 0) + (m.importance ?? 0.5) };
+    const contentHit = m.content
+      .toLowerCase()
+      .split(/\W+/)
+      .some((w: string) => w.length > 4 && lc.includes(w));
+    return {
+      m,
+      score: tagHits * 2 + (contentHit ? 1 : 0) + (m.importance ?? 0.5),
+    };
   });
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, k).map((s) => s.m);
@@ -411,7 +516,7 @@ export interface ReviewItem {
   sessionId: string;
   engagementId: string;
   scenario: string; // the prior user message, or "" if none
-  draft: string;   // the assistant message text
+  draft: string; // the assistant message text
   createdAt: Date | null;
 }
 
@@ -439,7 +544,9 @@ export async function listReviewQueueForProvider(
   const agentMsgs = await db
     .select()
     .from(messages)
-    .where(and(inArray(messages.sessionId, sessIds), eq(messages.role, "agent")))
+    .where(
+      and(inArray(messages.sessionId, sessIds), eq(messages.role, "agent")),
+    )
     .orderBy(desc(messages.createdAt))
     .limit(overfetch);
 
@@ -493,10 +600,12 @@ export async function listReviewQueueForProvider(
       stage: safetyEvents.stage,
     })
     .from(safetyEvents)
-    .where(and(
-      inArray(safetyEvents.sessionId, touchedSessIds),
-      eq(safetyEvents.stage, "output"),
-    ))
+    .where(
+      and(
+        inArray(safetyEvents.sessionId, touchedSessIds),
+        eq(safetyEvents.stage, "output"),
+      ),
+    )
     .orderBy(desc(safetyEvents.createdAt));
   const safetyBySession = new Map<string, typeof safetyRows>();
   for (const ev of safetyRows) {
@@ -527,15 +636,25 @@ export async function listReviewQueueForProvider(
 
     const session = bySession.get(am.sessionId) ?? [];
     const idx = session.findIndex((m) => m.id === am.id);
-    const prior = idx > 0 ? session.slice(0, idx).reverse().find((m) => m.role === "seeker") : undefined;
+    const prior =
+      idx > 0
+        ? session
+            .slice(0, idx)
+            .reverse()
+            .find((m) => m.role === "seeker")
+        : undefined;
 
     // Client-feedback proxy: terse / "no/that's not" / "I already said" follow-ups.
-    const nextSeeker = idx >= 0 ? session.slice(idx + 1).find((m) => m.role === "seeker") : undefined;
+    const nextSeeker =
+      idx >= 0
+        ? session.slice(idx + 1).find((m) => m.role === "seeker")
+        : undefined;
     let clientFeedbackScore = 0;
     if (nextSeeker) {
       const t = nextSeeker.content.toLowerCase();
       if (t.length < 20) clientFeedbackScore += 1;
-      if (/\b(no|not|wrong|that'?s not|don'?t|doesn'?t|didn'?t)\b/.test(t)) clientFeedbackScore += 2;
+      if (/\b(no|not|wrong|that'?s not|don'?t|doesn'?t|didn'?t)\b/.test(t))
+        clientFeedbackScore += 2;
       if (/\bi (already|just) said\b/.test(t)) clientFeedbackScore += 2;
     }
 
@@ -558,7 +677,10 @@ export async function listReviewQueueForProvider(
       if (bestEv.severity && bestEv.severity !== "info") uncertaintyScore += 2;
       const r = bestEv.reason || "";
       if (r.startsWith("moderation_")) uncertaintyScore += 2;
-      if (r === "model_improvised_crisis_response" || r === "output_claims_to_be_human_or_licensed") {
+      if (
+        r === "model_improvised_crisis_response" ||
+        r === "output_claims_to_be_human_or_licensed"
+      ) {
         uncertaintyScore += 4;
       }
     }
@@ -625,9 +747,13 @@ export async function getReviewItemForMessage(
     m.redactedAt ? { ...m, content: "" } : m,
   );
   const idx = sessionMsgs.findIndex((m) => m.id === msg.id);
-  const prior = idx > 0
-    ? sessionMsgs.slice(0, idx).reverse().find((m) => m.role === "seeker")
-    : undefined;
+  const prior =
+    idx > 0
+      ? sessionMsgs
+          .slice(0, idx)
+          .reverse()
+          .find((m) => m.role === "seeker")
+      : undefined;
 
   return {
     messageId: msg.id,

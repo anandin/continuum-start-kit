@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AppLayout } from '@/components/AppLayout';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AppLayout } from "@/components/AppLayout";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,9 +25,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { useToast } from '@/hooks/use-toast';
-import { BookOpen, Pencil, MessageSquareQuote, Send, Users } from 'lucide-react';
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import {
+  BookOpen,
+  Pencil,
+  MessageSquareQuote,
+  Send,
+  Users,
+} from "lucide-react";
 
 interface JournalPrompt {
   id: string;
@@ -51,24 +57,29 @@ export default function Journal() {
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState("");
   const [shareToggle, setShareToggle] = useState(false);
-  const [shareConfirmEntry, setShareConfirmEntry] = useState<JournalEntry | null>(null);
+  const [shareConfirmEntry, setShareConfirmEntry] =
+    useState<JournalEntry | null>(null);
 
   const promptsQ = useQuery<JournalPrompt[]>({
-    queryKey: ['/api/journal/prompts/available'],
+    queryKey: ["/api/journal/prompts/available"],
     queryFn: async () => {
-      const res = await fetch('/api/journal/prompts/available', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load prompts');
+      const res = await fetch("/api/journal/prompts/available", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load prompts");
       return res.json();
     },
   });
 
   const entriesQ = useQuery<JournalEntry[]>({
-    queryKey: ['/api/journal/entries/me'],
+    queryKey: ["/api/journal/entries/me"],
     queryFn: async () => {
-      const res = await fetch('/api/journal/entries/me', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load entries');
+      const res = await fetch("/api/journal/entries/me", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load entries");
       return res.json();
     },
   });
@@ -81,10 +92,10 @@ export default function Journal() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/journal/entries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const res = await fetch("/api/journal/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           body: body.trim(),
           promptId: selectedPromptId,
@@ -93,50 +104,58 @@ export default function Journal() {
       });
       if (!res.ok) {
         const txt = await res.text();
-        throw new Error(txt || 'Failed to save entry');
+        throw new Error(txt || "Failed to save entry");
       }
       return res.json() as Promise<JournalEntry>;
     },
     onSuccess: () => {
       setComposerOpen(false);
       setSelectedPromptId(null);
-      setBody('');
+      setBody("");
       setShareToggle(false);
-      qc.invalidateQueries({ queryKey: ['/api/journal/entries/me'] });
-      toast({ title: 'Entry saved' });
+      qc.invalidateQueries({ queryKey: ["/api/journal/entries/me"] });
+      toast({ title: "Entry saved" });
     },
     onError: (err: Error) => {
-      toast({ title: "Couldn't save", description: err.message, variant: 'destructive' });
+      toast({
+        title: "Couldn't save",
+        description: err.message,
+        variant: "destructive",
+      });
     },
   });
 
   const shareMutation = useMutation({
     mutationFn: async (entryId: string) => {
       const res = await fetch(`/api/journal/entries/${entryId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ sharedWithCoach: true }),
       });
       if (!res.ok) {
         const txt = await res.text();
-        throw new Error(txt || 'Failed to share entry');
+        throw new Error(txt || "Failed to share entry");
       }
       return res.json() as Promise<JournalEntry>;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['/api/journal/entries/me'] });
+      qc.invalidateQueries({ queryKey: ["/api/journal/entries/me"] });
       setShareConfirmEntry(null);
-      toast({ title: 'Shared with coach' });
+      toast({ title: "Shared with coach" });
     },
     onError: (err: Error) => {
-      toast({ title: "Couldn't share", description: err.message, variant: 'destructive' });
+      toast({
+        title: "Couldn't share",
+        description: err.message,
+        variant: "destructive",
+      });
     },
   });
 
   const startNewEntry = (promptId: string | null) => {
     setSelectedPromptId(promptId);
-    setBody('');
+    setBody("");
     setShareToggle(false);
     setComposerOpen(true);
   };
@@ -160,7 +179,10 @@ export default function Journal() {
                   Write freely. Share entries with your coach when you're ready.
                 </p>
               </div>
-              <Button onClick={() => startNewEntry(null)} data-testid="button-new-entry">
+              <Button
+                onClick={() => startNewEntry(null)}
+                data-testid="button-new-entry"
+              >
                 <Pencil className="h-4 w-4 mr-2" />
                 New entry
               </Button>
@@ -217,9 +239,9 @@ export default function Journal() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
                       {new Date(e.createdAt).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
                       })}
                     </span>
                     {e.sharedWithCoach && (
@@ -313,7 +335,7 @@ export default function Journal() {
               disabled={!canSave}
               data-testid="button-save-entry"
             >
-              {createMutation.isPending ? 'Saving…' : 'Save entry'}
+              {createMutation.isPending ? "Saving…" : "Save entry"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -325,7 +347,9 @@ export default function Journal() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Share this entry with your coach?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Share this entry with your coach?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Once shared, this entry can't be edited or unshared. Your coach
               will see it on their end.
@@ -335,7 +359,8 @@ export default function Journal() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (shareConfirmEntry) shareMutation.mutate(shareConfirmEntry.id);
+                if (shareConfirmEntry)
+                  shareMutation.mutate(shareConfirmEntry.id);
               }}
               data-testid="button-confirm-share"
             >

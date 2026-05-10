@@ -24,10 +24,7 @@ import { useCrisis } from "@/components/Crisis";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
-import {
-  getPushPreference,
-  setPushPreference,
-} from "@/lib/notifications";
+import { getPushPreference, setPushPreference } from "@/lib/notifications";
 
 interface NudgePrefs {
   enabled: boolean;
@@ -52,7 +49,8 @@ export default function ProfileScreen() {
   const [togglingBiometric, setTogglingBiometric] = React.useState(false);
 
   const biometricUnavailable =
-    biometric.support.kind !== "supported" && biometric.support.kind !== "unknown";
+    biometric.support.kind !== "supported" &&
+    biometric.support.kind !== "unknown";
   // Always allow turning the lock OFF, even if device support disappeared
   // (e.g. seeker removed Face ID enrollment) — otherwise an enabled pref
   // would be stuck on. Only turning ON requires working biometrics.
@@ -156,7 +154,8 @@ export default function ProfileScreen() {
       [21, 23],
     ];
     const currentIdx = presets.findIndex(
-      ([s, e]) => s === nudgePrefs.windowStartHour && e === nudgePrefs.windowEndHour,
+      ([s, e]) =>
+        s === nudgePrefs.windowStartHour && e === nudgePrefs.windowEndHour,
     );
     const next = presets[(currentIdx + 1) % presets.length];
     void saveNudgePrefs({ windowStartHour: next[0], windowEndHour: next[1] });
@@ -218,11 +217,12 @@ export default function ProfileScreen() {
             },
           ]}
         >
-          <View
-            style={[styles.bigAvatar, { backgroundColor: colors.primary }]}
-          >
+          <View style={[styles.bigAvatar, { backgroundColor: colors.primary }]}>
             <Text
-              style={[styles.bigAvatarText, { color: colors.primaryForeground }]}
+              style={[
+                styles.bigAvatarText,
+                { color: colors.primaryForeground },
+              ]}
             >
               {initial}
             </Text>
@@ -234,9 +234,7 @@ export default function ProfileScreen() {
             >
               {user?.email ?? "Welcome"}
             </Text>
-            <Text
-              style={[styles.role, { color: colors.mutedForeground }]}
-            >
+            <Text style={[styles.role, { color: colors.mutedForeground }]}>
               Seeker
             </Text>
           </View>
@@ -275,7 +273,9 @@ export default function ProfileScreen() {
             <Feather
               name="lock"
               size={16}
-              color={biometricUnavailable ? colors.mutedForeground : colors.primary}
+              color={
+                biometricUnavailable ? colors.mutedForeground : colors.primary
+              }
             />
           </View>
           <View style={{ flex: 1 }}>
@@ -298,7 +298,9 @@ export default function ProfileScreen() {
                   { opacity: pressed ? 0.6 : 1 },
                 ]}
               >
-                <Text style={[styles.inlineLinkText, { color: colors.primary }]}>
+                <Text
+                  style={[styles.inlineLinkText, { color: colors.primary }]}
+                >
                   Open device settings
                 </Text>
               </Pressable>
@@ -448,16 +450,12 @@ export default function ProfileScreen() {
           <Text style={[styles.aboutTitle, { color: colors.foreground }]}>
             Haven is your safe space
           </Text>
-          <Text
-            style={[styles.aboutBody, { color: colors.mutedForeground }]}
-          >
-            Conversations are guided by your coach's AI twin, with safety
-            checks on every message. You're not alone in this — help is one
-            tap away on every screen.
+          <Text style={[styles.aboutBody, { color: colors.mutedForeground }]}>
+            Conversations are guided by your coach's AI twin, with safety checks
+            on every message. You're not alone in this — help is one tap away on
+            every screen.
           </Text>
-          <Text
-            style={[styles.versionText, { color: colors.mutedForeground }]}
-          >
+          <Text style={[styles.versionText, { color: colors.mutedForeground }]}>
             Haven Mobile · v1.0.0
             {Platform.OS === "web" ? " (web preview)" : ""}
           </Text>
@@ -483,9 +481,7 @@ export default function ProfileScreen() {
           ) : (
             <>
               <Feather name="log-out" size={16} color={colors.crisis} />
-              <Text
-                style={[styles.signOutLabel, { color: colors.crisis }]}
-              >
+              <Text style={[styles.signOutLabel, { color: colors.crisis }]}>
                 Sign out
               </Text>
             </>
@@ -540,7 +536,9 @@ function ToggleRow({
         },
       ]}
     >
-      <View style={[styles.rowIcon, { backgroundColor: colors.gradientHeroMid }]}>
+      <View
+        style={[styles.rowIcon, { backgroundColor: colors.gradientHeroMid }]}
+      >
         <Feather name={icon} size={16} color={colors.primary} />
       </View>
       <View style={{ flex: 1 }}>
@@ -608,7 +606,11 @@ function Row({
         ) : null}
       </View>
       {!disabled && onPress ? (
-        <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        <Feather
+          name="chevron-right"
+          size={18}
+          color={colors.mutedForeground}
+        />
       ) : null}
     </Pressable>
   );

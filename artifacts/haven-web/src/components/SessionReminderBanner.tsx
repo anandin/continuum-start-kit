@@ -52,7 +52,8 @@ export function SessionReminderBanner() {
     // confirm/cancel mutations invalidate this banner immediately
     // instead of waiting for the 60s poll.
     queryKey: ["scheduled-sessions", "me"],
-    queryFn: async () => (await apiRequest("GET", "/api/me/scheduled-sessions")).json(),
+    queryFn: async () =>
+      (await apiRequest("GET", "/api/me/scheduled-sessions")).json(),
     enabled: !!user,
     refetchInterval: 60_000,
   });
@@ -71,7 +72,9 @@ export function SessionReminderBanner() {
 
   const minutes = Math.max(
     1,
-    Math.round((new Date(imminent.confirmedAt).getTime() - Date.now()) / 60_000),
+    Math.round(
+      (new Date(imminent.confirmedAt).getTime() - Date.now()) / 60_000,
+    ),
   );
   // Always render in the *viewer's* current local zone, not the row
   // snapshot — the banner is for the person looking at the screen.
@@ -86,7 +89,9 @@ export function SessionReminderBanner() {
       <div className="container mx-auto max-w-7xl px-4 py-2 flex items-center gap-2 text-sm">
         <Clock className="h-4 w-4 shrink-0" />
         <span className="font-medium">{imminent.title}</span>
-        <span>starts in {minutes} min — {fmtTime(imminent.confirmedAt, tz)}</span>
+        <span>
+          starts in {minutes} min — {fmtTime(imminent.confirmedAt, tz)}
+        </span>
       </div>
     </div>
   );

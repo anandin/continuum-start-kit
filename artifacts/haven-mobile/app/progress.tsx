@@ -36,7 +36,11 @@ export default function ProgressScreen() {
 
   return (
     <LinearGradient
-      colors={[colors.gradientHeroStart, colors.gradientHeroMid, colors.gradientHeroEnd]}
+      colors={[
+        colors.gradientHeroStart,
+        colors.gradientHeroMid,
+        colors.gradientHeroEnd,
+      ]}
       style={{ flex: 1 }}
     >
       <View
@@ -101,11 +105,19 @@ export default function ProgressScreen() {
                 onPress={() => router.replace("/auth")}
                 style={({ pressed }) => [
                   styles.errorCta,
-                  { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.85 : 1,
+                  },
                 ]}
                 testID="progress-signin"
               >
-                <Text style={[styles.errorCtaLabel, { color: colors.primaryForeground }]}>
+                <Text
+                  style={[
+                    styles.errorCtaLabel,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
                   Sign in
                 </Text>
               </Pressable>
@@ -114,11 +126,19 @@ export default function ProgressScreen() {
                 onPress={() => void progressQ.refetch()}
                 style={({ pressed }) => [
                   styles.errorCta,
-                  { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.85 : 1,
+                  },
                 ]}
                 testID="progress-retry"
               >
-                <Text style={[styles.errorCtaLabel, { color: colors.primaryForeground }]}>
+                <Text
+                  style={[
+                    styles.errorCtaLabel,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
                   Try again
                 </Text>
               </Pressable>
@@ -178,7 +198,11 @@ export default function ProgressScreen() {
             >
               <View style={styles.trendHeader}>
                 <View style={styles.trendHeaderLeft}>
-                  <Feather name="trending-up" size={16} color={colors.primary} />
+                  <Feather
+                    name="trending-up"
+                    size={16}
+                    color={colors.primary}
+                  />
                   <Text
                     style={[styles.trendTitle, { color: colors.foreground }]}
                   >
@@ -186,10 +210,7 @@ export default function ProgressScreen() {
                   </Text>
                 </View>
                 <Text
-                  style={[
-                    styles.trendCount,
-                    { color: colors.mutedForeground },
-                  ]}
+                  style={[styles.trendCount, { color: colors.mutedForeground }]}
                 >
                   {snapshot.moodSeries.length} check-in
                   {snapshot.moodSeries.length === 1 ? "" : "s"}
@@ -275,7 +296,11 @@ function ProgressTile({
         >
           <Feather name={icon} size={14} color={colors.primary} />
         </View>
-        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+        <Feather
+          name="chevron-right"
+          size={16}
+          color={colors.mutedForeground}
+        />
       </View>
       <Text style={[styles.tileLabel, { color: colors.mutedForeground }]}>
         {label}
@@ -333,7 +358,11 @@ function StreakTile({ streak, colors, onPress }: StreakTileProps) {
         >
           <Feather name="zap" size={14} color={colors.primary} />
         </View>
-        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+        <Feather
+          name="chevron-right"
+          size={16}
+          color={colors.mutedForeground}
+        />
       </View>
       <Text style={[styles.tileLabel, { color: colors.mutedForeground }]}>
         Check-in streak
@@ -354,7 +383,10 @@ function StreakTile({ streak, colors, onPress }: StreakTileProps) {
             <View
               style={[
                 styles.pill,
-                { backgroundColor: pillColor.bg, borderColor: pillColor.border },
+                {
+                  backgroundColor: pillColor.bg,
+                  borderColor: pillColor.border,
+                },
               ]}
             >
               <Text style={[styles.pillText, { color: pillColor.fg }]}>
@@ -432,7 +464,9 @@ function MoodTrend({ entries }: TrendProps) {
   if (points.length === 0) {
     return (
       <View style={styles.trendEmpty}>
-        <Text style={[styles.trendEmptyText, { color: colors.mutedForeground }]}>
+        <Text
+          style={[styles.trendEmptyText, { color: colors.mutedForeground }]}
+        >
           Tap "Log mood" on the Home screen each day. Your trend will fill in
           over the next month.
         </Text>

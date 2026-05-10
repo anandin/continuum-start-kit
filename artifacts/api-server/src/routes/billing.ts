@@ -11,7 +11,12 @@ import {
   setEngagementDefaultPaymentMethod,
   retryPendingChargeForEngagement,
 } from "../services/billing";
-import { getStripe, stripeConfigured, stripePublishableKey, stripeWebhookSecret } from "../lib/stripe";
+import {
+  getStripe,
+  stripeConfigured,
+  stripePublishableKey,
+  stripeWebhookSecret,
+} from "../lib/stripe";
 import type { InsertPriceTier } from "@workspace/db/schema";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -21,7 +26,11 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-async function requireProvider(req: Request, res: Response, next: NextFunction): Promise<void> {
+async function requireProvider(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
   if (!req.isAuthenticated() || !req.user) {
     res.status(401).json({ error: "Authentication required" });
     return;
@@ -43,11 +52,20 @@ async function requireProvider(req: Request, res: Response, next: NextFunction):
 async function ensureEngagementParty(
   engagementId: string,
   userId: string,
-): Promise<{ ok: true; isProvider: boolean; engagementProviderId: string; seekerUserId: string } | { ok: false; status: number; error: string }> {
+): Promise<
+  | {
+      ok: true;
+      isProvider: boolean;
+      engagementProviderId: string;
+      seekerUserId: string;
+    }
+  | { ok: false; status: number; error: string }
+> {
   const eng = await storage.getEngagementById(engagementId);
   if (!eng) return { ok: false, status: 404, error: "Engagement not found" };
   if (eng.providerId === userId) {
-    if (!eng.seekerId) return { ok: false, status: 500, error: "Engagement missing seeker" };
+    if (!eng.seekerId)
+      return { ok: false, status: 500, error: "Engagement missing seeker" };
     const seeker = await storage.getSeekerById(eng.seekerId);
     if (!seeker) return { ok: false, status: 500, error: "Seeker not found" };
     return {
@@ -142,22 +160,28 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/billing/connect/onboard", requireProvider, async (req, res) => {
-    try {
-      if (!stripeConfigured()) {
-        return res.status(503).json({ error: "Billing is not configured on this server" });
+  app.post(
+    "/api/billing/connect/onboard",
+    requireProvider,
+    async (req, res) => {
+      try {
+        if (!stripeConfigured()) {
+          return res
+            .status(503)
+            .json({ error: "Billing is not configured on this server" });
+        }
+        const providerId = req.user!.id;
+        const result = await createOnboardingLink(providerId);
+        if (!result.ok) {
+          const code = result.error.kind === "stripe_error" ? 502 : 500;
+          return res.status(code).json({ error: result.error });
+        }
+        return res.json({ url: result.url });
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
       }
-      const providerId = req.user!.id;
-      const result = await createOnboardingLink(providerId);
-      if (!result.ok) {
-        const code = result.error.kind === "stripe_error" ? 502 : 500;
-        return res.status(code).json({ error: result.error });
-      }
-      return res.json({ url: result.url });
-    } catch (e: any) {
-      return res.status(500).json({ error: e.message });
-    }
-  });
+    },
+  );
 
   // ---------------- coach: tiers CRUD ----------------
   app.get("/api/billing/tiers", requireProvider, async (req, res) => {
@@ -193,7 +217,10 @@ export function registerBillingRoutes(app: Express): void {
       });
       return res.json({ tier });
     } catch (e: any) {
-      if (e?.issues) return res.status(400).json({ error: "Invalid input", issues: e.issues });
+      if (e?.issues)
+        return res
+          .status(400)
+          .json({ error: "Invalid input", issues: e.issues });
       return res.status(500).json({ error: e.message });
     }
   });
@@ -207,9 +234,12 @@ export function registerBillingRoutes(app: Express): void {
       const parsed = patchTierSchema.parse(req.body);
       const patch: Partial<InsertPriceTier> = {};
       if (parsed.label !== undefined) patch.label = parsed.label;
-      if (parsed.description !== undefined) patch.description = parsed.description ?? null;
-      if (parsed.amountCents !== undefined) patch.amountCents = parsed.amountCents;
-      if (parsed.billingCadence !== undefined) patch.billingCadence = parsed.billingCadence;
+      if (parsed.description !== undefined)
+        patch.description = parsed.description ?? null;
+      if (parsed.amountCents !== undefined)
+        patch.amountCents = parsed.amountCents;
+      if (parsed.billingCadence !== undefined)
+        patch.billingCadence = parsed.billingCadence;
       if (parsed.sortOrder !== undefined) patch.sortOrder = parsed.sortOrder;
       if (parsed.isActive !== undefined) {
         if (parsed.isActive === true) {
@@ -226,7 +256,10 @@ export function registerBillingRoutes(app: Express): void {
       const updated = await billingStorage.updateTier(tier.id, patch);
       return res.json({ tier: updated });
     } catch (e: any) {
-      if (e?.issues) return res.status(400).json({ error: "Invalid input", issues: e.issues });
+      if (e?.issues)
+        return res
+          .status(400)
+          .json({ error: "Invalid input", issues: e.issues });
       return res.status(500).json({ error: e.message });
     }
   });
@@ -240,7 +273,9 @@ export function registerBillingRoutes(app: Express): void {
       // Soft-delete: keep history rows valid by flipping isActive instead
       // of physical delete. Engagements still bound to the tier keep
       // their reference; coach can't re-pick this in the UI.
-      const updated = await billingStorage.updateTier(tier.id, { isActive: false });
+      const updated = await billingStorage.updateTier(tier.id, {
+        isActive: false,
+      });
       return res.json({ tier: updated });
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
@@ -250,8 +285,12 @@ export function registerBillingRoutes(app: Express): void {
   // ---------------- engagement billing: shared seeker + coach ----------------
   app.get("/api/engagements/:id/billing", requireAuth, async (req, res) => {
     try {
-      const party = await ensureEngagementParty(String(req.params.id), req.user!.id);
-      if (!party.ok) return res.status(party.status).json({ error: party.error });
+      const party = await ensureEngagementParty(
+        String(req.params.id),
+        req.user!.id,
+      );
+      if (!party.ok)
+        return res.status(party.status).json({ error: party.error });
       const summary = await buildBillingSummary(String(req.params.id));
       const tiers = await billingStorage.listTiersForProvider(
         party.engagementProviderId,
@@ -263,16 +302,26 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  app.get("/api/engagements/:id/billing/history", requireAuth, async (req, res) => {
-    try {
-      const party = await ensureEngagementParty(String(req.params.id), req.user!.id);
-      if (!party.ok) return res.status(party.status).json({ error: party.error });
-      const payments = await billingStorage.listPaymentsForEngagement(String(req.params.id));
-      return res.json({ payments });
-    } catch (e: any) {
-      return res.status(500).json({ error: e.message });
-    }
-  });
+  app.get(
+    "/api/engagements/:id/billing/history",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const party = await ensureEngagementParty(
+          String(req.params.id),
+          req.user!.id,
+        );
+        if (!party.ok)
+          return res.status(party.status).json({ error: party.error });
+        const payments = await billingStorage.listPaymentsForEngagement(
+          String(req.params.id),
+        );
+        return res.json({ payments });
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    },
+  );
 
   app.post(
     "/api/engagements/:id/billing/select-tier",
@@ -281,7 +330,8 @@ export function registerBillingRoutes(app: Express): void {
       try {
         const engagementId = String(req.params.id);
         const party = await ensureEngagementParty(engagementId, req.user!.id);
-        if (!party.ok) return res.status(party.status).json({ error: party.error });
+        if (!party.ok)
+          return res.status(party.status).json({ error: party.error });
         // Only the seeker chooses their own tier — coaches can't pick
         // for them (would defeat the no-judgment sliding-scale point).
         if (party.isProvider) {
@@ -291,18 +341,24 @@ export function registerBillingRoutes(app: Express): void {
         }
         const parsed = selectTierSchema.parse(req.body);
         const tier = await billingStorage.getTierById(parsed.tierId);
-        if (!tier || tier.providerId !== party.engagementProviderId || !tier.isActive) {
+        if (
+          !tier ||
+          tier.providerId !== party.engagementProviderId ||
+          !tier.isActive
+        ) {
           return res.status(404).json({ error: "Tier not available" });
         }
         // Monthly tiers require Stripe — refuse cleanly otherwise so we
         // never persist a paid tier we can't actually bill.
         if (tier.billingCadence === "monthly" && !stripeConfigured()) {
           return res.status(503).json({
-            error: "Billing isn't configured on the server. Pick a per-session tier or contact support.",
+            error:
+              "Billing isn't configured on the server. Pick a per-session tier or contact support.",
           });
         }
 
-        const existing = await billingStorage.getEngagementBilling(engagementId);
+        const existing =
+          await billingStorage.getEngagementBilling(engagementId);
 
         // Switching AWAY from a monthly tier: cancel the existing sub
         // first so the customer isn't billed monthly + per-session.
@@ -312,7 +368,8 @@ export function registerBillingRoutes(app: Express): void {
         ) {
           try {
             const stripe = getStripe();
-            if (stripe) await stripe.subscriptions.cancel(existing.stripeSubscriptionId);
+            if (stripe)
+              await stripe.subscriptions.cancel(existing.stripeSubscriptionId);
           } catch (err: any) {
             req.log.warn(
               { err: err?.message },
@@ -340,7 +397,10 @@ export function registerBillingRoutes(app: Express): void {
           const summary = await buildBillingSummary(engagementId);
           return res.json({
             ...summary,
-            subscription: { id: sub.subscriptionId, clientSecret: sub.clientSecret },
+            subscription: {
+              id: sub.subscriptionId,
+              clientSecret: sub.clientSecret,
+            },
           });
         }
 
@@ -355,7 +415,10 @@ export function registerBillingRoutes(app: Express): void {
         const summary = await buildBillingSummary(engagementId);
         return res.json(summary);
       } catch (e: any) {
-        if (e?.issues) return res.status(400).json({ error: "Invalid input", issues: e.issues });
+        if (e?.issues)
+          return res
+            .status(400)
+            .json({ error: "Invalid input", issues: e.issues });
         return res.status(500).json({ error: e.message });
       }
     },
@@ -382,9 +445,12 @@ export function registerBillingRoutes(app: Express): void {
       try {
         const engagementId = String(req.params.id);
         const party = await ensureEngagementParty(engagementId, req.user!.id);
-        if (!party.ok) return res.status(party.status).json({ error: party.error });
+        if (!party.ok)
+          return res.status(party.status).json({ error: party.error });
         if (party.isProvider) {
-          return res.status(403).json({ error: "Only the seeker can manage payment methods" });
+          return res
+            .status(403)
+            .json({ error: "Only the seeker can manage payment methods" });
         }
         if (!stripeConfigured()) {
           return res.status(503).json({ error: "Billing not configured" });
@@ -415,9 +481,12 @@ export function registerBillingRoutes(app: Express): void {
       try {
         const engagementId = String(req.params.id);
         const party = await ensureEngagementParty(engagementId, req.user!.id);
-        if (!party.ok) return res.status(party.status).json({ error: party.error });
+        if (!party.ok)
+          return res.status(party.status).json({ error: party.error });
         if (party.isProvider) {
-          return res.status(403).json({ error: "Only the seeker can manage payment methods" });
+          return res
+            .status(403)
+            .json({ error: "Only the seeker can manage payment methods" });
         }
         const schema = z.object({ paymentMethodId: z.string().min(3) });
         const parsed = schema.parse(req.body);
@@ -432,7 +501,10 @@ export function registerBillingRoutes(app: Express): void {
         const summary = await buildBillingSummary(engagementId);
         return res.json({ ...summary, retry });
       } catch (e: any) {
-        if (e?.issues) return res.status(400).json({ error: "Invalid input", issues: e.issues });
+        if (e?.issues)
+          return res
+            .status(400)
+            .json({ error: "Invalid input", issues: e.issues });
         return res.status(500).json({ error: e.message });
       }
     },

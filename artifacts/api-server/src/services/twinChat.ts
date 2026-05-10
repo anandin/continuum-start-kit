@@ -58,11 +58,15 @@ function buildFailClosedTemplate(region: SafetyRegion): string {
   return `${intro}\n\n${crisisTemplateFor({ region })}`;
 }
 
-export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult> {
+export async function runTwinTurn(
+  input: TwinTurnInput,
+): Promise<TwinTurnResult> {
   const region = await resolveRegion(input.userId);
   // Pin agent_version once so every safety_event for this turn references
   // the exact persona version the model was prompted with.
-  const activeVersion = await getActiveAgentVersionForProvider(input.providerId).catch(() => undefined);
+  const activeVersion = await getActiveAgentVersionForProvider(
+    input.providerId,
+  ).catch(() => undefined);
   const ctx = {
     sessionId: input.sessionId ?? undefined,
     engagementId: input.engagementId ?? undefined,
@@ -108,7 +112,12 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
   }
 
   if (!llmConfigured()) {
-    await logSystemFailureEvent(ctx, "llm_not_configured", "input", input.userMessage);
+    await logSystemFailureEvent(
+      ctx,
+      "llm_not_configured",
+      "input",
+      input.userMessage,
+    );
     return {
       reply: NO_LLM_TEMPLATE,
       templated: true,
@@ -129,11 +138,16 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
       engagementId: input.engagementId ?? null,
     }),
     input.engagementId
-      ? buildMemoryContext({ engagementId: input.engagementId, query: input.userMessage })
+      ? buildMemoryContext({
+          engagementId: input.engagementId,
+          query: input.userMessage,
+        })
       : Promise.resolve({ block: "", entryIds: [] as string[] }),
   ]);
 
-  const composed = [persona.systemPrompt, memory.block].filter(Boolean).join("\n\n");
+  const composed = [persona.systemPrompt, memory.block]
+    .filter(Boolean)
+    .join("\n\n");
   const finalSystem = withConstitution(composed);
 
   const aiMessages = [
@@ -163,7 +177,10 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
         "output",
         input.userMessage,
         undefined,
-        { model: persona.selectedModel, error: String((err as Error)?.message ?? err) },
+        {
+          model: persona.selectedModel,
+          error: String((err as Error)?.message ?? err),
+        },
       );
       return {
         kind: "safe",
@@ -179,7 +196,9 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
         },
       };
     }
-    const cleaned = raw.trim() || "Could you tell me a little more about what's on your mind?";
+    const cleaned =
+      raw.trim() ||
+      "Could you tell me a little more about what's on your mind?";
 
     // L1 output gate (fail-closed)
     let outVerdict;
@@ -211,7 +230,8 @@ export async function runTwinTurn(input: TwinTurnInput): Promise<TwinTurnResult>
       return {
         kind: "safe",
         result: {
-          reply: outVerdict.templatedResponse ?? buildFailClosedTemplate(region),
+          reply:
+            outVerdict.templatedResponse ?? buildFailClosedTemplate(region),
           templated: true,
           decision: outVerdict.decision,
           severity: outVerdict.severity,

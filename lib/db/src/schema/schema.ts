@@ -1,5 +1,21 @@
 import { sql } from "drizzle-orm";
-import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean, varchar, json, index, integer, customType, real, date, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  jsonb,
+  pgEnum,
+  boolean,
+  varchar,
+  json,
+  index,
+  integer,
+  customType,
+  real,
+  date,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,18 +33,61 @@ const vector = customType<{ data: number[]; driverData: string }>({
 });
 
 export const appRoleEnum = pgEnum("app_role", ["provider", "seeker"]);
-export const engagementStatusEnum = pgEnum("engagement_status", ["active", "paused", "completed"]);
+export const engagementStatusEnum = pgEnum("engagement_status", [
+  "active",
+  "paused",
+  "completed",
+]);
 export const msgRoleEnum = pgEnum("msg_role", ["seeker", "agent", "provider"]);
 export const sessionStatusEnum = pgEnum("session_status", ["active", "ended"]);
-export const goalStatusEnum = pgEnum("goal_status", ["active", "completed", "paused"]);
-export const goalProgressStatusEnum = pgEnum("goal_progress_status", ["pending", "confirmed"]);
-export const resourceTypeEnum = pgEnum("resource_type", ["link", "document", "exercise"]);
-export const onboardingChatStatusEnum = pgEnum("onboarding_chat_status", ["in_progress", "completed"]);
-export const safetyDecisionEnum = pgEnum("safety_decision", ["allow", "soften", "block_with_template", "escalate", "redact"]);
-export const safetySeverityEnum = pgEnum("safety_severity", ["info", "low", "medium", "high", "critical"]);
-export const calibrationStatusEnum = pgEnum("calibration_status", ["in_progress", "completed", "abandoned"]);
-export const reviewLabelEnum = pgEnum("review_label", ["this_is_me", "not_me", "never_say_this", "needs_edit"]);
-export const personaExampleSourceEnum = pgEnum("persona_example_source", ["calibration", "review_queue", "manual"]);
+export const goalStatusEnum = pgEnum("goal_status", [
+  "active",
+  "completed",
+  "paused",
+]);
+export const goalProgressStatusEnum = pgEnum("goal_progress_status", [
+  "pending",
+  "confirmed",
+]);
+export const resourceTypeEnum = pgEnum("resource_type", [
+  "link",
+  "document",
+  "exercise",
+]);
+export const onboardingChatStatusEnum = pgEnum("onboarding_chat_status", [
+  "in_progress",
+  "completed",
+]);
+export const safetyDecisionEnum = pgEnum("safety_decision", [
+  "allow",
+  "soften",
+  "block_with_template",
+  "escalate",
+  "redact",
+]);
+export const safetySeverityEnum = pgEnum("safety_severity", [
+  "info",
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+export const calibrationStatusEnum = pgEnum("calibration_status", [
+  "in_progress",
+  "completed",
+  "abandoned",
+]);
+export const reviewLabelEnum = pgEnum("review_label", [
+  "this_is_me",
+  "not_me",
+  "never_say_this",
+  "needs_edit",
+]);
+export const personaExampleSourceEnum = pgEnum("persona_example_source", [
+  "calibration",
+  "review_queue",
+  "manual",
+]);
 export const attachmentKindEnum = pgEnum("attachment_kind", ["image", "audio"]);
 
 export const users = pgTable("users", {
@@ -49,21 +108,28 @@ export const users = pgTable("users", {
 
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id).notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull(),
   email: text("email").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const userRoles = pgTable("user_roles", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id).notNull().unique(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull()
+    .unique(),
   role: appRoleEnum("role").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const seekers = pgTable("seekers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  ownerId: uuid("owner_id").references(() => users.id).notNull(),
+  ownerId: uuid("owner_id")
+    .references(() => users.id)
+    .notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -82,7 +148,9 @@ export const providerConfigs = pgTable("provider_configs", {
 
 export const providerAgentConfigs = pgTable("provider_agent_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   coreIdentity: text("core_identity"),
   guidingPrinciples: text("guiding_principles"),
   tone: text("tone"),
@@ -168,13 +236,19 @@ export const messageAttachments = pgTable("message_attachments", {
 export const attachmentGrants = pgTable("attachment_grants", {
   id: uuid("id").primaryKey().defaultRandom(),
   objectPath: text("object_path").notNull().unique(),
-  userId: uuid("user_id").references(() => users.id).notNull(),
-  sessionId: uuid("session_id").references(() => sessions.id).notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull(),
+  sessionId: uuid("session_id")
+    .references(() => sessions.id)
+    .notNull(),
   kind: attachmentKindEnum("kind").notNull(),
   mime: text("mime").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   consumedAt: timestamp("consumed_at"),
-  messageId: uuid("message_id").references(() => messages.id, { onDelete: "set null" }),
+  messageId: uuid("message_id").references(() => messages.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -200,9 +274,13 @@ export const progressIndicators = pgTable("progress_indicators", {
 
 export const clientNotes = pgTable("client_notes", {
   id: uuid("id").primaryKey().defaultRandom(),
-  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  engagementId: uuid("engagement_id")
+    .references(() => engagements.id)
+    .notNull(),
   sessionId: uuid("session_id").references(() => sessions.id),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   content: text("content").notNull(),
   isPrivate: boolean("is_private").default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -211,8 +289,12 @@ export const clientNotes = pgTable("client_notes", {
 
 export const goals = pgTable("goals", {
   id: uuid("id").primaryKey().defaultRandom(),
-  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  engagementId: uuid("engagement_id")
+    .references(() => engagements.id)
+    .notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   title: text("title").notNull(),
   description: text("description"),
   status: goalStatusEnum("status").default("active"),
@@ -223,9 +305,15 @@ export const goals = pgTable("goals", {
 
 export const goalProgress = pgTable("goal_progress", {
   id: uuid("id").primaryKey().defaultRandom(),
-  goalId: uuid("goal_id").references(() => goals.id).notNull(),
-  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
-  seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+  goalId: uuid("goal_id")
+    .references(() => goals.id)
+    .notNull(),
+  engagementId: uuid("engagement_id")
+    .references(() => engagements.id)
+    .notNull(),
+  seekerUserId: uuid("seeker_user_id")
+    .references(() => users.id)
+    .notNull(),
   note: text("note"),
   status: goalProgressStatusEnum("status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -235,7 +323,9 @@ export const goalProgress = pgTable("goal_progress", {
 
 export const intakeForms = pgTable("intake_forms", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   title: text("title").notNull(),
   description: text("description"),
   questions: jsonb("questions").notNull(),
@@ -245,16 +335,24 @@ export const intakeForms = pgTable("intake_forms", {
 
 export const intakeResponses = pgTable("intake_responses", {
   id: uuid("id").primaryKey().defaultRandom(),
-  intakeFormId: uuid("intake_form_id").references(() => intakeForms.id).notNull(),
-  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
-  seekerId: uuid("seeker_id").references(() => seekers.id).notNull(),
+  intakeFormId: uuid("intake_form_id")
+    .references(() => intakeForms.id)
+    .notNull(),
+  engagementId: uuid("engagement_id")
+    .references(() => engagements.id)
+    .notNull(),
+  seekerId: uuid("seeker_id")
+    .references(() => seekers.id)
+    .notNull(),
   answers: jsonb("answers").notNull(),
   completedAt: timestamp("completed_at").defaultNow(),
 });
 
 export const resources = pgTable("resources", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   title: text("title").notNull(),
   description: text("description"),
   type: resourceTypeEnum("type").notNull(),
@@ -265,15 +363,21 @@ export const resources = pgTable("resources", {
 
 export const resourceAssignments = pgTable("resource_assignments", {
   id: uuid("id").primaryKey().defaultRandom(),
-  resourceId: uuid("resource_id").references(() => resources.id).notNull(),
-  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  resourceId: uuid("resource_id")
+    .references(() => resources.id)
+    .notNull(),
+  engagementId: uuid("engagement_id")
+    .references(() => engagements.id)
+    .notNull(),
   assignedAt: timestamp("assigned_at").defaultNow(),
   viewedAt: timestamp("viewed_at"),
 });
 
 export const alerts = pgTable("alerts", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   engagementId: uuid("engagement_id").references(() => engagements.id),
   type: text("type").notNull(),
   message: text("message").notNull(),
@@ -283,7 +387,9 @@ export const alerts = pgTable("alerts", {
 
 export const providerOnboardingChats = pgTable("provider_onboarding_chats", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   messages: jsonb("messages").notNull().default([]),
   status: onboardingChatStatusEnum("status").default("in_progress"),
   generatedConfig: jsonb("generated_config"),
@@ -299,14 +405,20 @@ export const coachInboxDismissals = pgTable(
   "coach_inbox_dismissals",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    providerId: uuid("provider_id").references(() => users.id).notNull(),
-    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+    providerId: uuid("provider_id")
+      .references(() => users.id)
+      .notNull(),
+    engagementId: uuid("engagement_id")
+      .references(() => engagements.id)
+      .notNull(),
     dismissedAt: timestamp("dismissed_at").defaultNow(),
     expiresAt: timestamp("expires_at").notNull(),
   },
   (table) => ({
-    byProviderExpires: index("idx_coach_inbox_dismissals_provider_expires")
-      .on(table.providerId, table.expiresAt),
+    byProviderExpires: index("idx_coach_inbox_dismissals_provider_expires").on(
+      table.providerId,
+      table.expiresAt,
+    ),
   }),
 );
 
@@ -317,7 +429,9 @@ export const pushTokens = pgTable(
   "push_tokens",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id").references(() => users.id).notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id)
+      .notNull(),
     token: text("token").notNull().unique(),
     platform: text("platform"),
     enabled: boolean("enabled").default(true).notNull(),
@@ -336,7 +450,10 @@ export const userSessions = pgTable(
   {
     sid: varchar("sid").primaryKey(),
     sess: json("sess").notNull(),
-    expire: timestamp("expire", { precision: 6, withTimezone: false }).notNull(),
+    expire: timestamp("expire", {
+      precision: 6,
+      withTimezone: false,
+    }).notNull(),
   },
   (table) => ({
     expireIdx: index("IDX_user_sessions_expire").on(table.expire),
@@ -357,7 +474,9 @@ export const redactions = pgTable("redactions", {
   id: uuid("id").primaryKey().defaultRandom(),
   scope: text("scope").notNull(), // "message" | "memory"
   targetId: uuid("target_id").notNull(),
-  seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+  seekerUserId: uuid("seeker_user_id")
+    .references(() => users.id)
+    .notNull(),
   engagementId: uuid("engagement_id").references(() => engagements.id),
   sessionId: uuid("session_id").references(() => sessions.id),
   // Optional: cascaded child redactions get a back-reference so a message
@@ -397,7 +516,9 @@ export const safetyEvents = pgTable("safety_events", {
 // L2 — version-pinned compiled persona for reproducibility
 export const agentVersions = pgTable("agent_versions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   version: integer("version").notNull(),
   compiledSystemPrompt: text("compiled_system_prompt").notNull(),
   agentConfigSnapshot: jsonb("agent_config_snapshot").notNull(),
@@ -411,25 +532,33 @@ export const agentVersions = pgTable("agent_versions", {
 // captures how the coach wants the AI to handle a recurring situation
 // (intake, check-in, harm-reduction, celebration, etc.). One playbook per
 // engagement (or the provider's default) drives persona compilation.
-export const playbooks = pgTable("playbooks", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
-  title: text("title").notNull(),
-  description: text("description"),
-  // Exactly one playbook per provider may be the default; enforced by
-  // `setDefaultPlaybook` clearing the previous default in a transaction.
-  isDefault: boolean("is_default").default(false),
-  isArchived: boolean("is_archived").default(false),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-}, (t) => ({
-  providerIdx: index("playbooks_provider_idx").on(t.providerId),
-}));
+export const playbooks = pgTable(
+  "playbooks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    providerId: uuid("provider_id")
+      .references(() => users.id)
+      .notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    // Exactly one playbook per provider may be the default; enforced by
+    // `setDefaultPlaybook` clearing the previous default in a transaction.
+    isDefault: boolean("is_default").default(false),
+    isArchived: boolean("is_archived").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    providerIdx: index("playbooks_provider_idx").on(t.providerId),
+  }),
+);
 
 // L2 — therapist-approved exemplars (and negative labels) used for retrieval
 export const personaExamples = pgTable("persona_examples", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   // Which playbook this example belongs to. Nullable so legacy rows (created
   // before playbooks existed) keep working — they're retrieved as the
   // "unscoped" pool when no playbook is assigned.
@@ -439,7 +568,7 @@ export const personaExamples = pgTable("persona_examples", {
   // positive examples ("this_is_me", "needs_edit") from negatives ("not_me",
   // "never_say_this"). Calibration-sourced rows leave this null.
   label: reviewLabelEnum("label"),
-  scenario: text("scenario").notNull(),       // synthetic client utterance / context
+  scenario: text("scenario").notNull(), // synthetic client utterance / context
   // Nullable: negative-label rows (not_me / never_say_this) carry no approved
   // response — only a rejected one and the therapist's signal.
   approvedResponse: text("approved_response"),
@@ -457,7 +586,9 @@ export const personaExamples = pgTable("persona_examples", {
 // L2 — calibration sessions (synthetic client conversation)
 export const calibrationSessions = pgTable("calibration_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  providerId: uuid("provider_id").references(() => users.id).notNull(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull(),
   scenarioName: text("scenario_name").notNull(),
   syntheticClientProfile: jsonb("synthetic_client_profile").notNull(),
   transcript: jsonb("transcript").notNull().default([]), // [{role, content, draft, approvedEdit, label}]
@@ -472,7 +603,9 @@ export const moodEntries = pgTable(
   "mood_entries",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    seekerId: uuid("seeker_id").references(() => seekers.id).notNull(),
+    seekerId: uuid("seeker_id")
+      .references(() => seekers.id)
+      .notNull(),
     engagementId: uuid("engagement_id").references(() => engagements.id),
     day: date("day").notNull(),
     score: integer("score").notNull(),
@@ -520,7 +653,9 @@ export const journalEntries = pgTable(
   "journal_entries",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    seekerId: uuid("seeker_id").references(() => seekers.id).notNull(),
+    seekerId: uuid("seeker_id")
+      .references(() => seekers.id)
+      .notNull(),
     engagementId: uuid("engagement_id").references(() => engagements.id),
     promptId: uuid("prompt_id").references(() => journalPrompts.id),
     body: text("body").notNull(),
@@ -538,7 +673,9 @@ export const journalEntries = pgTable(
 // L3 — per-client memory entries with optional embedding
 export const clientMemory = pgTable("client_memory", {
   id: uuid("id").primaryKey().defaultRandom(),
-  engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+  engagementId: uuid("engagement_id")
+    .references(() => engagements.id)
+    .notNull(),
   sessionId: uuid("session_id").references(() => sessions.id),
   // Every seeker message that contributed to this memory entry. Stored as
   // a jsonb array of message UUIDs so a single redaction can cascade to
@@ -564,7 +701,9 @@ export const nudges = pgTable(
   "nudges",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+    seekerUserId: uuid("seeker_user_id")
+      .references(() => users.id)
+      .notNull(),
     engagementId: uuid("engagement_id").references(() => engagements.id),
     sourceSessionId: uuid("source_session_id").references(() => sessions.id),
     sourceGoalId: uuid("source_goal_id").references(() => goals.id),
@@ -580,7 +719,10 @@ export const nudges = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
-    uniqSeekerDay: uniqueIndex("uniq_nudges_seeker_day").on(t.seekerUserId, t.day),
+    uniqSeekerDay: uniqueIndex("uniq_nudges_seeker_day").on(
+      t.seekerUserId,
+      t.day,
+    ),
     seekerIdx: index("nudges_seeker_idx").on(t.seekerUserId),
   }),
 );
@@ -592,7 +734,10 @@ export const nudges = pgTable(
 // Defaults: enabled=true, 7:00-11:00 local time (morning).
 export const nudgePrefs = pgTable("nudge_prefs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id).notNull().unique(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull()
+    .unique(),
   enabled: boolean("enabled").notNull().default(true),
   windowStartHour: integer("window_start_hour").notNull().default(7),
   windowEndHour: integer("window_end_hour").notNull().default(11),
@@ -610,8 +755,12 @@ export const sessionBriefs = pgTable(
   "session_briefs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
-    providerId: uuid("provider_id").references(() => users.id).notNull(),
+    engagementId: uuid("engagement_id")
+      .references(() => engagements.id)
+      .notNull(),
+    providerId: uuid("provider_id")
+      .references(() => users.id)
+      .notNull(),
     sections: jsonb("sections").notNull().default({}),
     status: text("status").notNull().default("ready"),
     safetyDecision: text("safety_decision"),
@@ -643,9 +792,15 @@ export const scheduledSessions = pgTable(
   "scheduled_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
-    providerId: uuid("provider_id").references(() => users.id).notNull(),
-    seekerUserId: uuid("seeker_user_id").references(() => users.id).notNull(),
+    engagementId: uuid("engagement_id")
+      .references(() => engagements.id)
+      .notNull(),
+    providerId: uuid("provider_id")
+      .references(() => users.id)
+      .notNull(),
+    seekerUserId: uuid("seeker_user_id")
+      .references(() => users.id)
+      .notNull(),
     status: text("status").notNull().default("proposed"),
     // Array of ISO-8601 UTC timestamp strings, length 1..3.
     proposedSlots: jsonb("proposed_slots").notNull().default([]),
@@ -668,12 +823,16 @@ export const scheduledSessions = pgTable(
     // Stamped when the 1-hour-before push reminder has been delivered to
     // the seeker, so the lazy reminder check only fires once.
     reminderSentAt: timestamp("reminder_sent_at"),
-    createdBy: uuid("created_by").references(() => users.id).notNull(),
+    createdBy: uuid("created_by")
+      .references(() => users.id)
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (t) => ({
-    engagementIdx: index("scheduled_sessions_engagement_idx").on(t.engagementId),
+    engagementIdx: index("scheduled_sessions_engagement_idx").on(
+      t.engagementId,
+    ),
     seekerIdx: index("scheduled_sessions_seeker_idx").on(t.seekerUserId),
     confirmedIdx: index("scheduled_sessions_confirmed_idx").on(t.confirmedAt),
   }),
@@ -684,19 +843,19 @@ export const scheduledSessions = pgTable(
 // account status fields so the UI can show a clear "needs more info"
 // state without round-tripping to Stripe on every render. Updated by
 // the account.updated webhook.
-export const providerBilling = pgTable(
-  "provider_billing",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    providerId: uuid("provider_id").references(() => users.id).notNull().unique(),
-    stripeAccountId: text("stripe_account_id"),
-    chargesEnabled: boolean("charges_enabled").notNull().default(false),
-    payoutsEnabled: boolean("payouts_enabled").notNull().default(false),
-    detailsSubmitted: boolean("details_submitted").notNull().default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-);
+export const providerBilling = pgTable("provider_billing", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id")
+    .references(() => users.id)
+    .notNull()
+    .unique(),
+  stripeAccountId: text("stripe_account_id"),
+  chargesEnabled: boolean("charges_enabled").notNull().default(false),
+  payoutsEnabled: boolean("payouts_enabled").notNull().default(false),
+  detailsSubmitted: boolean("details_submitted").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 // Coach-defined sliding-scale tiers. Each tier is a (label, amount,
 // cadence) bundle the seeker picks from. cadence is either
@@ -709,7 +868,9 @@ export const priceTiers = pgTable(
   "price_tiers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    providerId: uuid("provider_id").references(() => users.id).notNull(),
+    providerId: uuid("provider_id")
+      .references(() => users.id)
+      .notNull(),
     label: text("label").notNull(),
     description: text("description"),
     amountCents: integer("amount_cents").notNull(),
@@ -738,7 +899,10 @@ export const engagementBilling = pgTable(
   "engagement_billing",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    engagementId: uuid("engagement_id").references(() => engagements.id).notNull().unique(),
+    engagementId: uuid("engagement_id")
+      .references(() => engagements.id)
+      .notNull()
+      .unique(),
     tierId: uuid("tier_id").references(() => priceTiers.id),
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubscriptionId: text("stripe_subscription_id"),
@@ -752,7 +916,9 @@ export const engagementBilling = pgTable(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (t) => ({
-    engagementIdx: index("engagement_billing_engagement_idx").on(t.engagementId),
+    engagementIdx: index("engagement_billing_engagement_idx").on(
+      t.engagementId,
+    ),
   }),
 );
 
@@ -763,7 +929,9 @@ export const billingPayments = pgTable(
   "billing_payments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    engagementId: uuid("engagement_id").references(() => engagements.id).notNull(),
+    engagementId: uuid("engagement_id")
+      .references(() => engagements.id)
+      .notNull(),
     tierId: uuid("tier_id").references(() => priceTiers.id),
     stripePaymentIntentId: text("stripe_payment_intent_id"),
     stripeInvoiceId: text("stripe_invoice_id"),
@@ -771,100 +939,236 @@ export const billingPayments = pgTable(
     currency: text("currency").notNull().default("usd"),
     status: text("status").notNull(), // "succeeded" | "failed" | "pending"
     failureMessage: text("failure_message"),
-    scheduledSessionId: uuid("scheduled_session_id").references(() => scheduledSessions.id),
+    scheduledSessionId: uuid("scheduled_session_id").references(
+      () => scheduledSessions.id,
+    ),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
     engagementIdx: index("billing_payments_engagement_idx").on(t.engagementId),
     createdIdx: index("billing_payments_created_idx").on(t.createdAt),
     // Postgres treats multiple NULLs as distinct, so unlinked rows still insert.
-    piUnique: uniqueIndex("billing_payments_pi_unique").on(t.stripePaymentIntentId),
+    piUnique: uniqueIndex("billing_payments_pi_unique").on(
+      t.stripePaymentIntentId,
+    ),
     invUnique: uniqueIndex("billing_payments_inv_unique").on(t.stripeInvoiceId),
   }),
 );
 
 // Webhook idempotency: event ids are recorded here after the handler
 // succeeds so duplicate deliveries from Stripe become no-ops.
-export const billingProcessedEvents = pgTable(
-  "billing_processed_events",
-  {
-    eventId: text("event_id").primaryKey(),
-    eventType: text("event_type").notNull(),
-    receivedAt: timestamp("received_at").defaultNow().notNull(),
-  },
-);
+export const billingProcessedEvents = pgTable("billing_processed_events", {
+  eventId: text("event_id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+});
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
-export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, createdAt: true });
-export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
-export const insertSeekerSchema = createInsertSchema(seekers).omit({ id: true, createdAt: true });
-export const insertProviderConfigSchema = createInsertSchema(providerConfigs).omit({ id: true, createdAt: true });
-export const insertProviderAgentConfigSchema = createInsertSchema(providerAgentConfigs).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertEngagementSchema = createInsertSchema(engagements).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertSessionSchema = createInsertSchema(sessions).omit({ id: true, startedAt: true, endedAt: true });
-export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true, redactedAt: true, redactedBy: true });
-export const insertSummarySchema = createInsertSchema(summaries).omit({ id: true, createdAt: true });
-export const insertProgressIndicatorSchema = createInsertSchema(progressIndicators).omit({ id: true, createdAt: true });
-export const insertClientNoteSchema = createInsertSchema(clientNotes).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertGoalSchema = createInsertSchema(goals).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertGoalProgressSchema = createInsertSchema(goalProgress).omit({ id: true, createdAt: true, confirmedAt: true, confirmedBy: true });
-export const insertIntakeFormSchema = createInsertSchema(intakeForms).omit({ id: true, createdAt: true });
-export const insertIntakeResponseSchema = createInsertSchema(intakeResponses).omit({ id: true, completedAt: true });
-export const insertResourceSchema = createInsertSchema(resources).omit({ id: true, createdAt: true });
-export const insertResourceAssignmentSchema = createInsertSchema(resourceAssignments).omit({ id: true, assignedAt: true });
-export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
-export const insertProviderOnboardingChatSchema = createInsertSchema(providerOnboardingChats).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertPushTokenSchema = createInsertSchema(pushTokens).omit({ id: true, createdAt: true, updatedAt: true, lastSeenAt: true });
-export const insertSafetyEventSchema = createInsertSchema(safetyEvents).omit({ id: true, createdAt: true });
-export const insertAgentVersionSchema = createInsertSchema(agentVersions).omit({ id: true, createdAt: true });
-export const insertPersonaExampleSchema = createInsertSchema(personaExamples).omit({ id: true, createdAt: true, embedding: true });
-export const insertCalibrationSessionSchema = createInsertSchema(calibrationSessions).omit({ id: true, createdAt: true, completedAt: true });
-export const insertClientMemorySchema = createInsertSchema(clientMemory).omit({ id: true, createdAt: true, redactedAt: true, redactedBy: true, embedding: true });
-export const insertRedactionSchema = createInsertSchema(redactions).omit({ id: true, createdAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertProfileSchema = createInsertSchema(profiles).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertUserRoleSchema = createInsertSchema(userRoles).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertSeekerSchema = createInsertSchema(seekers).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertProviderConfigSchema = createInsertSchema(
+  providerConfigs,
+).omit({ id: true, createdAt: true });
+export const insertProviderAgentConfigSchema = createInsertSchema(
+  providerAgentConfigs,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEngagementSchema = createInsertSchema(engagements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertSessionSchema = createInsertSchema(sessions).omit({
+  id: true,
+  startedAt: true,
+  endedAt: true,
+});
+export const insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  createdAt: true,
+  redactedAt: true,
+  redactedBy: true,
+});
+export const insertSummarySchema = createInsertSchema(summaries).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertProgressIndicatorSchema = createInsertSchema(
+  progressIndicators,
+).omit({ id: true, createdAt: true });
+export const insertClientNoteSchema = createInsertSchema(clientNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertGoalSchema = createInsertSchema(goals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertGoalProgressSchema = createInsertSchema(goalProgress).omit({
+  id: true,
+  createdAt: true,
+  confirmedAt: true,
+  confirmedBy: true,
+});
+export const insertIntakeFormSchema = createInsertSchema(intakeForms).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertIntakeResponseSchema = createInsertSchema(
+  intakeResponses,
+).omit({ id: true, completedAt: true });
+export const insertResourceSchema = createInsertSchema(resources).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertResourceAssignmentSchema = createInsertSchema(
+  resourceAssignments,
+).omit({ id: true, assignedAt: true });
+export const insertAlertSchema = createInsertSchema(alerts).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertProviderOnboardingChatSchema = createInsertSchema(
+  providerOnboardingChats,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPushTokenSchema = createInsertSchema(pushTokens).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSeenAt: true,
+});
+export const insertSafetyEventSchema = createInsertSchema(safetyEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertAgentVersionSchema = createInsertSchema(agentVersions).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertPersonaExampleSchema = createInsertSchema(
+  personaExamples,
+).omit({ id: true, createdAt: true, embedding: true });
+export const insertCalibrationSessionSchema = createInsertSchema(
+  calibrationSessions,
+).omit({ id: true, createdAt: true, completedAt: true });
+export const insertClientMemorySchema = createInsertSchema(clientMemory).omit({
+  id: true,
+  createdAt: true,
+  redactedAt: true,
+  redactedBy: true,
+  embedding: true,
+});
+export const insertRedactionSchema = createInsertSchema(redactions).omit({
+  id: true,
+  createdAt: true,
+});
 export type InsertRedaction = z.infer<typeof insertRedactionSchema>;
 export type Redaction = typeof redactions.$inferSelect;
-export const insertMoodEntrySchema = createInsertSchema(moodEntries).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertJournalPromptSchema = createInsertSchema(journalPrompts).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true, updatedAt: true, sharedAt: true });
-export const insertCoachInboxDismissalSchema = createInsertSchema(coachInboxDismissals).omit({ id: true, dismissedAt: true });
-export const insertPlaybookSchema = createInsertSchema(playbooks).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertNudgeSchema = createInsertSchema(nudges).omit({ id: true, createdAt: true, sentAt: true, respondedAt: true });
-export const insertNudgePrefsSchema = createInsertSchema(nudgePrefs).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMoodEntrySchema = createInsertSchema(moodEntries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertJournalPromptSchema = createInsertSchema(
+  journalPrompts,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit(
+  { id: true, createdAt: true, updatedAt: true, sharedAt: true },
+);
+export const insertCoachInboxDismissalSchema = createInsertSchema(
+  coachInboxDismissals,
+).omit({ id: true, dismissedAt: true });
+export const insertPlaybookSchema = createInsertSchema(playbooks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertNudgeSchema = createInsertSchema(nudges).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  respondedAt: true,
+});
+export const insertNudgePrefsSchema = createInsertSchema(nudgePrefs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type InsertNudgePrefs = z.infer<typeof insertNudgePrefsSchema>;
 export type NudgePrefs = typeof nudgePrefs.$inferSelect;
-export const insertSessionBriefSchema = createInsertSchema(sessionBriefs).omit({ id: true, createdAt: true, generatedAt: true, usedAt: true, usedInSessionId: true });
-export const insertScheduledSessionSchema = createInsertSchema(scheduledSessions).omit({ id: true, createdAt: true, updatedAt: true, reminderSentAt: true, icsSeq: true });
+export const insertSessionBriefSchema = createInsertSchema(sessionBriefs).omit({
+  id: true,
+  createdAt: true,
+  generatedAt: true,
+  usedAt: true,
+  usedInSessionId: true,
+});
+export const insertScheduledSessionSchema = createInsertSchema(
+  scheduledSessions,
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  reminderSentAt: true,
+  icsSeq: true,
+});
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
 export type InsertSeeker = z.infer<typeof insertSeekerSchema>;
 export type InsertProviderConfig = z.infer<typeof insertProviderConfigSchema>;
-export type InsertProviderAgentConfig = z.infer<typeof insertProviderAgentConfigSchema>;
+export type InsertProviderAgentConfig = z.infer<
+  typeof insertProviderAgentConfigSchema
+>;
 export type InsertEngagement = z.infer<typeof insertEngagementSchema>;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type InsertSummary = z.infer<typeof insertSummarySchema>;
-export type InsertProgressIndicator = z.infer<typeof insertProgressIndicatorSchema>;
+export type InsertProgressIndicator = z.infer<
+  typeof insertProgressIndicatorSchema
+>;
 export type InsertClientNote = z.infer<typeof insertClientNoteSchema>;
 export type InsertGoal = z.infer<typeof insertGoalSchema>;
 export type InsertGoalProgress = z.infer<typeof insertGoalProgressSchema>;
 export type InsertIntakeForm = z.infer<typeof insertIntakeFormSchema>;
 export type InsertIntakeResponse = z.infer<typeof insertIntakeResponseSchema>;
 export type InsertResource = z.infer<typeof insertResourceSchema>;
-export type InsertResourceAssignment = z.infer<typeof insertResourceAssignmentSchema>;
+export type InsertResourceAssignment = z.infer<
+  typeof insertResourceAssignmentSchema
+>;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
-export type InsertProviderOnboardingChat = z.infer<typeof insertProviderOnboardingChatSchema>;
+export type InsertProviderOnboardingChat = z.infer<
+  typeof insertProviderOnboardingChatSchema
+>;
 export type InsertPushToken = z.infer<typeof insertPushTokenSchema>;
 export type InsertSafetyEvent = z.infer<typeof insertSafetyEventSchema>;
 export type InsertAgentVersion = z.infer<typeof insertAgentVersionSchema>;
 export type InsertPersonaExample = z.infer<typeof insertPersonaExampleSchema>;
-export type InsertCalibrationSession = z.infer<typeof insertCalibrationSessionSchema>;
+export type InsertCalibrationSession = z.infer<
+  typeof insertCalibrationSessionSchema
+>;
 export type InsertClientMemory = z.infer<typeof insertClientMemorySchema>;
 export type InsertMoodEntry = z.infer<typeof insertMoodEntrySchema>;
 export type InsertJournalPrompt = z.infer<typeof insertJournalPromptSchema>;
 export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
-export type InsertCoachInboxDismissal = z.infer<typeof insertCoachInboxDismissalSchema>;
+export type InsertCoachInboxDismissal = z.infer<
+  typeof insertCoachInboxDismissalSchema
+>;
 export type InsertPlaybook = z.infer<typeof insertPlaybookSchema>;
 export type InsertNudge = z.infer<typeof insertNudgeSchema>;
 export type InsertSessionBrief = z.infer<typeof insertSessionBriefSchema>;
@@ -878,8 +1182,12 @@ export type ProviderAgentConfig = typeof providerAgentConfigs.$inferSelect;
 export type Engagement = typeof engagements.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Message = typeof messages.$inferSelect;
-export const insertMessageAttachmentSchema = createInsertSchema(messageAttachments).omit({ id: true, createdAt: true });
-export type InsertMessageAttachment = z.infer<typeof insertMessageAttachmentSchema>;
+export const insertMessageAttachmentSchema = createInsertSchema(
+  messageAttachments,
+).omit({ id: true, createdAt: true });
+export type InsertMessageAttachment = z.infer<
+  typeof insertMessageAttachmentSchema
+>;
 export type MessageAttachment = typeof messageAttachments.$inferSelect;
 export type AttachmentGrant = typeof attachmentGrants.$inferSelect;
 export type Summary = typeof summaries.$inferSelect;
@@ -892,7 +1200,8 @@ export type IntakeResponse = typeof intakeResponses.$inferSelect;
 export type Resource = typeof resources.$inferSelect;
 export type ResourceAssignment = typeof resourceAssignments.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
-export type ProviderOnboardingChat = typeof providerOnboardingChats.$inferSelect;
+export type ProviderOnboardingChat =
+  typeof providerOnboardingChats.$inferSelect;
 export type PushToken = typeof pushTokens.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
 export type SafetyEvent = typeof safetyEvents.$inferSelect;
@@ -907,16 +1216,30 @@ export type CoachInboxDismissal = typeof coachInboxDismissals.$inferSelect;
 export type Playbook = typeof playbooks.$inferSelect;
 export type Nudge = typeof nudges.$inferSelect;
 export type SessionBrief = typeof sessionBriefs.$inferSelect;
-export type InsertScheduledSession = z.infer<typeof insertScheduledSessionSchema>;
+export type InsertScheduledSession = z.infer<
+  typeof insertScheduledSessionSchema
+>;
 export type ScheduledSession = typeof scheduledSessions.$inferSelect;
 
-export const insertProviderBillingSchema = createInsertSchema(providerBilling).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertPriceTierSchema = createInsertSchema(priceTiers).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertEngagementBillingSchema = createInsertSchema(engagementBilling).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertBillingPaymentSchema = createInsertSchema(billingPayments).omit({ id: true, createdAt: true });
+export const insertProviderBillingSchema = createInsertSchema(
+  providerBilling,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPriceTierSchema = createInsertSchema(priceTiers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertEngagementBillingSchema = createInsertSchema(
+  engagementBilling,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBillingPaymentSchema = createInsertSchema(
+  billingPayments,
+).omit({ id: true, createdAt: true });
 export type InsertProviderBilling = z.infer<typeof insertProviderBillingSchema>;
 export type InsertPriceTier = z.infer<typeof insertPriceTierSchema>;
-export type InsertEngagementBilling = z.infer<typeof insertEngagementBillingSchema>;
+export type InsertEngagementBilling = z.infer<
+  typeof insertEngagementBillingSchema
+>;
 export type InsertBillingPayment = z.infer<typeof insertBillingPaymentSchema>;
 export type ProviderBilling = typeof providerBilling.$inferSelect;
 export type PriceTier = typeof priceTiers.$inferSelect;

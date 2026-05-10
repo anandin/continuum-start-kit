@@ -23,12 +23,7 @@ export default function TabLayout() {
 
   if (loading) {
     return (
-      <View
-        style={[
-          styles.loading,
-          { backgroundColor: colors.background },
-        ]}
-      >
+      <View style={[styles.loading, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
       </View>
     );

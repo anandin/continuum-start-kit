@@ -51,7 +51,8 @@ const BiometricLockContext = createContext<BiometricLockCtx | undefined>(
 
 export function useBiometricLock(): BiometricLockCtx {
   const ctx = useContext(BiometricLockContext);
-  if (!ctx) throw new Error("useBiometricLock must be inside <BiometricLockProvider>");
+  if (!ctx)
+    throw new Error("useBiometricLock must be inside <BiometricLockProvider>");
   return ctx;
 }
 
@@ -219,8 +220,7 @@ export function BiometricLockProvider({
   // While we're loading the preference on a cold-launch, a user that ends up with
   // pref-on would briefly see the app — so block the children behind a neutral
   // splash-like view too.
-  const isProtected =
-    enabled && support.kind === "supported" && !!user;
+  const isProtected = enabled && support.kind === "supported" && !!user;
   const shouldShowLock = locked && isProtected;
   const shouldShowVeil = veiled && isProtected && !shouldShowLock;
   const shouldShowGate = isLoadingPref;
@@ -231,10 +231,7 @@ export function BiometricLockProvider({
       {shouldShowGate ? <LoadingGate /> : null}
       {shouldShowVeil ? <PrivacyVeil /> : null}
       {shouldShowLock ? (
-        <LockScreen
-          support={support}
-          onUnlock={() => setLocked(false)}
-        />
+        <LockScreen support={support} onUnlock={() => setLocked(false)} />
       ) : null}
     </BiometricLockContext.Provider>
   );
@@ -304,7 +301,8 @@ function LockScreen({ support, onUnlock }: LockScreenProps) {
         onUnlock();
       } else if (
         "error" in result &&
-        (result.error === "user_cancel" || result.error === "system_cancel" ||
+        (result.error === "user_cancel" ||
+          result.error === "system_cancel" ||
           result.error === "app_cancel")
       ) {
         setAuthState("cancelled");
