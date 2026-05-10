@@ -4,10 +4,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import Landing from "./pages/Landing";
-import Auth from "./pages/Auth";
+import { ThemeProvider } from "./seeker/lib/theme";
 import RolePicker from "./pages/RolePicker";
 import Dashboard from "./pages/Dashboard";
 import ProviderSetup from "./pages/ProviderSetup";
@@ -24,7 +23,6 @@ import AgentSetup from "./pages/AgentSetup";
 import Schedule from "./pages/Schedule";
 import Resources from "./pages/Resources";
 import JournalPromptLibrary from "./pages/JournalPromptLibrary";
-import Journal from "./pages/Journal";
 import IntakeForms from "./pages/IntakeForms";
 import Analytics from "./pages/Analytics";
 import ProviderProfile from "./pages/ProviderProfile";
@@ -40,10 +38,21 @@ import SeekerMemory from "./pages/SeekerMemory";
 import SeekerLayout from "./seeker/SeekerLayout";
 import Welcome from "./seeker/pages/Welcome";
 import MeetMaya from "./seeker/pages/MeetMaya";
+import QHAuth from "./seeker/pages/QHAuth";
 import SeekerHome from "./seeker/pages/Home";
 import SeekerChat from "./seeker/pages/SeekerChat";
 import SeekerJournal from "./seeker/pages/SeekerJournal";
 import SeekerProgress from "./seeker/pages/SeekerProgress";
+
+function DashboardSwitch() {
+  const { role } = useAuth();
+  if (role === "provider") return <Dashboard />;
+  return (
+    <ThemeProvider>
+      <SeekerHome />
+    </ThemeProvider>
+  );
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -53,8 +62,22 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/auth" element={<Auth />} />
+            <Route
+              path="/"
+              element={
+                <ThemeProvider>
+                  <Welcome />
+                </ThemeProvider>
+              }
+            />
+            <Route
+              path="/auth"
+              element={
+                <ThemeProvider>
+                  <QHAuth />
+                </ThemeProvider>
+              }
+            />
             <Route path="/coach/:providerId" element={<ProviderProfile />} />
             <Route
               path="/auth/role"
@@ -68,7 +91,7 @@ const App = () => (
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <Dashboard />
+                  <DashboardSwitch />
                 </ProtectedRoute>
               }
             />
@@ -180,7 +203,9 @@ const App = () => (
               path="/journal"
               element={
                 <ProtectedRoute>
-                  <Journal />
+                  <ThemeProvider>
+                    <SeekerJournal />
+                  </ThemeProvider>
                 </ProtectedRoute>
               }
             />
