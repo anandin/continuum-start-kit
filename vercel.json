@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm --filter @workspace/api-server run build && PORT=3000 BASE_PATH=/ pnpm --filter @workspace/haven-web run build",
-  "outputDirectory": "artifacts/haven-web/dist/public",
+  "buildCommand": "pnpm --filter @workspace/api-server run build && PORT=3000 BASE_PATH=/ pnpm --filter @workspace/haven-web run build && cp -r artifacts/haven-web/dist/public .vercel_static_output",
+  "outputDirectory": ".vercel_static_output",
   "installCommand": "pnpm install",
   "framework": null,
   "rewrites": [
