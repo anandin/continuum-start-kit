@@ -5,101 +5,99 @@
 @layer base {
   :root {
     /*
-     * "Clinical Companion" palette.
-     * Deep forest-green primary on a near-white canvas, intentionally
-     * austere to feel like a quiet companion-led space. Mirrored 1:1 in
-     * artifacts/haven-mobile/constants/colors.ts so mobile and web share
-     * the same visual identity.
+     * "Quiet Hours — Morning" palette.
+     * Oatmeal bone canvas with coral/clay rose accent and sage secondary.
+     * Serif-forward editorial feel for a calm therapy companion.
      */
-    --background: 60 18% 97%;
-    --foreground: 0 0% 10%;
+    --background: 37 34% 90%;
+    --foreground: 256 22% 14%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 10%;
+    --card: 43 50% 95%;
+    --card-foreground: 256 22% 14%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 10%;
+    --popover: 43 50% 95%;
+    --popover-foreground: 256 22% 14%;
 
-    --primary: 151 56% 19%;
+    --primary: 8 42% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 60 12% 93%;
-    --secondary-foreground: 0 0% 10%;
+    --secondary: 37 30% 92%;
+    --secondary-foreground: 256 13% 25%;
 
-    --muted: 60 12% 93%;
-    --muted-foreground: 0 0% 40%;
+    --muted: 37 30% 92%;
+    --muted-foreground: 264 8% 49%;
 
-    --accent: 151 56% 19%;
+    --accent: 133 13% 50%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 8 62% 43%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 151 56% 19%;
+    --success: 133 13% 50%;
     --success-foreground: 0 0% 100%;
 
     --warning: 36 64% 44%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 60 8% 89%;
-    --input: 60 8% 89%;
-    --ring: 151 56% 19%;
+    --border: 30 14% 84%;
+    --input: 30 14% 84%;
+    --ring: 8 42% 60%;
 
     --radius: 1rem;
 
-    --sidebar-background: 60 18% 97%;
-    --sidebar-foreground: 0 0% 10%;
-    --sidebar-primary: 151 56% 19%;
+    --sidebar-background: 37 34% 90%;
+    --sidebar-foreground: 256 22% 14%;
+    --sidebar-primary: 8 42% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 60 12% 93%;
-    --sidebar-accent-foreground: 0 0% 10%;
-    --sidebar-border: 60 8% 89%;
-    --sidebar-ring: 151 56% 19%;
+    --sidebar-accent: 37 30% 92%;
+    --sidebar-accent-foreground: 256 22% 14%;
+    --sidebar-border: 30 14% 84%;
+    --sidebar-ring: 8 42% 60%;
   }
 
   .dark {
-    --background: 150 14% 7%;
-    --foreground: 60 8% 92%;
+    --background: 252 21% 9%;
+    --foreground: 32 46% 90%;
 
-    --card: 150 12% 10%;
-    --card-foreground: 60 8% 92%;
+    --card: 250 24% 15%;
+    --card-foreground: 32 46% 90%;
 
-    --popover: 150 12% 10%;
-    --popover-foreground: 60 8% 92%;
+    --popover: 250 24% 15%;
+    --popover-foreground: 32 46% 90%;
 
-    --primary: 151 44% 44%;
-    --primary-foreground: 150 14% 7%;
+    --primary: 9 63% 76%;
+    --primary-foreground: 252 21% 9%;
 
-    --secondary: 150 10% 12%;
-    --secondary-foreground: 60 8% 92%;
+    --secondary: 251 23% 18%;
+    --secondary-foreground: 32 23% 81%;
 
-    --muted: 150 10% 12%;
-    --muted-foreground: 90 4% 64%;
+    --muted: 251 23% 18%;
+    --muted-foreground: 257 11% 59%;
 
-    --accent: 151 44% 44%;
-    --accent-foreground: 150 14% 7%;
+    --accent: 133 17% 68%;
+    --accent-foreground: 252 21% 9%;
 
     --destructive: 8 62% 43%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 151 44% 44%;
-    --success-foreground: 150 14% 7%;
+    --success: 133 17% 68%;
+    --success-foreground: 252 21% 9%;
 
     --warning: 36 64% 44%;
-    --warning-foreground: 150 14% 7%;
+    --warning-foreground: 252 21% 9%;
 
-    --border: 150 8% 15%;
-    --input: 150 8% 15%;
-    --ring: 151 44% 44%;
+    --border: 9 30% 20%;
+    --input: 9 30% 20%;
+    --ring: 9 63% 76%;
 
-    --sidebar-background: 150 14% 7%;
-    --sidebar-foreground: 60 8% 92%;
-    --sidebar-primary: 151 44% 44%;
-    --sidebar-primary-foreground: 150 14% 7%;
-    --sidebar-accent: 150 10% 12%;
-    --sidebar-accent-foreground: 60 8% 92%;
-    --sidebar-border: 150 8% 15%;
-    --sidebar-ring: 151 44% 44%;
+    --sidebar-background: 252 21% 9%;
+    --sidebar-foreground: 32 46% 90%;
+    --sidebar-primary: 9 63% 76%;
+    --sidebar-primary-foreground: 252 21% 9%;
+    --sidebar-accent: 251 23% 18%;
+    --sidebar-accent-foreground: 32 46% 90%;
+    --sidebar-border: 9 30% 20%;
+    --sidebar-ring: 9 63% 76%;
   }
 }
 
@@ -110,6 +108,7 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Geist', -apple-system, system-ui, sans-serif;
     font-feature-settings:
       "rlig" 1,
       "calt" 1;
@@ -119,44 +118,59 @@
 @layer utilities {
   .shadow-warm {
     box-shadow:
-      0 1px 3px 0 rgb(20 30 25 / 0.05),
-      0 1px 2px -1px rgb(20 30 25 / 0.05);
+      0 1px 3px 0 rgb(31 27 42 / 0.05),
+      0 1px 2px -1px rgb(31 27 42 / 0.05);
   }
   .shadow-warm-md {
     box-shadow:
-      0 4px 6px -1px rgb(20 30 25 / 0.06),
-      0 2px 4px -2px rgb(20 30 25 / 0.04);
+      0 4px 6px -1px rgb(31 27 42 / 0.06),
+      0 2px 4px -2px rgb(31 27 42 / 0.04);
   }
   .shadow-warm-lg {
     box-shadow:
-      0 10px 15px -3px rgb(20 30 25 / 0.07),
-      0 4px 6px -4px rgb(20 30 25 / 0.04);
+      0 10px 15px -3px rgb(200 120 107 / 0.12),
+      0 4px 6px -4px rgb(31 27 42 / 0.05);
   }
 
   .bg-gradient-warm {
-    background: linear-gradient(135deg, hsl(60 18% 97%), hsl(60 12% 93%));
+    background: linear-gradient(180deg, hsl(42 50% 92%) 0%, hsl(37 34% 90%) 100%);
   }
   .bg-gradient-warm-hero {
     background: linear-gradient(
       180deg,
-      hsl(60 18% 97%),
-      hsl(60 18% 97%),
-      hsl(60 18% 97%)
+      hsl(42 50% 94%) 0%,
+      hsl(37 34% 90%) 60%,
+      hsl(34 28% 88%) 100%
     );
   }
   .bg-gradient-warm-card {
-    background: linear-gradient(135deg, hsl(0 0% 100%), hsl(60 18% 97%));
+    background: linear-gradient(135deg, hsl(43 50% 95%), hsl(37 34% 90%));
   }
   .bg-gradient-warm-accent {
-    background: linear-gradient(135deg, hsl(151 56% 19%), hsl(151 50% 24%));
+    background: linear-gradient(135deg, hsl(8 42% 60%), hsl(8 38% 52%));
   }
 
   .text-gradient-primary {
     @apply bg-clip-text text-transparent;
     background-image: linear-gradient(
       135deg,
-      hsl(151 56% 16%),
-      hsl(151 50% 26%)
+      hsl(8 46% 55%),
+      hsl(8 38% 48%)
     );
+  }
+
+  .font-serif {
+    font-family: 'Instrument Serif', Georgia, serif;
+  }
+  .font-hand {
+    font-family: 'Caveat', cursive;
+  }
+
+  .hover-elevate {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .hover-elevate:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px -6px rgb(200 120 107 / 0.15);
   }
 }
