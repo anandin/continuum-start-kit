@@ -4,9 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { ThemeProvider } from "./seeker/lib/theme";
+import Landing from "./pages/Landing";
+import Auth from "./pages/Auth";
 import RolePicker from "./pages/RolePicker";
 import Dashboard from "./pages/Dashboard";
 import ProviderSetup from "./pages/ProviderSetup";
@@ -23,6 +24,7 @@ import AgentSetup from "./pages/AgentSetup";
 import Schedule from "./pages/Schedule";
 import Resources from "./pages/Resources";
 import JournalPromptLibrary from "./pages/JournalPromptLibrary";
+import Journal from "./pages/Journal";
 import IntakeForms from "./pages/IntakeForms";
 import Analytics from "./pages/Analytics";
 import ProviderProfile from "./pages/ProviderProfile";
@@ -35,26 +37,6 @@ import ReviewQueue from "./pages/twin/ReviewQueue";
 import ProviderBilling from "./pages/ProviderBilling";
 import SeekerPayment from "./pages/SeekerPayment";
 import SeekerMemory from "./pages/SeekerMemory";
-import SeekerLayout from "./seeker/SeekerLayout";
-import Welcome from "./seeker/pages/Welcome";
-import MeetMaya from "./seeker/pages/MeetMaya";
-import QHAuth from "./seeker/pages/QHAuth";
-import SeekerHome from "./seeker/pages/Home";
-import SeekerChat from "./seeker/pages/SeekerChat";
-import SeekerJournal from "./seeker/pages/SeekerJournal";
-import SeekerProgress from "./seeker/pages/SeekerProgress";
-import SeekerProfile from "./seeker/pages/SeekerProfile";
-
-function DashboardSwitch() {
-  const { role, loading } = useAuth();
-  if (loading) return null;
-  if (role === "provider") return <Dashboard />;
-  return (
-    <ThemeProvider>
-      <SeekerHome />
-    </ThemeProvider>
-  );
-}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -64,22 +46,8 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route
-              path="/"
-              element={
-                <ThemeProvider>
-                  <Welcome />
-                </ThemeProvider>
-              }
-            />
-            <Route
-              path="/auth"
-              element={
-                <ThemeProvider>
-                  <QHAuth />
-                </ThemeProvider>
-              }
-            />
+            <Route path="/" element={<Landing />} />
+            <Route path="/auth" element={<Auth />} />
             <Route path="/coach/:providerId" element={<ProviderProfile />} />
             <Route
               path="/auth/role"
@@ -93,7 +61,7 @@ const App = () => (
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <DashboardSwitch />
+                  <Dashboard />
                 </ProtectedRoute>
               }
             />
@@ -205,9 +173,7 @@ const App = () => (
               path="/journal"
               element={
                 <ProtectedRoute>
-                  <ThemeProvider>
-                    <SeekerJournal />
-                  </ThemeProvider>
+                  <Journal />
                 </ProtectedRoute>
               }
             />
@@ -307,67 +273,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* Quiet Hours seeker experience */}
-            <Route path="/seeker" element={<SeekerLayout />}>
-              <Route path="welcome" element={<Welcome />} />
-              <Route path="meet" element={<MeetMaya />} />
-              <Route
-                path="home"
-                element={
-                  <ProtectedRoute>
-                    <SeekerHome />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="today"
-                element={
-                  <ProtectedRoute>
-                    <SeekerHome />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="chat"
-                element={
-                  <ProtectedRoute>
-                    <SeekerChat />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="twin"
-                element={
-                  <ProtectedRoute>
-                    <SeekerChat />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="journal"
-                element={
-                  <ProtectedRoute>
-                    <SeekerJournal />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="progress"
-                element={
-                  <ProtectedRoute>
-                    <SeekerProgress />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="you"
-                element={
-                  <ProtectedRoute>
-                    <SeekerProfile />
-                  </ProtectedRoute>
-                }
-              />
-            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

@@ -13,7 +13,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, Heart, Shield, Sparkles } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Auth() {
@@ -68,7 +68,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-warm-hero p-4 dark:bg-background">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-warm-hero p-4">
       <div className="w-full max-w-md">
         <Link
           to="/"
@@ -79,47 +79,59 @@ export default function Auth() {
           Back to home
         </Link>
 
-        <Card className="shadow-warm-lg">
+        <Card className="shadow-warm-lg rounded-2xl border-border/60">
           <CardHeader className="text-center pb-2">
-            <div className="mx-auto mb-3 flex items-center justify-center gap-1">
-              <Heart className="h-5 w-5 text-primary" />
-              <Sparkles className="h-4 w-4 text-accent" />
+            <div className="mx-auto mb-3 flex items-center gap-2">
+              <svg width={20} height={24} viewBox="0 0 24 28" fill="none">
+                <path
+                  d="M12 1 L22 7 L22 17 Q22 24 12 27 Q2 24 2 17 L2 7 Z"
+                  fill="hsl(8 42% 60% / 0.18)"
+                  stroke="hsl(8 42% 60%)"
+                  strokeWidth={1.5}
+                />
+              </svg>
+              <span className="font-serif text-xl text-foreground">Haven</span>
             </div>
-            <CardTitle className="text-3xl font-bold">
+            <CardTitle>
               <span
-                className="text-gradient-primary"
+                className="font-hand text-2xl text-primary font-normal"
                 data-testid="text-auth-title"
               >
-                Haven
+                welcome back
               </span>
             </CardTitle>
             <CardDescription
-              className="text-muted-foreground"
+              className="font-serif italic text-muted-foreground"
               data-testid="text-auth-description"
             >
-              A safe space for your growth journey
+              Sign in to your safe space
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="signin" className="w-full">
               <TabsList
-                className="grid w-full grid-cols-2"
+                className="grid w-full grid-cols-2 rounded-full"
                 data-testid="tabs-auth"
               >
-                <TabsTrigger value="signin" data-testid="tab-signin">
+                <TabsTrigger
+                  value="signin"
+                  className="rounded-full"
+                  data-testid="tab-signin"
+                >
                   Welcome Back
                 </TabsTrigger>
-                <TabsTrigger value="signup" data-testid="tab-signup">
+                <TabsTrigger
+                  value="signup"
+                  className="rounded-full"
+                  data-testid="tab-signup"
+                >
                   Get Started
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="signin">
                 <form onSubmit={handleSignIn} className="space-y-4">
-                  <p
-                    className="text-sm text-muted-foreground text-center"
-                    data-testid="text-signin-prompt"
-                  >
+                  <p className="text-sm text-muted-foreground text-center">
                     We're glad you're here. Sign in to continue your journey.
                   </p>
                   <div className="space-y-2">
@@ -132,6 +144,7 @@ export default function Auth() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
+                      className="rounded-xl"
                       data-testid="input-signin-email"
                     />
                   </div>
@@ -145,12 +158,13 @@ export default function Auth() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
+                      className="rounded-xl"
                       data-testid="input-signin-password"
                     />
                   </div>
                   <Button
                     type="submit"
-                    className="w-full"
+                    className="w-full rounded-full h-11"
                     disabled={authLoading}
                     data-testid="button-signin"
                   >
@@ -161,10 +175,7 @@ export default function Auth() {
 
               <TabsContent value="signup">
                 <form onSubmit={handleSignUp} className="space-y-4">
-                  <p
-                    className="text-sm text-muted-foreground text-center"
-                    data-testid="text-signup-prompt"
-                  >
+                  <p className="text-sm text-muted-foreground text-center">
                     Take the first step. Creating an account is quick and easy.
                   </p>
                   <div className="space-y-2">
@@ -177,6 +188,7 @@ export default function Auth() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
+                      className="rounded-xl"
                       data-testid="input-signup-email"
                     />
                   </div>
@@ -191,12 +203,13 @@ export default function Auth() {
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       minLength={6}
+                      className="rounded-xl"
                       data-testid="input-signup-password"
                     />
                   </div>
                   <Button
                     type="submit"
-                    className="w-full"
+                    className="w-full rounded-full h-11"
                     disabled={authLoading}
                     data-testid="button-signup"
                   >
@@ -208,11 +221,19 @@ export default function Auth() {
               </TabsContent>
             </Tabs>
 
-            <div
-              className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground"
-              data-testid="text-privacy-note"
-            >
-              <Shield className="h-3.5 w-3.5" />
+            <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <svg
+                width={14}
+                height={14}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.7}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
               <span>Your privacy and safety are our priority</span>
             </div>
           </CardContent>
