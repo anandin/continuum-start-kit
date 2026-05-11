@@ -43,9 +43,11 @@ import SeekerHome from "./seeker/pages/Home";
 import SeekerChat from "./seeker/pages/SeekerChat";
 import SeekerJournal from "./seeker/pages/SeekerJournal";
 import SeekerProgress from "./seeker/pages/SeekerProgress";
+import SeekerProfile from "./seeker/pages/SeekerProfile";
 
 function DashboardSwitch() {
-  const { role } = useAuth();
+  const { role, loading } = useAuth();
+  if (loading) return null;
   if (role === "provider") return <Dashboard />;
   return (
     <ThemeProvider>
@@ -354,6 +356,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <SeekerProgress />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="you"
+                element={
+                  <ProtectedRoute>
+                    <SeekerProfile />
                   </ProtectedRoute>
                 }
               />
